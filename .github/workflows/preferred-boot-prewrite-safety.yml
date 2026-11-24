@@ -1,0 +1,52 @@
+name: Preferred EFI boot path staging pre-write safety (offline)
+
+on:
+  push:
+    branches:
+      - fix/safety1-preferred-efi-temp-exclusive-20261124
+      - dev
+    paths:
+      - 'assets/live/libertix-preferred-boot-path.py'
+      - 'auto_tests/tests/test_preferred_boot_path.py'
+      - '.github/workflows/preferred-boot-prewrite-safety.yml'
+  pull_request:
+    branches:
+      - dev
+    paths:
+      - 'assets/live/libertix-preferred-boot-path.py'
+      - 'auto_tests/tests/test_preferred_boot_path.py'
+      - '.github/workflows/preferred-boot-prewrite-safety.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  offline-prewrite:
+    if: github.repository == 'LMhdez/gaslux'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    env:
+      CANDIDATE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - name: Checkout exact candidate without write credentials
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          ref: ${{ env.CANDIDATE_SHA }}
+          persist-credentials: false
+      - name: Verify exact repository and revision
+        shell: bash
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REPOSITORY" = LMhdez/gaslux
+          test "$(git rev-parse HEAD)" = "$CANDIDATE_SHA"
+          test "$RUNNER_OS" = Linux
+      - name: Install isolated Python test/lint tools
+        run: python3 -m pip install 'pytest==9.0.2' 'ruff==0.15.20'
+      - name: Exercise preferred boot journal and adversarial staging cases
+        run: python3 -m pytest -q auto_tests/tests/test_preferred_boot_path.py
+      - name: Compile and enforce Python lint/format
+        run: |
+          python3 -m compileall -q assets/live/libertix-preferred-boot-path.py auto_tests/tests/test_preferred_boot_path.py
+          python3 -m ruff check --config auto_tests/pyproject.toml assets/live/libertix-preferred-boot-path.py auto_tests/tests/test_preferred_boot_path.py
+          python3 -m ruff format --diff --config auto_tests/pyproject.toml assets/live/libertix-preferred-boot-path.py auto_tests/tests/test_preferred_boot_path.py
+          python3 -m ruff format --check --config auto_tests/pyproject.toml assets/live/libertix-preferred-boot-path.py auto_tests/tests/test_preferred_boot_path.py

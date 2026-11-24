@@ -4,6 +4,8 @@ import base64
 import hashlib
 import importlib.util
 import json
+import os
+import stat
 import subprocess
 import uuid
 from pathlib import Path
@@ -270,3 +272,70 @@ def test_pending_sync_is_retried_on_linux_boot_and_blocks_windows_writers() -> N
         .split("function Restore-LibertixPreferredBootPath", 1)[1]
     )
     assert restore.index("preferred-boot-path.sync.json") < restore.index("$archiveRoot =")
+
+
+@pytest.mark.parametrize("collision", ["symlink", "regular"])
+def test_replace_atomic_rejects_preexisting_temp_before_any_write(
+    tmp_path: Path, collision: str
+) -> None:
+    """An EFI temp-file collision must not be followed or overwritten."""
+    spec = importlib.util.spec_from_file_location("preferred_sync_temp_collision", HELPER)
+    assert spec is not None and spec.loader is not None
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+
+    source = tmp_path / "trusted-shim"
+    write(source, b"new-signed-shim")
+    destination = tmp_path / "esp" / "EFI" / "Microsoft" / "Boot" / "bootmgfw.efi"
+    write(destination, b"existing-boot-manager")
+    outside = tmp_path / "outside-esp-important-data"
+    write(outside, b"untouched")
+    temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
+    if collision == "symlink":
+        temporary.symlink_to(outside)
+    else:
+        write(temporary, b"unowned-staging-file")
+
+    with pytest.raises(FileExistsError):
+        helper.replace_atomic(source, destination, digest(source.read_bytes()))
+
+    assert outside.read_bytes() == b"untouched"
+    assert destination.read_bytes() == b"existing-boot-manager"
+    if collision == "symlink":
+        assert temporary.is_symlink()
+    else:
+        assert temporary.read_bytes() == b"unowned-staging-file"
+
+
+def test_replace_atomic_rejects_postcreation_inode_swap(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A swapped staging pathname must never chmod or unlink an external inode."""
+    spec = importlib.util.spec_from_file_location("preferred_sync_inode_swap", HELPER)
+    assert spec is not None and spec.loader is not None
+    helper = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(helper)
+
+    source = tmp_path / "signed-shim"
+    write(source, b"candidate-shim")
+    destination = tmp_path / "esp/EFI/Microsoft/Boot/bootmgfw.efi"
+    write(destination, b"original-windows-loader")
+    outside = tmp_path / "unowned-secret"
+    write(outside, b"not-the-candidate")
+    outside.chmod(0o600)
+    temporary = destination.with_name(f".{destination.name}.{os.getpid()}.tmp")
+    original_copy = helper.shutil.copyfileobj
+
+    def replace_inode(source_stream: object, staged: object, *, length: int) -> None:
+        original_copy(source_stream, staged, length=length)
+        temporary.unlink()
+        temporary.symlink_to(outside)
+
+    monkeypatch.setattr(helper.shutil, "copyfileobj", replace_inode)
+    with pytest.raises(helper.PreferredBootPathError):
+        helper.replace_atomic(source, destination, digest(source.read_bytes()))
+
+    assert destination.read_bytes() == b"original-windows-loader"
+    assert outside.read_bytes() == b"not-the-candidate"
+    assert stat.S_IMODE(outside.stat().st_mode) == 0o600
+    assert temporary.is_symlink()
