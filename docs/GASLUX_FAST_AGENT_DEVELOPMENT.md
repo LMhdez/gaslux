@@ -18,3 +18,30 @@ After all six previously approved read-only `assess_<backend>_lifecycle` helpers
 The selector treats an evidence record as **declared, not independently verified**. It cannot certify any installed guest, Windows return, dual boot, uninstall, rollback, or stable readiness. The matrix, supported platform combinations, gate order and safety split are validated against a conservative allowlist; malformed or unbounded data fails closed.
 
 This first phase does **not** yet convert arbitrary gate gaps into autonomous Qwen coding or merge rights. That handoff requires a dedicated, independently reviewed task specification with exact target files, positive/negative acceptance tests, dependency and duplicate detection, and the relevant Safety/Windows/VM gates. The follow-on work is tracked in [issue #401](https://github.com/LMhdez/gaslux/issues/401). Existing PRs #395/#396/#398/#399/#400 need their own exact-HEAD CI and technical review rather than regenerated duplicate patches.
+
+## Phase 2A — automatic task intake from real missing gates (pending Safety)
+
+The existing Factory (no new schedule/workflow) is extended with a **separate,
+main-only** `triage_missing_gates` job triggered only by the Phase 1
+`status=blocked` selector. It reads the pinned current `dev` goal matrix and
+the open PR / full bounded issue history via the GitHub API, refuses stale data,
+and creates **at most one** review issue per run with the stable key
+`backend/platform/gate`. An already open six-distro Qwen Draft is processed
+first; existing backend issues win over automated duplicates.
+
+The triage job requests only `issues:write` plus read-only contents and PR
+metadata. There is no model download, editable source from `dev` execution,
+GitHub App private key access or installation/boot authority. It runs trusted
+`main` Python, interprets `dev` as data, and validates repository, exact
+`main` ref, unpaused state, accepted event, current `dev` SHA and issue
+identity before any write. It fails closed when the API, matrix, or bounded
+dedup history is incomplete.
+
+**An issue is a request for scope and acceptance tests, not an approved
+programming task.** Issue states remain `NEEDS_SCOPE_REVIEW` until a backend
+owner and independent GASLUX-SAFETY approve exact allowed source paths, test
+fixtures, dependencies and protected-gate policy. The existing Qwen code
+generator continues to accept only the previously reviewed AST-restricted
+six-distro helpers; it is not expanded by task intake. This phase does not
+implement generic automatic coding, installation, dual boot, uninstall or
+recovery, and is not a successful GitHub App Draft-publication smoke test.
