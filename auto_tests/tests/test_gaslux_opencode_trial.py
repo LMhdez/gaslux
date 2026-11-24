@@ -4,6 +4,7 @@ from pathlib import Path
 import sys
 import tempfile
 import unittest
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import gaslux_opencode_trial as trial
@@ -107,6 +108,43 @@ class OpenCodeTrialTests(unittest.TestCase):
         self.assertEqual(row["failure_detail"], "PERMISSION_DENIED")
         row = trial.assess(lambda: trial.parse_events(encode(rows[1:])))
         self.assertEqual(row["failure"], "NO_NATIVE_SKILL_EVENT")
+
+    def test_internal_files_can_exceed_stream_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            with patch.object(trial, "MIN_FREE", 0):
+                code, out, err = trial.bounded_process(
+                    [sys.executable, "-c",
+                     "open('cache.bin','wb').write(b'x' * (3 * 1024 * 1024)); print('ok')"],
+                    work, {}, timeout=10)
+            self.assertEqual((code, out, err), (0, b"ok\\n", b""))
+            self.assertGreater((work / "cache.bin").stat().st_size, trial.MAX_EVENTS)
+
+    def test_output_stream_limits_independent_of_internal_limit(self):
+        for fd, expected in ((1, "EVENT_STREAM_OVERSIZE"), (2, "STDERR_STREAM_OVERSIZE")):
+            with tempfile.TemporaryDirectory() as tmp, patch.object(trial, "MIN_FREE", 0):
+                with self.assertRaises(trial.TrialFailure) as caught:
+                    trial.bounded_process(
+                        [sys.executable, "-c", f"import os; os.write({fd}, b'x' * 3000000)"],
+                        Path(tmp), {}, timeout=10)
+                self.assertEqual(caught.exception.category, expected)
+
+    def test_scratch_budget_and_disk_reserve(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            (work / "cache").write_bytes(b"x" * 4096)
+            with patch.object(trial, "MAX_SCRATCH", 1):
+                with self.assertRaisesRegex(trial.TrialFailure, "SCRATCH_SIZE_LIMIT"):
+                    trial.check_scratch(work)
+            with patch.object(trial, "MIN_FREE", 10**20):
+                with self.assertRaisesRegex(trial.TrialFailure, "DISK_RESERVE_LIMIT"):
+                    trial.check_scratch(work)
+
+    def test_timeout_fails_closed(self):
+        with tempfile.TemporaryDirectory() as tmp, patch.object(trial, "MIN_FREE", 0):
+            with self.assertRaisesRegex(trial.TrialFailure, "CLI_TIMEOUT"):
+                trial.bounded_process([sys.executable, "-c", "import time; time.sleep(10)"],
+                                      Path(tmp), {}, timeout=0.2)
 
 
 if __name__ == "__main__":

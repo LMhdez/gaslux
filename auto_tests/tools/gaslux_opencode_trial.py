@@ -4,8 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import resource
+import selectors
+import shutil
+import signal
+import stat
 import subprocess
 import tempfile
 import time
@@ -18,6 +23,10 @@ SKILL = "gaslux-history-reuse"
 MODEL = "ollama/" + factory.MODEL
 VERSION = "1.19.6"
 MAX_EVENTS = 2 * 1024 * 1024
+MAX_INTERNAL_FILE = 512 * 1024 * 1024
+MAX_SCRATCH = 2 * 1024**3
+MIN_FREE = 4 * 1024**3
+MAX_ENTRIES = 100_000
 PROMPT = (
     "Return exactly one JSON object with key addition, no Markdown. "
     "Its value is a Python function with signature "
@@ -171,6 +180,81 @@ def cli_failure(returncode, raw, stderr):
     return TrialFailure("CLI_NONZERO", detail=detail)
 
 
+def check_scratch(work: Path):
+    total, entries = 0, 0
+    for directory, dirs, files in os.walk(work, followlinks=False):
+        for name in dirs + files:
+            entries += 1
+            if entries > MAX_ENTRIES:
+                raise TrialFailure("SCRATCH_ENTRY_LIMIT")
+            try:
+                st = (Path(directory) / name).lstat()
+            except FileNotFoundError:
+                continue
+            if stat.S_ISREG(st.st_mode):
+                total += max(st.st_size, st.st_blocks * 512)
+                if total > MAX_SCRATCH:
+                    raise TrialFailure("SCRATCH_SIZE_LIMIT")
+    if shutil.disk_usage(work).free < MIN_FREE:
+        raise TrialFailure("DISK_RESERVE_LIMIT")
+    return total
+
+
+def bounded_process(argv, work, env, timeout=900):
+    # Per-file ceiling for SQLite/cache/provider binaries is distinct from the
+    # strict stdout/stderr caps. Periodic scratch accounting is not a hard quota.
+    def limit():
+        resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_INTERNAL_FILE, MAX_INTERNAL_FILE))
+        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
+
+    check_scratch(work)
+    deadline = time.monotonic() + timeout
+    next_check = time.monotonic() + 1
+    with subprocess.Popen(
+        argv, cwd=work, env=env, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+        preexec_fn=limit, start_new_session=True,
+    ) as proc:
+        try:
+            with selectors.DefaultSelector() as sel:
+                buffers = {}
+                for stream in (proc.stdout, proc.stderr):
+                    buffers[stream] = bytearray()
+                    sel.register(stream, selectors.EVENT_READ)
+                while sel.get_map():
+                    now = time.monotonic()
+                    if now >= deadline:
+                        raise TrialFailure("CLI_TIMEOUT")
+                    if now >= next_check:
+                        check_scratch(work)
+                        next_check = now + 1
+                    for key, _ in sel.select(timeout=min(0.25, deadline - now)):
+                        chunk = os.read(key.fd, 65536)
+                        if not chunk:
+                            sel.unregister(key.fileobj)
+                            continue
+                        buf = buffers[key.fileobj]
+                        if len(buf) + len(chunk) > MAX_EVENTS:
+                            raise TrialFailure("EVENT_STREAM_OVERSIZE" if key.fileobj is proc.stdout
+                                               else "STDERR_STREAM_OVERSIZE")
+                        buf.extend(chunk)
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    raise TrialFailure("CLI_TIMEOUT")
+                try:
+                    code = proc.wait(timeout=remaining)
+                except subprocess.TimeoutExpired:
+                    raise TrialFailure("CLI_TIMEOUT") from None
+                check_scratch(work)
+                return code, bytes(buffers[proc.stdout]), bytes(buffers[proc.stderr])
+        finally:
+            # Kill remaining group members on success as well as failure.
+            try:
+                os.killpg(proc.pid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            proc.wait()
+
+
 def run_cli(binary: Path, work: Path):
     # No GITHUB_TOKEN, credentials, checkout, user config, or job command files
     # in the process environment. This is an experimental permission boundary,
@@ -184,22 +268,14 @@ def run_cli(binary: Path, work: Path):
            "OPENCODE_DISABLE_CLAUDE_CODE": "true",
            "OPENCODE_DISABLE_EXTERNAL_SKILLS": "true",
            "OPENCODE_CONFIG": str(work / "opencode.json"), "CI": "true", "TERM": "dumb"}
-    def limit():
-        resource.setrlimit(resource.RLIMIT_FSIZE, (MAX_EVENTS, MAX_EVENTS))
-        resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
-    with tempfile.TemporaryFile() as output, tempfile.TemporaryFile() as errors:
-        run = subprocess.run(
-            [str(binary), "run", "--format", "json", "--agent", "gaslux-lab",
-             "--model", MODEL, "First load the native skill gaslux-history-reuse using the skill tool. "
-             "This is a synthetic read-only coding trial, not repository work. Then " + PROMPT],
-            cwd=work, env=env, stdout=output, stderr=errors, timeout=900,
-            preexec_fn=limit, check=False, start_new_session=True)
-        output.seek(0)
-        raw = output.read(MAX_EVENTS + 1)
-        if run.returncode:
-            errors.seek(0)
-            raise cli_failure(run.returncode, raw, errors.read(MAX_EVENTS + 1))
-        return parse_events(raw)
+    code, raw, stderr = bounded_process(
+        [str(binary), "run", "--format", "json", "--agent", "gaslux-lab",
+         "--model", MODEL, "First load the native skill gaslux-history-reuse using the skill tool. "
+         "This is a synthetic read-only coding trial, not repository work. Then " + PROMPT],
+        work, env)
+    if code:
+        raise cli_failure(code, raw, stderr)
+    return parse_events(raw)
 
 
 def assess(method):
@@ -239,9 +315,11 @@ def main():
         prepare(work)
         direct = assess(lambda: (factory.call_model(PROMPT), []))
         agent = assess(lambda: run_cli(binary, work))
-    report = {"experiment": "opencode-native-skill-synthetic-v2", "version": VERSION,
+    report = {"experiment": "opencode-native-skill-synthetic-v3", "version": VERSION,
               "model": factory.MODEL, "model_digest": factory.MODEL_DIGEST,
               "direct_num_ctx": 5800, "opencode_configured_context": 65536,
+              "stream_limit_bytes": MAX_EVENTS, "internal_file_limit_bytes": MAX_INTERNAL_FILE,
+              "scratch_monitor_limit_bytes": MAX_SCRATCH, "scratch_hard_quota": False,
               "direct": direct, "opencode": agent,
               "native_skill_use_observed": SKILL in agent["native_skills"],
               "product_regressions_run": False, "production_authorized": False,
