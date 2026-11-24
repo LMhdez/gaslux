@@ -15,11 +15,15 @@ on:
       - .github/workflows/gaslux-agent-integrator.yml
       - auto_tests/tools/gaslux_agent_integrate.py
       - auto_tests/tests/test_gaslux_agent_integrate.py
+      - auto_tests/tools/gaslux_distro_admission.py
+      - auto_tests/tests/test_gaslux_distro_admission.py
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-integrator.yml
       - auto_tests/tools/gaslux_agent_integrate.py
       - auto_tests/tests/test_gaslux_agent_integrate.py
+      - auto_tests/tools/gaslux_distro_admission.py
+      - auto_tests/tests/test_gaslux_distro_admission.py
 
 permissions:
   contents: read
@@ -39,6 +43,9 @@ jobs:
           persist-credentials: false
       - name: Reject impersonated model PRs, off-scope changes and stale base
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_integrate.py -v
+
+      - name: Distro admission negative cases
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_distro_admission.py -v
 
   select:
     if: >-
@@ -170,3 +177,39 @@ jobs:
           fi
           timeout 120 python3 -I auto_tests/tools/gaslux_agent_integrate.py merge \
             --pr "$PR" --head "$HEAD_SHA"
+
+  distro_admission:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+      issues: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate read-only admission contracts
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_distro_admission.py -v
+      - name: Inspect exact distro HEADs without executing candidate code
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 -B auto_tests/tools/gaslux_distro_admission.py > evidence/distro-admission.json
+          cat evidence/distro-admission.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-distro-admission
+          path: evidence/distro-admission.json
+          if-no-files-found: error
+          retention-days: 14
