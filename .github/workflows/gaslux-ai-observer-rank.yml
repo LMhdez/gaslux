@@ -27,6 +27,8 @@ jobs:
        github.event.pull_request.head.repo.full_name == 'LMhdez/gaslux')
     runs-on: ubuntu-24.04
     timeout-minutes: 25
+    outputs:
+      proposed: ${{ steps.generate.outputs.proposed }}
     env:
       OLLAMA_HOST: 127.0.0.1:11434
       OLLAMA_NUM_PARALLEL: '1'
@@ -94,6 +96,11 @@ jobs:
         run: |
           set -euo pipefail
           timeout 650 python3 -B auto_tests/tools/ai_rank_candidate.py
+          if [[ "$GASLUX_RANK_SIMULATE" == "0" && -f evidence/ai-rank-candidate.py ]]; then
+            echo proposed=true >> "$GITHUB_OUTPUT"
+          else
+            echo proposed=false >> "$GITHUB_OUTPUT"
+          fi
       - name: Upload RED/GREEN evidence and proposed diff
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
@@ -103,3 +110,51 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+
+  publisher-contracts:
+    if: github.repository == 'LMhdez/gaslux'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout testable publisher without persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Adversarial publisher and fake API tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_ai_rank_draft_publisher.py -v
+
+  trusted-draft-publisher:
+    needs: [unprivileged-candidate, publisher-contracts]
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.event_name == 'push' &&
+      github.ref == 'refs/heads/dev' &&
+      needs.unprivileged-candidate.outputs.proposed == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Checkout exact trusted dev workflow commit, no persisted credentials
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Download model artifact produced by the same trusted workflow
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gaslux-ai-rank-candidate
+          path: evidence/
+      - name: Independently revalidate exact candidate and publish Draft PR only
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          timeout 120 python3 -I auto_tests/tools/ai_rank_draft_publisher.py
