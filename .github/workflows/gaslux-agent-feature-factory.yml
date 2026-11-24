@@ -18,6 +18,8 @@ on:
       - auto_tests/tests/test_gaslux_agent_history.py
       - docs/GASLUX_HISTORICAL_EVIDENCE_INDEX.json
       - docs/GASLUX_HISTORICAL_PR_INVENTORY.json
+      - docs/GASLUX_HISTORICAL_DEPENDENCY_AUDIT.json
+      - 'docs/agent-skills/**'
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-feature-factory.yml
@@ -30,6 +32,8 @@ on:
       - auto_tests/tests/test_gaslux_agent_history.py
       - docs/GASLUX_HISTORICAL_EVIDENCE_INDEX.json
       - docs/GASLUX_HISTORICAL_PR_INVENTORY.json
+      - docs/GASLUX_HISTORICAL_DEPENDENCY_AUDIT.json
+      - 'docs/agent-skills/**'
 
 permissions:
   contents: read

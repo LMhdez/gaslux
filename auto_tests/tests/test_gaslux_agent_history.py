@@ -62,6 +62,48 @@ class HistoryTests(unittest.TestCase):
             self.assertIn(edge["pr"], numbers)
             self.assertIn(edge["possible_parent_pr"], numbers)
 
+    def test_skill_routing_is_bounded_and_read_only(self):
+        for gate in history.GATES:
+            row = history.task_context("mint", gate)
+            self.assertIn("safety-review", row["recommended_skills"])
+            self.assertIn("evidence-verification", row["recommended_skills"])
+            self.assertLessEqual(len(row["historical_comparisons"]), 12)
+            self.assertIs(row["code_authorized"], False)
+            self.assertIs(row["current_ancestry_revalidation_required"], True)
+        self.assertNotIn("vm-laboratory", history.skill_route("source-authenticity"))
+        self.assertIn("vm-laboratory", history.skill_route("install"))
+        with self.assertRaises(ValueError):
+            history.skill_route("execute-anything")
+
+    def test_actual_historical_comparison_snapshot(self):
+        rows = history.load_dependencies()
+        self.assertGreaterEqual(len(rows), 25)
+        by_pair = {(row["parent_pr"], row["child_pr"]): row for row in rows}
+        self.assertTrue(by_pair[113, 119]["ancestry_verified"])
+        self.assertFalse(by_pair[189, 231]["ancestry_verified"])
+        self.assertEqual(by_pair[267, 269]["comparison_status"], "diverged")
+
+    def test_comparison_tampering_denied(self):
+        for change in (
+            lambda row: row.update({"merge_authorized": True}),
+            lambda row: row.update({"parent_sha": "a" * 40}),
+            lambda row: row.update({"ancestry_verified": False}),
+            lambda row: row.update({"behind_by": True}),
+        ):
+            data = json.loads(history.DEPENDENCIES.read_text())
+            change(data["records"][0])
+            with tempfile.TemporaryDirectory() as tmp:
+                p = Path(tmp) / "comparison.json"
+                p.write_text(json.dumps(data))
+                with self.assertRaises(ValueError):
+                    history.load_dependencies(p)
+
+    def test_skill_files_present(self):
+        for name in history.SKILLS:
+            path = history.ROOT / "docs/agent-skills" / name / "SKILL.md"
+            self.assertTrue(path.is_file())
+            self.assertIn("name: gaslux-" + name, path.read_text())
+
 
 if __name__ == "__main__":
     unittest.main()

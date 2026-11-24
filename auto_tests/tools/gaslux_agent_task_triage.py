@@ -261,7 +261,7 @@ def issue_payload(task: dict, base: str) -> dict:
             f"- Existing regression suite: `auto_tests/tests/{test}`\n"
             "- Next step: backend owner defines a **real** missing capability, precise "
             "code paths and positive/negative tests. Reconcile existing PRs first.\n"
-            f"- {review_hint(role)}"
+            f"- {review_hint(role, task['gate'])}"
             "- Required evidence: authentic release/media provenance, Windows preflight "
             "and reproducible read-only contracts; do not confuse declared JSON with "
             "independent proof.\n"

@@ -201,3 +201,7 @@ Referências de decisões e auditoria: [issue #401, reconciliação histórica](
 ## 10. Memória operacional — implementação proposta
 
 A mesma PR acrescenta inventário completo de PRs com candidatos de dependência por base-ref (não prova de ancestralidade), um SKILL.md portável, parser delimitado de histórico e testes adversariais. O workflow Factory existente publica referências por distribuição no job select; a triagem acrescenta leads a novas issues de revisão. Não existe carregamento nativo de skills pelo Qwen, nem alteração dos prompts/modelo, AST, publisher ou permissões. A consulta histórica não concede autoridade. A execução operacional depende de revisão e integração desta PR.
+
+## 11. Skills e dependências verificadas — 24/11/2026
+
+Oito skills portáveis em [agent-skills](agent-skills/README.md); seleção por role/gate no CLI existente, contexto delimitado (até 12 comparações, divergências primeiro), referências nas issues de triagem. Comparações GitHub exatas em [GASLUX_HISTORICAL_DEPENDENCY_AUDIT.json](GASLUX_HISTORICAL_DEPENDENCY_AUDIT.json): 25/286 candidatas auditadas; 19 ancestry positiva e 6 divergências. As restantes não estão confirmadas. Atribuição automática de skills não equivale a execução de revisão, prova de VM ou aprovação. Não alterámos Qwen prompt, AST, modelo, scheduler, permissões ou formal evidence register. Revisão independente e integração ainda necessárias.
