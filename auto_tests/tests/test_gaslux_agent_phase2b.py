@@ -156,10 +156,10 @@ class Scope2BTests(unittest.TestCase):
         self.assertNotIn("int", factory.SAFE_BUILTINS)
         # The legacy validator cannot import the scope-only builtins.
         lifecycle = (
-            "def assess_mint_lifecycle(evidence: dict) -> dict:\\n"
-            "    result = type(evidence) is dict\\n"
+            "def assess_mint_lifecycle(evidence: dict) -> dict:\n"
+            "    result = type(evidence) is dict\n"
             "    return {'backend': 'mint', 'missingGates': [], "
-            "'installationAuthorized': False, 'releaseEligible': False}\\n"
+            "'installationAuthorized': False, 'releaseEligible': False}\n"
         )
         with self.assertRaises(ValueError):
             factory.validate_addition("mint", lifecycle, execute=True)
