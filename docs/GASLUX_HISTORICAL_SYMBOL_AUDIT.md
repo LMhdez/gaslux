@@ -75,3 +75,11 @@ Existing ISO signature gate checks caller-pinned digest/key and detached signatu
 
 ## Próximo incremento
 Validar por AST, dependências, constantes, entradas/saídas e testes diferenciais os candidatos relevantes; pesquisar os restantes caminhos/linguagens e outras PRs antes de afirmar cobertura total. Depois catalogar os findings Safety, RED/GREEN e disponibilidade dos artefactos. Não executar código histórico a partir de uma referência documental. Nenhum novo consumidor automático, workflow, autorização ou gate formal; a PR permanece Draft.
+
+## Extensão da memória e validação estrutural — 24/11/2026
+
+Cobertura lexical Python/Shell de dev completa na snapshot d89f1547: 247/247 ficheiros, 3 625 declarações; 122 declarações históricas com coincidência nominal (48 chaves nome/tipo), 666 sem coincidência. Ver [extensão JSON](GASLUX_HISTORICAL_SYMBOL_EXTENSION.json). As seis PRs históricas continuam o âmbito selecionado; outras linguagens e restantes PRs não foram integralmente analisadas.
+
+[Catálogo Safety e falhas](GASLUX_HISTORICAL_FINDINGS.md): 12 findings/bloqueios, sete registos de falhas/correções, 12 runs com metadados confirmados. Estados históricos não são fecho atual nem aprovação formal.
+
+Novo auditor AST no workflow Factory existente: blobs Python exatos, SHA Git recalculado, sem importação de módulos; comparação por AST incluindo assinatura, constantes e decorators, ignorando posições. Artefacto de descoberta limitado. Teste diferencial restrito às duas funções históricas Mint de reconhecimento de shutdown, 16 fixtures positivas/negativas, AST exatamente igual a um template revisto antes de executar a função isolada; não executa módulo, não comprova equivalência geral. CI real deste novo HEAD ainda por confirmar. A auditoria AST de blobs reais corre somente na PR #419 same-repo; testes offline no job contracts. A seleção existente recebe referências numéricas, SHA, identificadores/estados de findings, contagens e fonte por distribuição a partir dos índices trusted-main, nunca texto livre; no máximo 12 findings e 12 comparações Git. O artefacto AST não é automaticamente promovido a conhecimento validado; revisão e integração continuam necessárias. Sem nova workflow, alteração de permissões, AST de geração Qwen, publisher ou gate formal. Nenhum merge.

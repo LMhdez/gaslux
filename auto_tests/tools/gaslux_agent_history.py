@@ -176,6 +176,92 @@ def skill_route(gate=None):
             or gate is None or gate != "source-authenticity"]
 
 
+
+def extended_reuse_context(role, root=ROOT):
+    """Trusted-main discovery references only; never forward narrative or authority."""
+    if role not in ROLES:
+        raise ValueError("unknown role")
+    def read(name, kind):
+        path = root / "docs" / name
+        if path.is_symlink() or not path.is_file() or path.stat().st_size > 1048576:
+            raise ValueError("missing or oversized extended history")
+        data = json.loads(path.read_text(encoding="utf-8"))
+        if (type(data) is not dict or data.get("repository") != "LMhdez/gaslux"
+                or data.get("kind") != kind or type(data.get("schema_version")) is not int
+                or data["schema_version"] != 1):
+            raise ValueError("unexpected extended history schema")
+        return data
+
+    backend = read("GASLUX_BACKEND_REUSE_INVENTORY.json", "historical_backend_reuse_discovery_only")
+    symbols = read("GASLUX_HISTORICAL_SYMBOL_INVENTORY.json", "historical_symbol_discovery_only")
+    extension = read("GASLUX_HISTORICAL_SYMBOL_EXTENSION.json", "historical_symbol_scope_extension")
+    findings = read("GASLUX_HISTORICAL_FINDINGS.json", "historical_findings_discovery_only")
+    if (type(backend.get("baseline")) is not dict
+            or type(symbols.get("dev")) is not str or not SHA.fullmatch(symbols["dev"])
+            or symbols["dev"] != extension.get("dev")
+            or symbols["dev"] != backend["baseline"].get("dev")
+            or findings.get("complete") is not False):
+        raise ValueError("mixed baseline or unexpected catalog completion")
+    sources = backend.get("source_prs")
+    if type(sources) is not list or len(sources) != len(ROLES):
+        raise ValueError("invalid backend reference coverage")
+    role_sources = {}
+    for src in sources:
+        if (type(src) is not dict or src.get("role") not in ROLES
+                or src["role"] in role_sources or not positive_id(src.get("pr"))
+                or type(src.get("source_sha")) is not str or not SHA.fullmatch(src["source_sha"])):
+            raise ValueError("invalid backend reference")
+        paths = src.get("paths")
+        if type(paths) is not list or not 0 < len(paths) <= 64:
+            raise ValueError("invalid backend paths")
+        role_sources[src["role"]] = {"pr": src["pr"], "sha": src["source_sha"],
+                                     "historical_paths": len(paths)}
+    role_rows = symbols.get("role_summary")
+    if type(role_rows) is not list or len(role_rows) != len(ROLES):
+        raise ValueError("invalid symbol role coverage")
+    role_counts = {}
+    for row in role_rows:
+        if (type(row) is not dict or row.get("role") not in ROLES or row["role"] in role_counts
+                or not positive_id(row.get("declarations")) or row["declarations"] > 10000
+                or type(row.get("lexical_tests")) is not int
+                or not 0 <= row["lexical_tests"] <= row["declarations"]):
+            raise ValueError("invalid symbol counts")
+        role_counts[row["role"]] = {"historical_declarations": row["declarations"],
+                                    "lexical_test_declarations": row["lexical_tests"]}
+    coverage = extension.get("coverage")
+    if (type(coverage) is not dict or type(coverage.get("dev_files")) is not int
+            or not 0 < coverage["dev_files"] <= 1024
+            or type(coverage.get("semantic_equivalence_verified")) is not int
+            or coverage["semantic_equivalence_verified"] != 0):
+        raise ValueError("unverified equivalence escalation")
+    rows = findings.get("findings")
+    if type(rows) is not list or not 0 < len(rows) <= 256:
+        raise ValueError("invalid findings bounds")
+    statuses = ("open_at_review", "remediation_reported_reaudit_required",
+                "resolved_offline_at_review", "producer_blocker")
+    seen, selected = set(), []
+    for row in rows:
+        if (type(row) is not dict or row.get("role") not in ROLES
+                or not positive_id(row.get("pr")) or not positive_id(row.get("comment"))
+                or type(row.get("review_sha")) is not str or not SHA.fullmatch(row["review_sha"])
+                or type(row.get("id")) is not str or not re.fullmatch(r"[A-Z0-9-]{1,64}", row["id"])
+                or row.get("status") not in statuses
+                or any(row.get(flag) is not False for flag in DENIALS)):
+            raise ValueError("invalid historical finding")
+        key = (row["pr"], row["id"])
+        if key in seen:
+            raise ValueError("duplicate historical finding")
+        seen.add(key)
+        if row["role"] == role:
+            selected.append({k: row[k] for k in ("pr", "id", "review_sha", "comment", "status")})
+    selected.sort(key=lambda x: (x["status"] == "resolved_offline_at_review", x["pr"], x["id"]))
+    return {"snapshot_dev": symbols["dev"], "backend_source": role_sources[role],
+            **role_counts[role], "dev_python_shell_files": coverage["dev_files"],
+            "historical_findings": selected[:12], "omitted_findings": max(0, len(selected) - 12),
+            "catalog_complete": False, "semantic_equivalence_verified": False,
+            "requires_current_review": True}
+
+
 def task_context(role, gate=None):
     row = context(role)
     relevant = set(row["role_pr_leads"] + row["shared_pr_leads"])
@@ -189,7 +275,8 @@ def task_context(role, gate=None):
     row.update({"gate": gate, "recommended_skills": skill_route(gate),
                 "historical_comparisons": comparisons[:12],
                 "omitted_comparisons": max(0, len(comparisons) - 12),
-                "current_ancestry_revalidation_required": True})
+                "current_ancestry_revalidation_required": True,
+                "reuse_inventory": extended_reuse_context(role)})
     return row
 
 
@@ -208,7 +295,12 @@ def review_hint(role, gate=None):
                      + " (" + e["comparison_status"] + ")"
                      for e in row["historical_comparisons"]
                      if e["comparison_status"] in ("diverged", "behind")) or "none in selected leads")
-        + ". See main:docs/agent-skills/README.md.\n"
+        + ". Historical source PR #" + str(row["reuse_inventory"]["backend_source"]["pr"])
+        + "; finding references: "
+        + (", ".join("#" + str(f["pr"]) + "/" + f["id"]
+                     for f in row["reuse_inventory"]["historical_findings"]) or "none indexed")
+        + ". See main:docs/GASLUX_HISTORICAL_SYMBOL_AUDIT.md and docs/GASLUX_HISTORICAL_FINDINGS.md. "
+        "See main:docs/agent-skills/README.md.\n"
     )
 
 
