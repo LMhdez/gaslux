@@ -90,7 +90,10 @@ def scope2b_eligible(root: Path, base: str) -> bool:
     if (not target.is_file() or
         f"def {SCOPE2B_FN}(".encode() in target.read_bytes()):
         return False
-    release = json.loads((root / "release-config.json").read_text(encoding="utf-8"))
+    release_file = root / "release-config.json"
+    if not release_file.is_file():
+        return False
+    release = json.loads(release_file.read_text(encoding="utf-8"))
     items = release.get("distributions")
     if (type(items) is not list or
         len([x for x in items if type(x) is dict and x.get("id") == "mint"]) != 1):
