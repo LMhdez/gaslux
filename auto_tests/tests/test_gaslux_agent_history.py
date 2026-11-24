@@ -98,6 +98,40 @@ class HistoryTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     history.load_dependencies(p)
 
+    def test_reverse_relation_is_not_forward_ancestry(self):
+        rows = history.load_dependencies()
+        by_pair = {(row["parent_pr"], row["child_pr"]): row for row in rows}
+        reverse = by_pair[20, 29]
+        self.assertEqual(reverse["comparison_status"], "behind")
+        self.assertFalse(reverse["ancestry_verified"])
+        self.assertEqual(reverse["ahead_by"], 0)
+        self.assertEqual(reverse["merge_base_sha"], reverse["child_sha"])
+
+    def test_other_comparison_tampering_and_duplicates_denied(self):
+        for change in (
+            lambda d: d["other_comparisons"][0].update({"merge_authorized": True}),
+            lambda d: d["other_comparisons"][0].update({"ancestry_verified": True}),
+            lambda d: d["other_comparisons"][0].update({"ahead_by": True}),
+            lambda d: d["other_comparisons"][0].update({"comparison_status": "ahead"}),
+            lambda d: d["other_comparisons"].append(d["other_comparisons"][0]),
+            lambda d: d["records"].append(d["other_comparisons"][0]),
+        ):
+            data = json.loads(history.DEPENDENCIES.read_text())
+            change(data)
+            with tempfile.TemporaryDirectory() as tmp:
+                p = Path(tmp) / "comparison.json"
+                p.write_text(json.dumps(data))
+                with self.assertRaises(ValueError):
+                    history.load_dependencies(p)
+
+    def test_comparison_reader_covers_both_lists_without_authority(self):
+        data = json.loads(history.DEPENDENCIES.read_text())
+        rows = history.load_dependencies()
+        self.assertEqual(len(rows), len(data["records"]) + len(data["other_comparisons"]))
+        self.assertEqual(len(rows), len({(row["parent_pr"], row["child_pr"]) for row in rows}))
+        self.assertTrue(all("merge_authorized" not in row for row in rows))
+        self.assertLessEqual(len(history.task_context("mint")["historical_comparisons"]), 12)
+
     def test_skill_files_present(self):
         for name in history.SKILLS:
             path = history.ROOT / "docs/agent-skills" / name / "SKILL.md"

@@ -121,11 +121,16 @@ def load_dependencies(path=DEPENDENCIES, inventory_path=INVENTORY):
                 or row.get("kind") != "base_ref_match_only"):
             raise ValueError("Invalid candidate stack edge")
         edges.add((row["possible_parent_pr"], row["pr"]))
-    rows = data.get("records")
-    if type(rows) is not list or not 0 < len(rows) <= 256:
+    rows, other = data.get("records"), data.get("other_comparisons", [])
+    # The fixed 286-edge inventory exceeds the former 256-row cap.
+    # Retain the file-size bound and a separate bounded record count.
+    if (type(rows) is not list or type(other) is not list
+            or not 0 < len(rows) + len(other) <= 512
+            or len(rows) + len(other) > len(edges)):
         raise ValueError("Invalid audited comparison bounds")
     seen, result = set(), []
-    for row in rows:
+    for row, allowed in [(r, ("ahead", "diverged")) for r in rows] + [
+            (r, ("behind", "identical")) for r in other]:
         if (type(row) is not dict or not positive_id(row.get("parent_pr"))
                 or not positive_id(row.get("child_pr"))):
             raise ValueError("Invalid comparison IDs")
@@ -136,14 +141,24 @@ def load_dependencies(path=DEPENDENCIES, inventory_path=INVENTORY):
                 or not SHA.fullmatch(row["merge_base_sha"])
                 or row.get("source") != "github_compare_exact_sha"
                 or row.get("merge_authorized") is not False
-                or not positive_id(row.get("ahead_by"))
-                or type(row.get("behind_by")) is not int or row["behind_by"] < 0):
+                or row.get("comparison_status") not in allowed
+                or type(row.get("ahead_by")) is not int or not 0 <= row["ahead_by"] < 10**15
+                or type(row.get("behind_by")) is not int or not 0 <= row["behind_by"] < 10**15):
             raise ValueError("Invalid exact historical comparison")
-        ancestor = (row.get("comparison_status") == "ahead" and row["behind_by"] == 0
+        ancestor = (row.get("comparison_status") == "ahead" and row["ahead_by"] > 0
+                    and row["behind_by"] == 0 and row["parent_sha"] != row["child_sha"]
                     and row["merge_base_sha"] == row["parent_sha"])
-        diverged = (row.get("comparison_status") == "diverged" and row["behind_by"] > 0
+        diverged = (row.get("comparison_status") == "diverged" and row["ahead_by"] > 0
+                    and row["behind_by"] > 0 and row["parent_sha"] != row["child_sha"]
                     and row["merge_base_sha"] not in (row["parent_sha"], row["child_sha"]))
-        if not (ancestor or diverged) or row.get("ancestry_verified") is not ancestor:
+        behind = (row.get("comparison_status") == "behind" and row["ahead_by"] == 0
+                  and row["behind_by"] > 0 and row["parent_sha"] != row["child_sha"]
+                  and row["merge_base_sha"] == row["child_sha"])
+        identical = (row.get("comparison_status") == "identical"
+                     and row["ahead_by"] == row["behind_by"] == 0
+                     and row["merge_base_sha"] == row["parent_sha"] == row["child_sha"])
+        # ancestry_verified means strict parent-to-child ancestry only.
+        if not (ancestor or diverged or behind or identical) or row.get("ancestry_verified") is not ancestor:
             raise ValueError("Inconsistent historical ancestry")
         seen.add(key)
         result.append({k: row[k] for k in (
@@ -168,7 +183,9 @@ def task_context(role, gate=None):
                    if edge["parent_pr"] in relevant or edge["child_pr"] in relevant]
     # Divergence first, then deterministic numeric order; keep prompt-side
     # reference payload bounded. Full audit remains available on disk.
-    comparisons.sort(key=lambda e: (e["comparison_status"] != "diverged", e["child_pr"]))
+    comparisons.sort(key=lambda e: (
+        {"diverged": 0, "behind": 1, "identical": 2, "ahead": 3}[e["comparison_status"]],
+        e["child_pr"], e["parent_pr"]))
     row.update({"gate": gate, "recommended_skills": skill_route(gate),
                 "historical_comparisons": comparisons[:12],
                 "omitted_comparisons": max(0, len(comparisons) - 12),
@@ -186,10 +203,11 @@ def review_hint(role, gate=None):
         + ". Revalidate exact commits, dependencies, actual jobs and Safety before "
         "reimplementing. No authority from this index. "
         "Skills: " + ", ".join(row["recommended_skills"]) + ". "
-        "Historical divergent pairs: "
+        "Historical reconciliation pairs: "
         + (", ".join("#" + str(e["parent_pr"]) + " -> #" + str(e["child_pr"])
+                     + " (" + e["comparison_status"] + ")"
                      for e in row["historical_comparisons"]
-                     if e["comparison_status"] == "diverged") or "none in selected leads")
+                     if e["comparison_status"] in ("diverged", "behind")) or "none in selected leads")
         + ". See main:docs/agent-skills/README.md.\n"
     )
 
