@@ -75,3 +75,8 @@ def validate_capabilities(distribution_id: str, os_release_id: str, cap: object)
     if cap["status"] == "released" and distribution_id not in {"mint", "zorin"}:
         raise CapabilityError("experimental backend cannot be released")
     return cap["status"] == "released"
+
+def assess_mint_lifecycle(evidence: dict) -> dict:
+    gates = ('source-authenticity', 'windows-preflight', 'install', 'linux-first-boot', 'windows-return', 'linux-update-reboot', 'uninstall-windows-integrity', 'fault-injection-rollback')
+    missingGates = sorted([name for name in gates if evidence.get(name) is not True])
+    return {'backend': 'mint', 'missingGates': missingGates, 'installationAuthorized': False, 'releaseEligible': False}
