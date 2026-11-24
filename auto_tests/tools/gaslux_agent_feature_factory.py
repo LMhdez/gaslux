@@ -192,21 +192,60 @@ def discover_goal_backlog(root: Path) -> dict:
             key[2] not in GATES):
             raise ValueError("Unknown or duplicated evidence slot")
         verified_claims.add(key)
+    # Phase 2C: enumerate EVERY platform/gate slot (17 platforms × 8 gates),
+    # rather than treating the first missing gate per backend as the whole plan.
+    # The six per-backend next_gates retain their established triage interface.
+    # An evidence.json claim is untrusted data, never a verified installation.
+    work_items = []
     next_gates = []
     for row in sorted(backends, key=lambda item: item["priority"]):
         role = row["id"]
-        platform, gate = row["platforms"][0], GATES[0]
-        next_gates.append({
-            "role": role, "platform": platform, "gate": gate,
-            "state": ("declared_unverified" if (role, platform, gate) in verified_claims
-                      else "missing_evidence"),
-            "code_authorized": False, "release_eligible": False,
-            "related_issues": row["issue_numbers"],
-        })
+        for platform in row["platforms"]:
+            for gate_index, gate in enumerate(GATES):
+                claimed = (role, platform, gate) in verified_claims
+                scope_status = (
+                    "needs_scope_review" if gate in GATES[:2]
+                    else "blocked_external_vm_evidence"
+                )
+                item = {
+                    "role": role,
+                    "platform": platform,
+                    "gate": gate,
+                    "state": "declared_unverified" if claimed else "missing_evidence",
+                    "scope_status": scope_status,
+                    "prerequisite_gates": list(GATES[:gate_index]),
+                    "code_authorized": False,
+                    "installation_authorized": False,
+                    "release_eligible": False,
+                    "source_target": TASKS[role][0],
+                    "test_target": "auto_tests/tests/" + TASKS[role][1],
+                    "related_issues": row["issue_numbers"],
+                }
+                work_items.append(item)
+                if platform == row["platforms"][0] and gate_index == 0:
+                    next_gates.append({
+                        key: item[key] for key in (
+                            "role", "platform", "gate", "state",
+                            "code_authorized", "release_eligible",
+                            "related_issues",
+                        )
+                    })
+    expected_slots = sum(len(b["platforms"]) * len(GATES) for b in backends)
+    if len(work_items) != expected_slots or len(next_gates) != len(TASKS):
+        raise ValueError("Incomplete bounded six-backend gate inventory")
     return {
         "status": "blocked", "role": "", "next_gates": next_gates,
-        "required_gate_slots": sum(len(b["platforms"]) * len(GATES) for b in backends),
+        "work_items": work_items,
+        "required_gate_slots": expected_slots,
         "independently_verified_slots": 0,
+        "declared_unverified_slots": len(verified_claims),
+        "scope_review_slots": sum(
+            item["scope_status"] == "needs_scope_review" for item in work_items
+        ),
+        "protected_vm_slots": sum(
+            item["scope_status"] == "blocked_external_vm_evidence"
+            for item in work_items
+        ),
         "reason": "No remaining approved code scope; real gate evidence/review pending",
     }
 

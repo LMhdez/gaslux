@@ -98,12 +98,30 @@ jobs:
               with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
                   summary.write('### GASLUX: actual unsatisfied lifecycle gates (read-only)\n\n')
                   summary.write('No new Qwen code scope authorized; no installer or release gates proved.\n\n')
+                  summary.write(
+                      f"Full six-distro inventory: {row['required_gate_slots']} "
+                      f"backend/platform/gate slots; {row['scope_review_slots']} "
+                      f"scope-review candidates; {row['protected_vm_slots']} "
+                      f"protected VM/evidence gates. Declared but unverified: "
+                      f"{row['declared_unverified_slots']}; independently verified: "
+                      f"{row['independently_verified_slots']}.\n\n"
+                  )
+                  # Complete inventory stays read-only; triage retains its
+                  # existing conservative six-backend admissibility contract.
                   for item in row['next_gates']:
                       summary.write(
                           f"- {item['role']} / {item['platform']} / {item['gate']}: "
                           f"{item['state']} — Safety/owner scope review required\n"
                       )
           PY
+      - name: Retain bounded read-only six-backend gate inventory
+        if: steps.plan.outputs.blocked == 'true'
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-six-backend-gate-backlog
+          path: /tmp/gaslux-feature-plan.json
+          if-no-files-found: error
+          retention-days: 14
 
   model:
     needs: select
