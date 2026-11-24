@@ -377,6 +377,30 @@ class ScheduleTests(unittest.TestCase):
             self.assertIn("gaslux-agent-clock.yml",
                           [url for url,method,_ in third_calls if method=="POST"][0])
 
+    def test_github_history_over_256_kib_remains_available_with_finite_cap(self):
+        # GitHub run metadata can be ~12 KiB per item, >1 MiB for 100 runs.
+        # The old 256-KiB response limit eventually stopped scheduled dispatches.
+        rows = [run(id=1000 + index, metadata="x" * 11000)
+                for index in range(pi.MAX_RUNS)]
+        response = json.dumps({"total_count": len(rows),
+                               "workflow_runs": rows}).encode("utf-8")
+        self.assertGreater(len(response), 256 * 1024)
+        self.assertLess(len(response), pi.MAX_API_RESPONSE_BYTES)
+        def valid_history(_request, timeout):
+            return Response(response)
+        history = pi.api_json(valid_history, pi.API +
+                              "gaslux-agent-clock.yml/runs?branch=main&per_page=100",
+                              token="offline-test-token")
+        self.assertEqual(len(pi.parse_runs(history)), 100)
+        # Keep a fail-closed finite cap against unexpectedly oversized inputs.
+        oversized = b" " * (pi.MAX_API_RESPONSE_BYTES + 1)
+        def oversized_history(_request, timeout):
+            return Response(oversized)
+        with self.assertRaisesRegex(ValueError, "Oversized GitHub response"):
+            pi.api_json(oversized_history, pi.API +
+                        "gaslux-agent-clock.yml/runs?branch=main&per_page=100",
+                        token="offline-test-token")
+
     def test_authenticated_github_reads_not_anonymous_rate_limited(self):
         with tempfile.TemporaryDirectory() as tmp:
             home=self.home(tmp,dry_run=True)

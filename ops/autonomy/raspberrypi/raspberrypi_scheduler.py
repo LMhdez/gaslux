@@ -25,6 +25,9 @@ CONFIG_NAME = "raspberrypi-scheduler.json"
 TOKEN_NAME = "github-actions-token"
 STATE_NAME = "last-dispatched-slots.json"
 MAX_RUNS = 100
+# A full GitHub Actions run includes nested metadata; 100 entries exceed 256 KiB.
+# Keep a strict finite response cap while allowing the unchanged 100-run history.
+MAX_API_RESPONSE_BYTES = 2 * 1024 * 1024
 ACTIVE = {"queued", "in_progress", "waiting", "pending", "requested"}
 RUN_EVENTS = {"schedule", "workflow_dispatch"}
 
@@ -228,8 +231,8 @@ def api_json(opener, url: str, *, token: str | None = None) -> dict:
     with opener(urllib.request.Request(url, headers=headers), timeout=12) as response:
         if response.status != 200:
             raise ValueError("GitHub Actions listing HTTP status is not 200")
-        raw = response.read(256 * 1024 + 1)
-    if len(raw) > 256 * 1024:
+        raw = response.read(MAX_API_RESPONSE_BYTES + 1)
+    if len(raw) > MAX_API_RESPONSE_BYTES:
         raise ValueError("Oversized GitHub response")
     return json.loads(raw)
 
