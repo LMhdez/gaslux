@@ -7130,7 +7130,151 @@
       "identical_dev_paths": []
     }
   ],
-  "dev_files": [],
+  "dev_files": [
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/cleanup-bcd-main.py",
+      "blob": "b9c3e45a1361587124cc6244791025c8bc8401af",
+      "symbol_count": 8,
+      "matches": [
+        {
+          "name": "child",
+          "kind": "def",
+          "qualified": "child",
+          "line": 33,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 92,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/configure-development-access.sh",
+      "blob": "d45490cad2e7d5b0414626f27813e2414b39e52c",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/configure-target-main.sh",
+      "blob": "c5ea624dbbd61aabd36c0ab886c171559b79433f",
+      "symbol_count": 24,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/first-boot-resize.sh",
+      "blob": "1fb5b7927c1dc52f20417092fad399235ecb4191",
+      "symbol_count": 5,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_bazzite_iso_signature.py",
+      "blob": "3782de9ba4bc4d1d7218b86080d182053f7653b9",
+      "symbol_count": 3,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 144,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_bazzite_preflight.py",
+      "blob": "9af04a55017528e9e42cea4fca118323fead18a4",
+      "symbol_count": 1,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_candidate_handoff.py",
+      "blob": "12b93e4eefacd19e73a92500896503880a13d27e",
+      "symbol_count": 6,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_candidate_target_audit.py",
+      "blob": "8af32277d38a93f97d22270f026831a9abf3b690",
+      "symbol_count": 4,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_distribution_capabilities.py",
+      "blob": "2f0396f0f82cf7be46c5ee573d7660c5bd1c3ba2",
+      "symbol_count": 4,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_lab_media_probe.py",
+      "blob": "fed7c257acc60a3747a7dd2eb08384a806864c5e",
+      "symbol_count": 4,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_popos_preflight.py",
+      "blob": "a372bb201cc1402e8c09531a0f0ab4075a84212d",
+      "symbol_count": 1,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/gaslux_q4os_preflight.py",
+      "blob": "5df15b228d576ce9f385f6e4768a5d0dee8c56ac",
+      "symbol_count": 1,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-apply-keyboard-once.sh",
+      "blob": "f15e5c8461647616a71ba4ff1be0be00cf97792f",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-apply-windows-preferences.py",
+      "blob": "3e80489068bb8cd00cb2b109277831512564ba77",
+      "symbol_count": 21,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 602,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-bios-adapter.sh",
+      "blob": "93b4085aa1cd55c2d09f7ea00c8aa50d0b4e261d",
+      "symbol_count": 21,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-bios-boot-payload.py",
+      "blob": "12250cf41f1111cf99800aad3ab4ec5d4cc4bbf3",
+      "symbol_count": 1,
+      "matches": []
+    }
+  ],
   "limitations": [
     "Only six selected historical PRs; no execution or import of code.",
     "Dev expected scope is Python and shell in assets/live, auto_tests/tools, installer_observer and test paths. Not all languages or paths.",
