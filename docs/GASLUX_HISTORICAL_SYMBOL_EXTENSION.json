@@ -806,6 +806,216 @@
       "blob": "f71f920d26dd6ff029369bad63b178bf931dcab7",
       "symbol_count": 25,
       "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_diagnostics.py",
+      "blob": "4e5b59f10a33e397b07b0e21ed28c808f92571fa",
+      "symbol_count": 6,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_monitoring.py",
+      "blob": "ac4a4d8bf6458d34e17c3b19bbdc3debcd2ee571",
+      "symbol_count": 11,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_postinstall.py",
+      "blob": "a50859fc32a30125ea85048e135f668b4c8eba88",
+      "symbol_count": 68,
+      "matches": [
+        {
+          "name": "inspect",
+          "kind": "def",
+          "qualified": "PostInstallValidationMixin._prepare_windows_graphical_session.inspect",
+          "line": 1543,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_preflight.py",
+      "blob": "9f8789406351cee6ed10947d5e5601003502da92",
+      "symbol_count": 9,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "AutomationPreflight.__init__",
+          "line": 30,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_progress.py",
+      "blob": "833b3279e15c830b66d19cfb67df98967733da53",
+      "symbol_count": 11,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "InstallationProgress.__init__",
+          "line": 38,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "OperationProgress.__init__",
+          "line": 92,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_types.py",
+      "blob": "a896733ad0f821d70946160dacd913caf7c0860a",
+      "symbol_count": 3,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_windows_checks.py",
+      "blob": "9f2fd3680adb68c9c6b6b9d72300d5fe3a4edc61",
+      "symbol_count": 4,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_wizard.py",
+      "blob": "85253072b4d9fab22b5c5ba78e43e97d59a4edb6",
+      "symbol_count": 19,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/campaign_dispatch.py",
+      "blob": "cbc2eec7e6115e6b0dccabc285169802c8da655e",
+      "symbol_count": 7,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "CampaignDispatcher.__init__",
+          "line": 50,
+          "test": false
+        },
+        {
+          "name": "claim",
+          "kind": "def",
+          "qualified": "CampaignDispatcher.claim",
+          "line": 57,
+          "test": false
+        },
+        {
+          "name": "finish",
+          "kind": "def",
+          "qualified": "CampaignDispatcher.finish",
+          "line": 71,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/common.py",
+      "blob": "3e4124f61352d51027198a9419a80f66ebc6c31f",
+      "symbol_count": 6,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "ResultBuilder.__init__",
+          "line": 13,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/local_filepool.py",
+      "blob": "ee30dfca59a34cc13de70c73f22a08be29fcf5d4",
+      "symbol_count": 15,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/reset.py",
+      "blob": "5da810db9c592762be2da981b1fdffc38835c4d6",
+      "symbol_count": 10,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "ResetService.__init__",
+          "line": 22,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "ResetService.run",
+          "line": 27,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/source_tree.py",
+      "blob": "99197840681243212d505958284939c754dcf2de",
+      "symbol_count": 5,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/validation.py",
+      "blob": "aa546652cb20a72eeca349cd73bf250bba9340a6",
+      "symbol_count": 26,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "ValidationService.__init__",
+          "line": 36,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "ValidationService.run",
+          "line": 41,
+          "test": false
+        },
+        {
+          "name": "report",
+          "kind": "def",
+          "qualified": "ValidationService._sync_local_filepool_to_server.make_upload_progress_reporter.report",
+          "line": 666,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/windows_lab_login.py",
+      "blob": "3cd50f68ab62928edd8d5ae9f5b7ef34a603420f",
+      "symbol_count": 5,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/storage_fixtures.py",
+      "blob": "1a7f5f93f62e67ff093ec7ff716861fc00e31059",
+      "symbol_count": 12,
+      "matches": []
     }
   ]
 }
