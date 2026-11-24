@@ -3539,6 +3539,123 @@
       "ancestry_verified": true,
       "source": "github_compare_exact_sha",
       "merge_authorized": false
+    },
+    {
+      "parent_pr": 338,
+      "child_pr": 345,
+      "parent_sha": "72018d795ce9aeec5f2918a888c12bec542fd2c9",
+      "child_sha": "ad1e3fee3b7b20b765daa89b525fff806e5b5a08",
+      "merge_base_sha": "72018d795ce9aeec5f2918a888c12bec542fd2c9",
+      "comparison_status": "ahead",
+      "ahead_by": 14,
+      "behind_by": 0,
+      "ancestry_verified": true,
+      "source": "github_compare_exact_sha",
+      "merge_authorized": false
+    },
+    {
+      "parent_pr": 344,
+      "child_pr": 347,
+      "parent_sha": "70f1ff728a872b414a65d645e60c7a7ec6b3f38a",
+      "child_sha": "410c4f8a8dcf6d19a9cd9b638e666a3d5de3ea40",
+      "merge_base_sha": "70f1ff728a872b414a65d645e60c7a7ec6b3f38a",
+      "comparison_status": "ahead",
+      "ahead_by": 25,
+      "behind_by": 0,
+      "ancestry_verified": true,
+      "source": "github_compare_exact_sha",
+      "merge_authorized": false
+    },
+    {
+      "parent_pr": 314,
+      "child_pr": 349,
+      "parent_sha": "7d55bd4a81007dc60df7c2252bb11ca623a2a423",
+      "child_sha": "097a8c16726b89a6ba2be4af469ea438f0345d17",
+      "merge_base_sha": "7d55bd4a81007dc60df7c2252bb11ca623a2a423",
+      "comparison_status": "ahead",
+      "ahead_by": 7,
+      "behind_by": 0,
+      "ancestry_verified": true,
+      "source": "github_compare_exact_sha",
+      "merge_authorized": false
+    },
+    {
+      "parent_pr": 336,
+      "child_pr": 350,
+      "parent_sha": "902d61b0b9ebf7d477c78bcfc9ad2a626b1460b7",
+      "child_sha": "f24e33fbdcfeb442bc37a49bc39797181c68a5f3",
+      "merge_base_sha": "902d61b0b9ebf7d477c78bcfc9ad2a626b1460b7",
+      "comparison_status": "ahead",
+      "ahead_by": 6,
+      "behind_by": 0,
+      "ancestry_verified": true,
+      "source": "github_compare_exact_sha",
+      "merge_authorized": false
+    },
+    {
+      "parent_pr": 345,
+      "child_pr": 351,
+      "parent_sha": "ad1e3fee3b7b20b765daa89b525fff806e5b5a08",
+      "child_sha": "be3bda9eda2598cff8943af48580112e5922cd7e",
+      "merge_base_sha": "ad1e3fee3b7b20b765daa89b525fff806e5b5a08",
+      "comparison_status": "ahead",
+      "ahead_by": 16,
+      "behind_by": 0,
+      "ancestry_verified": true,
+      "source": "github_compare_exact_sha",
+      "merge_authorized": false
+    },
+    {
+      "parent_pr": 259,
+      "child_pr": 352,
+      "parent_sha": "e9055bf6e9d83d5c758b69a3a77a8c4a6fd48748",
+      "child_sha": "7c23aef144ba35a5f7ecb1323432b5a8443ea9d1",
+      "merge_base_sha": "e9055bf6e9d83d5c758b69a3a77a8c4a6fd48748",
+      "comparison_status": "ahead",
+      "ahead_by": 2,
+      "behind_by": 0,
+      "ancestry_verified": true,
+      "source": "github_compare_exact_sha",
+      "merge_authorized": false
+    },
+    {
+      "parent_pr": 343,
+      "child_pr": 353,
+      "parent_sha": "1ab4c582a896073f7ecadf6eab2276d857a98d43",
+      "child_sha": "0896c44472bb0ea8028ae8cbd773ec4a5b43705f",
+      "merge_base_sha": "1ab4c582a896073f7ecadf6eab2276d857a98d43",
+      "comparison_status": "ahead",
+      "ahead_by": 18,
+      "behind_by": 0,
+      "ancestry_verified": true,
+      "source": "github_compare_exact_sha",
+      "merge_authorized": false
+    },
+    {
+      "parent_pr": 331,
+      "child_pr": 354,
+      "parent_sha": "412cca6e28d5268b10b30c3da3fd8b6e24d31a84",
+      "child_sha": "8c5d48fa5ef57c65a32eb3f4dc8374b2aa1ca3b9",
+      "merge_base_sha": "412cca6e28d5268b10b30c3da3fd8b6e24d31a84",
+      "comparison_status": "ahead",
+      "ahead_by": 13,
+      "behind_by": 0,
+      "ancestry_verified": true,
+      "source": "github_compare_exact_sha",
+      "merge_authorized": false
+    },
+    {
+      "parent_pr": 349,
+      "child_pr": 358,
+      "parent_sha": "097a8c16726b89a6ba2be4af469ea438f0345d17",
+      "child_sha": "f59b1837c6ab9385efa33cd29ff5724b93ccb71e",
+      "merge_base_sha": "097a8c16726b89a6ba2be4af469ea438f0345d17",
+      "comparison_status": "ahead",
+      "ahead_by": 7,
+      "behind_by": 0,
+      "ancestry_verified": true,
+      "source": "github_compare_exact_sha",
+      "merge_authorized": false
     }
   ],
   "notes": "Exact historical SHA comparisons; not current branch state, feature equivalence, Safety approval, or merge authority. Other comparisons record behind/identical separately from strict ancestor/divergence.",
@@ -3880,6 +3997,23 @@
         "identical": 1,
         "audited": 277,
         "remaining": 9
+      }
+    },
+    {
+      "observed_date": "2026-11-24",
+      "selection": "oldest unaudited candidate edges",
+      "attempted": 9,
+      "accepted": 9,
+      "other": 0,
+      "unresolved": [],
+      "counts": {
+        "candidate_total": 286,
+        "strict_ancestor": 244,
+        "diverged": 37,
+        "behind": 4,
+        "identical": 1,
+        "audited": 286,
+        "remaining": 0
       }
     }
   ]
