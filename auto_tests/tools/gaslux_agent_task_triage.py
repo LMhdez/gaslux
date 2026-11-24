@@ -83,7 +83,7 @@ def choose(backlog: dict, prs: list[dict], issues: list[dict]) -> dict:
     """Select a single reviewable missing gate, not an executable code patch."""
     if backlog.get("status") != "blocked" or type(backlog.get("next_gates")) is not list:
         raise ValueError("Unreviewed task-discovery status")
-    if type(prs) is not list or len(prs) > 100:
+    if type(prs) is not list or len(prs) >= 100:
         raise ValueError("Unbounded PR history")
     open_roles = set()
     for pr in prs:
