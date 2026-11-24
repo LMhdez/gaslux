@@ -5410,6 +5410,1724 @@
         }
       ],
       "identical_dev_paths": []
+    },
+    {
+      "role": "q4os",
+      "pr": 318,
+      "ref": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "path": "auto_tests/tools/q4os_qemu_fd_compat_lab.py",
+      "blob": "3875852e030a5ac71821c9463279e0197a92e4a9",
+      "symbols": [
+        {
+          "name": "LabRefusal",
+          "kind": "class",
+          "qualified": "LabRefusal",
+          "line": 33,
+          "test": false
+        },
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 37,
+          "test": false
+        },
+        {
+          "name": "sha256_fd",
+          "kind": "def",
+          "qualified": "sha256_fd",
+          "line": 42,
+          "test": false
+        },
+        {
+          "name": "sha256",
+          "kind": "def",
+          "qualified": "sha256",
+          "line": 50,
+          "test": false
+        },
+        {
+          "name": "pinned",
+          "kind": "def",
+          "qualified": "pinned",
+          "line": 58,
+          "test": false
+        },
+        {
+          "name": "birth",
+          "kind": "def",
+          "qualified": "birth",
+          "line": 72,
+          "test": false
+        },
+        {
+          "name": "assert_pidfd",
+          "kind": "def",
+          "qualified": "assert_pidfd",
+          "line": 77,
+          "test": false
+        },
+        {
+          "name": "group_members",
+          "kind": "def",
+          "qualified": "group_members",
+          "line": 90,
+          "test": false
+        },
+        {
+          "name": "close_process",
+          "kind": "def",
+          "qualified": "close_process",
+          "line": 103,
+          "test": false
+        },
+        {
+          "name": "qmp_readonly",
+          "kind": "def",
+          "qualified": "qmp_readonly",
+          "line": 130,
+          "test": false
+        },
+        {
+          "name": "line",
+          "kind": "def",
+          "qualified": "qmp_readonly.line",
+          "line": 155,
+          "test": false
+        },
+        {
+          "name": "command",
+          "kind": "def",
+          "qualified": "qmp_readonly.command",
+          "line": 164,
+          "test": false
+        },
+        {
+          "name": "fd_inventory",
+          "kind": "def",
+          "qualified": "fd_inventory",
+          "line": 201,
+          "test": false
+        },
+        {
+          "name": "firmware_pair",
+          "kind": "def",
+          "qualified": "firmware_pair",
+          "line": 216,
+          "test": false
+        },
+        {
+          "name": "make_resources",
+          "kind": "def",
+          "qualified": "make_resources",
+          "line": 225,
+          "test": false
+        },
+        {
+          "name": "args_for",
+          "kind": "def",
+          "qualified": "args_for",
+          "line": 265,
+          "test": false
+        },
+        {
+          "name": "scenario",
+          "kind": "def",
+          "qualified": "scenario",
+          "line": 362,
+          "test": false
+        },
+        {
+          "name": "negative_cases",
+          "kind": "def",
+          "qualified": "negative_cases",
+          "line": 579,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 718,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "q4os",
+      "pr": 318,
+      "ref": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "path": "auto_tests/tools/q4os_win10_qmp_boot.py",
+      "blob": "31c3ede2e49513374391812adeaaaf207c3be1f1",
+      "symbols": [
+        {
+          "name": "_safe_reason",
+          "kind": "def",
+          "qualified": "_safe_reason",
+          "line": 49,
+          "test": false
+        },
+        {
+          "name": "BootRefusal",
+          "kind": "class",
+          "qualified": "BootRefusal",
+          "line": 54,
+          "test": false
+        },
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 58,
+          "test": false
+        },
+        {
+          "name": "_private",
+          "kind": "def",
+          "qualified": "_private",
+          "line": 63,
+          "test": false
+        },
+        {
+          "name": "Qmp",
+          "kind": "class",
+          "qualified": "Qmp",
+          "line": 73,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "Qmp.__init__",
+          "line": 74,
+          "test": false
+        },
+        {
+          "name": "bind_verified_session",
+          "kind": "def",
+          "qualified": "Qmp.bind_verified_session",
+          "line": 89,
+          "test": false
+        },
+        {
+          "name": "_require_authenticated",
+          "kind": "def",
+          "qualified": "Qmp._require_authenticated",
+          "line": 100,
+          "test": false
+        },
+        {
+          "name": "negotiate_protocol",
+          "kind": "def",
+          "qualified": "Qmp.negotiate_protocol",
+          "line": 111,
+          "test": false
+        },
+        {
+          "name": "_read",
+          "kind": "def",
+          "qualified": "Qmp._read",
+          "line": 122,
+          "test": false
+        },
+        {
+          "name": "command",
+          "kind": "def",
+          "qualified": "Qmp.command",
+          "line": 129,
+          "test": false
+        },
+        {
+          "name": "send_key_once",
+          "kind": "def",
+          "qualified": "Qmp.send_key_once",
+          "line": 146,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "Qmp.close",
+          "line": 153,
+          "test": false
+        },
+        {
+          "name": "_serial_text",
+          "kind": "def",
+          "qualified": "_serial_text",
+          "line": 161,
+          "test": false
+        },
+        {
+          "name": "_boot_error",
+          "kind": "def",
+          "qualified": "_boot_error",
+          "line": 171,
+          "test": false
+        },
+        {
+          "name": "supervise",
+          "kind": "def",
+          "qualified": "supervise",
+          "line": 179,
+          "test": false
+        },
+        {
+          "name": "_write_report_exclusive",
+          "kind": "def",
+          "qualified": "_write_report_exclusive",
+          "line": 260,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 347,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "q4os",
+      "pr": 318,
+      "ref": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "path": "auto_tests/tools/q4os_win10_qmp_supervisor.py",
+      "blob": "946c2ade5c421517997ef921808b587749a01b10",
+      "symbols": [
+        {
+          "name": "StartupRefusal",
+          "kind": "class",
+          "qualified": "StartupRefusal",
+          "line": 67,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "StartupRefusal.__init__",
+          "line": 70,
+          "test": false
+        },
+        {
+          "name": "_require",
+          "kind": "def",
+          "qualified": "_require",
+          "line": 75,
+          "test": false
+        },
+        {
+          "name": "_private_dir",
+          "kind": "def",
+          "qualified": "_private_dir",
+          "line": 80,
+          "test": false
+        },
+        {
+          "name": "_owned_file",
+          "kind": "def",
+          "qualified": "_owned_file",
+          "line": 90,
+          "test": false
+        },
+        {
+          "name": "_pin_file",
+          "kind": "def",
+          "qualified": "_pin_file",
+          "line": 100,
+          "test": false
+        },
+        {
+          "name": "_socket_identity",
+          "kind": "def",
+          "qualified": "_socket_identity",
+          "line": 129,
+          "test": false
+        },
+        {
+          "name": "_birth_identity",
+          "kind": "def",
+          "qualified": "_birth_identity",
+          "line": 142,
+          "test": false
+        },
+        {
+          "name": "_pidfd_target",
+          "kind": "def",
+          "qualified": "_pidfd_target",
+          "line": 156,
+          "test": false
+        },
+        {
+          "name": "_register_owned_child",
+          "kind": "def",
+          "qualified": "_register_owned_child",
+          "line": 184,
+          "test": false
+        },
+        {
+          "name": "_verify_session_authority",
+          "kind": "def",
+          "qualified": "_verify_session_authority",
+          "line": 196,
+          "test": false
+        },
+        {
+          "name": "_witness",
+          "kind": "def",
+          "qualified": "_witness",
+          "line": 213,
+          "test": false
+        },
+        {
+          "name": "_peer",
+          "kind": "def",
+          "qualified": "_peer",
+          "line": 223,
+          "test": false
+        },
+        {
+          "name": "_BoundQmpSession",
+          "kind": "class",
+          "qualified": "_BoundQmpSession",
+          "line": 231,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "_BoundQmpSession.__init__",
+          "line": 238,
+          "test": false
+        },
+        {
+          "name": "verify",
+          "kind": "def",
+          "qualified": "_BoundQmpSession.verify",
+          "line": 254,
+          "test": false
+        },
+        {
+          "name": "_await_qmp",
+          "kind": "def",
+          "qualified": "_await_qmp",
+          "line": 264,
+          "test": false
+        },
+        {
+          "name": "_qemu_args",
+          "kind": "def",
+          "qualified": "_qemu_args",
+          "line": 329,
+          "test": false
+        },
+        {
+          "name": "media",
+          "kind": "def",
+          "qualified": "_qemu_args.media",
+          "line": 342,
+          "test": false
+        },
+        {
+          "name": "_cleanup",
+          "kind": "def",
+          "qualified": "_cleanup",
+          "line": 393,
+          "test": false
+        },
+        {
+          "name": "_run_lab_impl",
+          "kind": "def",
+          "qualified": "_run_lab_impl",
+          "line": 420,
+          "test": false
+        },
+        {
+          "name": "_refused_report",
+          "kind": "def",
+          "qualified": "_refused_report",
+          "line": 694,
+          "test": false
+        },
+        {
+          "name": "_run_lab_synthetic",
+          "kind": "def",
+          "qualified": "_run_lab_synthetic",
+          "line": 720,
+          "test": false
+        },
+        {
+          "name": "run_lab",
+          "kind": "def",
+          "qualified": "run_lab",
+          "line": 763,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 801,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/bazzite_bootc_prewrite_source.py",
+      "blob": "31f5944e56bbb9dc2b8198d3559615e779cc9111",
+      "symbols": [
+        {
+          "name": "Refusal",
+          "kind": "class",
+          "qualified": "Refusal",
+          "line": 49,
+          "test": false
+        },
+        {
+          "name": "git_blob_id",
+          "kind": "def",
+          "qualified": "git_blob_id",
+          "line": 53,
+          "test": false
+        },
+        {
+          "name": "_read_source",
+          "kind": "def",
+          "qualified": "_read_source",
+          "line": 59,
+          "test": false
+        },
+        {
+          "name": "identity",
+          "kind": "def",
+          "qualified": "_read_source.identity",
+          "line": 77,
+          "test": false
+        },
+        {
+          "name": "_require_fragments",
+          "kind": "def",
+          "qualified": "_require_fragments",
+          "line": 96,
+          "test": false
+        },
+        {
+          "name": "analyze_source",
+          "kind": "def",
+          "qualified": "analyze_source",
+          "line": 102,
+          "test": false
+        },
+        {
+          "name": "_guid",
+          "kind": "def",
+          "qualified": "_guid",
+          "line": 253,
+          "test": false
+        },
+        {
+          "name": "assess_candidate",
+          "kind": "def",
+          "qualified": "assess_candidate",
+          "line": 265,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 319,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/bazzite_deployment_provenance_boundary.py",
+      "blob": "a0c6d4e9cda397b37702fc63b8d95ec03d46314f",
+      "symbols": [
+        {
+          "name": "Refusal",
+          "kind": "class",
+          "qualified": "Refusal",
+          "line": 44,
+          "test": false
+        },
+        {
+          "name": "_no_duplicates",
+          "kind": "def",
+          "qualified": "_no_duplicates",
+          "line": 48,
+          "test": false
+        },
+        {
+          "name": "_decode",
+          "kind": "def",
+          "qualified": "_decode",
+          "line": 57,
+          "test": false
+        },
+        {
+          "name": "_regular_bytes",
+          "kind": "def",
+          "qualified": "_regular_bytes",
+          "line": 71,
+          "test": false
+        },
+        {
+          "name": "_valid_source_fields",
+          "kind": "def",
+          "qualified": "_valid_source_fields",
+          "line": 98,
+          "test": false
+        },
+        {
+          "name": "assess",
+          "kind": "def",
+          "qualified": "assess",
+          "line": 159,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 211,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/bazzite_native_route_readback.py",
+      "blob": "caa219382bb2454898d651d2be39d2e83fb2de32",
+      "symbols": [
+        {
+          "name": "Refusal",
+          "kind": "class",
+          "qualified": "Refusal",
+          "line": 67,
+          "test": false
+        },
+        {
+          "name": "git_blob",
+          "kind": "def",
+          "qualified": "git_blob",
+          "line": 71,
+          "test": false
+        },
+        {
+          "name": "read_sources",
+          "kind": "def",
+          "qualified": "read_sources",
+          "line": 76,
+          "test": false
+        },
+        {
+          "name": "classify",
+          "kind": "def",
+          "qualified": "classify",
+          "line": 107,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 153,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/bazzite_oci_bootc_readback.py",
+      "blob": "4029bae8ef8d2a71f7745e8d805b737c3e2faaf7",
+      "symbols": [
+        {
+          "name": "Refusal",
+          "kind": "class",
+          "qualified": "Refusal",
+          "line": 69,
+          "test": false
+        },
+        {
+          "name": "InsufficientEvidence",
+          "kind": "class",
+          "qualified": "InsufficientEvidence",
+          "line": 73,
+          "test": false
+        },
+        {
+          "name": "digest_bytes",
+          "kind": "def",
+          "qualified": "digest_bytes",
+          "line": 77,
+          "test": false
+        },
+        {
+          "name": "_obj",
+          "kind": "def",
+          "qualified": "_obj",
+          "line": 81,
+          "test": false
+        },
+        {
+          "name": "_json",
+          "kind": "def",
+          "qualified": "_json",
+          "line": 87,
+          "test": false
+        },
+        {
+          "name": "validate_metadata",
+          "kind": "def",
+          "qualified": "validate_metadata",
+          "line": 94,
+          "test": false
+        },
+        {
+          "name": "_path",
+          "kind": "def",
+          "qualified": "_path",
+          "line": 171,
+          "test": false
+        },
+        {
+          "name": "_link",
+          "kind": "def",
+          "qualified": "_link",
+          "line": 188,
+          "test": false
+        },
+        {
+          "name": "_MeasuredTarStream",
+          "kind": "class",
+          "qualified": "_MeasuredTarStream",
+          "line": 198,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "_MeasuredTarStream.__init__",
+          "line": 205,
+          "test": false
+        },
+        {
+          "name": "read",
+          "kind": "def",
+          "qualified": "_MeasuredTarStream.read",
+          "line": 211,
+          "test": false
+        },
+        {
+          "name": "drain",
+          "kind": "def",
+          "qualified": "_MeasuredTarStream.drain",
+          "line": 222,
+          "test": false
+        },
+        {
+          "name": "digest",
+          "kind": "def",
+          "qualified": "_MeasuredTarStream.digest",
+          "line": 227,
+          "test": false
+        },
+        {
+          "name": "scan_layer",
+          "kind": "def",
+          "qualified": "scan_layer",
+          "line": 231,
+          "test": false
+        },
+        {
+          "name": "_request",
+          "kind": "def",
+          "qualified": "_request",
+          "line": 372,
+          "test": false
+        },
+        {
+          "name": "_bounded",
+          "kind": "def",
+          "qualified": "_bounded",
+          "line": 382,
+          "test": false
+        },
+        {
+          "name": "download_registry",
+          "kind": "def",
+          "qualified": "download_registry",
+          "line": 393,
+          "test": false
+        },
+        {
+          "name": "finish",
+          "kind": "def",
+          "qualified": "finish",
+          "line": 446,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 538,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/bazzite_oci_rpm_binding.py",
+      "blob": "ee52cec1309464dd045ca6109d7871024d653c4f",
+      "symbols": [
+        {
+          "name": "PackageUnproven",
+          "kind": "class",
+          "qualified": "PackageUnproven",
+          "line": 55,
+          "test": false
+        },
+        {
+          "name": "_read_tag",
+          "kind": "def",
+          "qualified": "_read_tag",
+          "line": 59,
+          "test": false
+        },
+        {
+          "name": "rpm_header",
+          "kind": "def",
+          "qualified": "rpm_header",
+          "line": 99,
+          "test": false
+        },
+        {
+          "name": "elf_build_id",
+          "kind": "def",
+          "qualified": "elf_build_id",
+          "line": 189,
+          "test": false
+        },
+        {
+          "name": "bind_rpm",
+          "kind": "def",
+          "qualified": "bind_rpm",
+          "line": 230,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/bazzite_qcow2_deployment_readback.py",
+      "blob": "0148d943b0f2eda9779c995427a1f1d2d65ad21e",
+      "symbols": [
+        {
+          "name": "Refusal",
+          "kind": "class",
+          "qualified": "Refusal",
+          "line": 41,
+          "test": false
+        },
+        {
+          "name": "_require",
+          "kind": "def",
+          "qualified": "_require",
+          "line": 45,
+          "test": false
+        },
+        {
+          "name": "_identity",
+          "kind": "def",
+          "qualified": "_identity",
+          "line": 50,
+          "test": false
+        },
+        {
+          "name": "_bytes",
+          "kind": "def",
+          "qualified": "_bytes",
+          "line": 60,
+          "test": false
+        },
+        {
+          "name": "inspect_qcow2_fd",
+          "kind": "def",
+          "qualified": "inspect_qcow2_fd",
+          "line": 68,
+          "test": false
+        },
+        {
+          "name": "_decision",
+          "kind": "def",
+          "qualified": "_decision",
+          "line": 146,
+          "test": false
+        },
+        {
+          "name": "assess",
+          "kind": "def",
+          "qualified": "assess",
+          "line": 171,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 239,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/tests/test_bazzite_bootc_prewrite_source.py",
+      "blob": "db14c4885828b2ed76cb2a35a871ea8c3b958c4c",
+      "symbols": [
+        {
+          "name": "candidate",
+          "kind": "def",
+          "qualified": "candidate",
+          "line": 30,
+          "test": false
+        },
+        {
+          "name": "test_structurally_coherent_claim_still_never_authorizes",
+          "kind": "def",
+          "qualified": "test_structurally_coherent_claim_still_never_authorizes",
+          "line": 48,
+          "test": true
+        },
+        {
+          "name": "test_prewrite_plan_fail_closed",
+          "kind": "def",
+          "qualified": "test_prewrite_plan_fail_closed",
+          "line": 76,
+          "test": true
+        },
+        {
+          "name": "test_missing_required_plan_fields_denied",
+          "kind": "def",
+          "qualified": "test_missing_required_plan_fields_denied",
+          "line": 84,
+          "test": true
+        },
+        {
+          "name": "test_unexpected_writer_or_claimed_evidence_not_accepted",
+          "kind": "def",
+          "qualified": "test_unexpected_writer_or_claimed_evidence_not_accepted",
+          "line": 91,
+          "test": true
+        },
+        {
+          "name": "test_partial_no_plan_and_ambiguous_guids_rejected",
+          "kind": "def",
+          "qualified": "test_partial_no_plan_and_ambiguous_guids_rejected",
+          "line": 98,
+          "test": true
+        },
+        {
+          "name": "test_git_blob_framing_uses_nul_not_literal_backslash_zero",
+          "kind": "def",
+          "qualified": "test_git_blob_framing_uses_nul_not_literal_backslash_zero",
+          "line": 108,
+          "test": true
+        },
+        {
+          "name": "test_reader_refuses_modified_git_blob",
+          "kind": "def",
+          "qualified": "test_reader_refuses_modified_git_blob",
+          "line": 115,
+          "test": true
+        },
+        {
+          "name": "test_reader_refuses_symlink_and_hardlink",
+          "kind": "def",
+          "qualified": "test_reader_refuses_symlink_and_hardlink",
+          "line": 127,
+          "test": true
+        },
+        {
+          "name": "test_reader_refuses_unbounded_and_empty_sources",
+          "kind": "def",
+          "qualified": "test_reader_refuses_unbounded_and_empty_sources",
+          "line": 141,
+          "test": true
+        },
+        {
+          "name": "test_dangerous_upstream_call_chain_anchor_must_remain",
+          "kind": "def",
+          "qualified": "test_dangerous_upstream_call_chain_anchor_must_remain",
+          "line": 149,
+          "test": true
+        },
+        {
+          "name": "test_candidate_result_does_not_self_promote_after_mutation",
+          "kind": "def",
+          "qualified": "test_candidate_result_does_not_self_promote_after_mutation",
+          "line": 166,
+          "test": true
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/tests/test_bazzite_deployment_provenance_boundary.py",
+      "blob": "e61d3b8a2d6ec9a84f4e87ed401f5bab135f0345",
+      "symbols": [
+        {
+          "name": "report",
+          "kind": "def",
+          "qualified": "report",
+          "line": 30,
+          "test": false
+        },
+        {
+          "name": "denied",
+          "kind": "def",
+          "qualified": "denied",
+          "line": 34,
+          "test": false
+        },
+        {
+          "name": "test_real_pinned_ci_artifact_matched_without_deployment",
+          "kind": "def",
+          "qualified": "test_real_pinned_ci_artifact_matched_without_deployment",
+          "line": 44,
+          "test": true
+        },
+        {
+          "name": "test_untrusted_guest_or_runner_deployment_claim_denied",
+          "kind": "def",
+          "qualified": "test_untrusted_guest_or_runner_deployment_claim_denied",
+          "line": 68,
+          "test": true
+        },
+        {
+          "name": "test_substituted_source_bytes_never_count_as_signed_oci",
+          "kind": "def",
+          "qualified": "test_substituted_source_bytes_never_count_as_signed_oci",
+          "line": 79,
+          "test": true
+        },
+        {
+          "name": "test_semantic_tampering_invalidates_source_even_with_matching_shape",
+          "kind": "def",
+          "qualified": "test_semantic_tampering_invalidates_source_even_with_matching_shape",
+          "line": 85,
+          "test": true
+        },
+        {
+          "name": "test_duplicate_json_key_rejected",
+          "kind": "def",
+          "qualified": "test_duplicate_json_key_rejected",
+          "line": 109,
+          "test": true
+        },
+        {
+          "name": "test_malformed_deployment_report_is_rejected",
+          "kind": "def",
+          "qualified": "test_malformed_deployment_report_is_rejected",
+          "line": 114,
+          "test": true
+        },
+        {
+          "name": "_cli",
+          "kind": "def",
+          "qualified": "_cli",
+          "line": 120,
+          "test": false
+        },
+        {
+          "name": "test_cli_source_only_exits_two_but_never_approves",
+          "kind": "def",
+          "qualified": "test_cli_source_only_exits_two_but_never_approves",
+          "line": 139,
+          "test": true
+        },
+        {
+          "name": "test_cli_wrong_artifact_and_symlink_both_exit_three",
+          "kind": "def",
+          "qualified": "test_cli_wrong_artifact_and_symlink_both_exit_three",
+          "line": 146,
+          "test": true
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/tests/test_bazzite_native_route_readback.py",
+      "blob": "df90662a876521e8d7036da84e4842d37d9c9a32",
+      "symbols": [
+        {
+          "name": "official",
+          "kind": "def",
+          "qualified": "official",
+          "line": 28,
+          "test": false
+        },
+        {
+          "name": "test_actual_upstream_blobs_verified",
+          "kind": "def",
+          "qualified": "test_actual_upstream_blobs_verified",
+          "line": 36,
+          "test": true
+        },
+        {
+          "name": "test_six_routes_fail_closed_after_readback",
+          "kind": "def",
+          "qualified": "test_six_routes_fail_closed_after_readback",
+          "line": 45,
+          "test": true
+        },
+        {
+          "name": "test_tampered_source_bytes_refused",
+          "kind": "def",
+          "qualified": "test_tampered_source_bytes_refused",
+          "line": 67,
+          "test": true
+        },
+        {
+          "name": "test_extra_missing_and_symlink_sources_refused",
+          "kind": "def",
+          "qualified": "test_extra_missing_and_symlink_sources_refused",
+          "line": 76,
+          "test": true
+        },
+        {
+          "name": "test_mismatched_commit_or_forged_attestation_rejected",
+          "kind": "def",
+          "qualified": "test_mismatched_commit_or_forged_attestation_rejected",
+          "line": 91,
+          "test": true
+        },
+        {
+          "name": "test_blob_hash_includes_git_header",
+          "kind": "def",
+          "qualified": "test_blob_hash_includes_git_header",
+          "line": 103,
+          "test": true
+        },
+        {
+          "name": "test_valid_source_cli_always_returns_exit_2",
+          "kind": "def",
+          "qualified": "test_valid_source_cli_always_returns_exit_2",
+          "line": 107,
+          "test": true
+        },
+        {
+          "name": "test_invalid_source_cli_exit_3",
+          "kind": "def",
+          "qualified": "test_invalid_source_cli_exit_3",
+          "line": 117,
+          "test": true
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/tests/test_bazzite_oci_bootc_readback.py",
+      "blob": "0edc375eed9060c99d8ae1b6b87ccc3d5ad1a528",
+      "symbols": [
+        {
+          "name": "sample_metadata",
+          "kind": "def",
+          "qualified": "sample_metadata",
+          "line": 31,
+          "test": false
+        },
+        {
+          "name": "verified_meta",
+          "kind": "def",
+          "qualified": "verified_meta",
+          "line": 58,
+          "test": false
+        },
+        {
+          "name": "tar_layer",
+          "kind": "def",
+          "qualified": "tar_layer",
+          "line": 65,
+          "test": false
+        },
+        {
+          "name": "scan",
+          "kind": "def",
+          "qualified": "scan",
+          "line": 79,
+          "test": false
+        },
+        {
+          "name": "test_authenticated_format_without_top_level_media_type_supported",
+          "kind": "def",
+          "qualified": "test_authenticated_format_without_top_level_media_type_supported",
+          "line": 91,
+          "test": true
+        },
+        {
+          "name": "test_unknown_top_level_media_type_remains_refused",
+          "kind": "def",
+          "qualified": "test_unknown_top_level_media_type_remains_refused",
+          "line": 102,
+          "test": true
+        },
+        {
+          "name": "test_synthetic_oci_manifest_and_config_chained",
+          "kind": "def",
+          "qualified": "test_synthetic_oci_manifest_and_config_chained",
+          "line": 110,
+          "test": true
+        },
+        {
+          "name": "test_wrong_architecture_or_os_refused",
+          "kind": "def",
+          "qualified": "test_wrong_architecture_or_os_refused",
+          "line": 124,
+          "test": true
+        },
+        {
+          "name": "test_signed_manifest_or_config_substitution_refused",
+          "kind": "def",
+          "qualified": "test_signed_manifest_or_config_substitution_refused",
+          "line": 141,
+          "test": true
+        },
+        {
+          "name": "test_untrusted_layer_descriptor_refused",
+          "kind": "def",
+          "qualified": "test_untrusted_layer_descriptor_refused",
+          "line": 164,
+          "test": true
+        },
+        {
+          "name": "test_missing_or_extra_rootfs_layer_refused",
+          "kind": "def",
+          "qualified": "test_missing_or_extra_rootfs_layer_refused",
+          "line": 172,
+          "test": true
+        },
+        {
+          "name": "test_real_elf_header_observed_but_never_authorizes_execution",
+          "kind": "def",
+          "qualified": "test_real_elf_header_observed_but_never_authorizes_execution",
+          "line": 183,
+          "test": true
+        },
+        {
+          "name": "test_complete_no_binary_image_marked_unavailable_not_signed_runtime",
+          "kind": "def",
+          "qualified": "test_complete_no_binary_image_marked_unavailable_not_signed_runtime",
+          "line": 197,
+          "test": true
+        },
+        {
+          "name": "test_whiteout_removes_executable_and_prevents_false_presence",
+          "kind": "def",
+          "qualified": "test_whiteout_removes_executable_and_prevents_false_presence",
+          "line": 211,
+          "test": true
+        },
+        {
+          "name": "test_hostile_tar_paths_refused",
+          "kind": "def",
+          "qualified": "test_hostile_tar_paths_refused",
+          "line": 227,
+          "test": true
+        },
+        {
+          "name": "test_backslash_in_posix_tar_name_is_not_a_directory_separator",
+          "kind": "def",
+          "qualified": "test_backslash_in_posix_tar_name_is_not_a_directory_separator",
+          "line": 233,
+          "test": true
+        },
+        {
+          "name": "test_executable_symlink_escaping_image_refused",
+          "kind": "def",
+          "qualified": "test_executable_symlink_escaping_image_refused",
+          "line": 248,
+          "test": true
+        },
+        {
+          "name": "test_tampered_layer_gzip_digest_refused",
+          "kind": "def",
+          "qualified": "test_tampered_layer_gzip_digest_refused",
+          "line": 254,
+          "test": true
+        },
+        {
+          "name": "test_unbounded_binary_size_refused",
+          "kind": "def",
+          "qualified": "test_unbounded_binary_size_refused",
+          "line": 265,
+          "test": true
+        },
+        {
+          "name": "test_valid_zstandard_layer_replays_exact_bootc_elf_without_executing",
+          "kind": "def",
+          "qualified": "test_valid_zstandard_layer_replays_exact_bootc_elf_without_executing",
+          "line": 273,
+          "test": true
+        },
+        {
+          "name": "test_invalid_zstandard_payload_with_matching_fake_descriptor_refused",
+          "kind": "def",
+          "qualified": "test_invalid_zstandard_payload_with_matching_fake_descriptor_refused",
+          "line": 296,
+          "test": true
+        },
+        {
+          "name": "test_malformed_gzip_refused_after_matching_descriptor",
+          "kind": "def",
+          "qualified": "test_malformed_gzip_refused_after_matching_descriptor",
+          "line": 312,
+          "test": true
+        },
+        {
+          "name": "test_json_has_no_authority_even_when_status_is_present",
+          "kind": "def",
+          "qualified": "test_json_has_no_authority_even_when_status_is_present",
+          "line": 318,
+          "test": true
+        },
+        {
+          "name": "test_oci_config_diffid_is_passed_to_every_layer_descriptor",
+          "kind": "def",
+          "qualified": "test_oci_config_diffid_is_passed_to_every_layer_descriptor",
+          "line": 330,
+          "test": true
+        },
+        {
+          "name": "test_matching_compressed_digest_with_forged_uncompressed_diffid_refused",
+          "kind": "def",
+          "qualified": "test_matching_compressed_digest_with_forged_uncompressed_diffid_refused",
+          "line": 338,
+          "test": true
+        },
+        {
+          "name": "test_uncompressed_diffid_must_be_present_and_well_formed",
+          "kind": "def",
+          "qualified": "test_uncompressed_diffid_must_be_present_and_well_formed",
+          "line": 354,
+          "test": true
+        },
+        {
+          "name": "test_valid_gzip_layer_hashes_full_uncompressed_tar_not_only_members",
+          "kind": "def",
+          "qualified": "test_valid_gzip_layer_hashes_full_uncompressed_tar_not_only_members",
+          "line": 366,
+          "test": true
+        },
+        {
+          "name": "test_uncompressed_trailing_bytes_are_included_in_diffid",
+          "kind": "def",
+          "qualified": "test_uncompressed_trailing_bytes_are_included_in_diffid",
+          "line": 382,
+          "test": true
+        },
+        {
+          "name": "test_actual_decompressed_stream_limit_includes_padding",
+          "kind": "def",
+          "qualified": "test_actual_decompressed_stream_limit_includes_padding",
+          "line": 391,
+          "test": true
+        },
+        {
+          "name": "test_finish_refuses_unverified_diffids_even_with_forged_bootc_file",
+          "kind": "def",
+          "qualified": "test_finish_refuses_unverified_diffids_even_with_forged_bootc_file",
+          "line": 406,
+          "test": true
+        },
+        {
+          "name": "test_duplicate_bootc_file_in_one_layer_is_ambiguous_and_refused",
+          "kind": "def",
+          "qualified": "test_duplicate_bootc_file_in_one_layer_is_ambiguous_and_refused",
+          "line": 419,
+          "test": true
+        },
+        {
+          "name": "test_unresolved_bootc_path_is_insufficient_not_absent",
+          "kind": "def",
+          "qualified": "test_unresolved_bootc_path_is_insufficient_not_absent",
+          "line": 430,
+          "test": true
+        },
+        {
+          "name": "test_cli_insufficient_evidence_fails_closed_without_writer",
+          "kind": "def",
+          "qualified": "test_cli_insufficient_evidence_fails_closed_without_writer",
+          "line": 442,
+          "test": true
+        },
+        {
+          "name": "cannot_resolve",
+          "kind": "def",
+          "qualified": "test_cli_insufficient_evidence_fails_closed_without_writer.cannot_resolve",
+          "line": 445,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/tests/test_bazzite_oci_rpm_binding.py",
+      "blob": "e6dadac3b5e2b811e3939792da8591acce8eea17",
+      "symbols": [
+        {
+          "name": "rpm_pack_tag",
+          "kind": "def",
+          "qualified": "rpm_pack_tag",
+          "line": 33,
+          "test": false
+        },
+        {
+          "name": "rpm_header_fixture",
+          "kind": "def",
+          "qualified": "rpm_header_fixture",
+          "line": 44,
+          "test": false
+        },
+        {
+          "name": "sqlite_db",
+          "kind": "def",
+          "qualified": "sqlite_db",
+          "line": 71,
+          "test": false
+        },
+        {
+          "name": "elf_fixture",
+          "kind": "def",
+          "qualified": "elf_fixture",
+          "line": 84,
+          "test": false
+        },
+        {
+          "name": "layer",
+          "kind": "def",
+          "qualified": "layer",
+          "line": 96,
+          "test": false
+        },
+        {
+          "name": "apply",
+          "kind": "def",
+          "qualified": "apply",
+          "line": 111,
+          "test": false
+        },
+        {
+          "name": "prepared",
+          "kind": "def",
+          "qualified": "prepared",
+          "line": 124,
+          "test": false
+        },
+        {
+          "name": "result",
+          "kind": "def",
+          "qualified": "result",
+          "line": 133,
+          "test": false
+        },
+        {
+          "name": "test_rpm_database_and_exact_elf_byte_binding_green",
+          "kind": "def",
+          "qualified": "test_rpm_database_and_exact_elf_byte_binding_green",
+          "line": 142,
+          "test": true
+        },
+        {
+          "name": "test_missing_forged_and_malformed_rpm_binding_refused",
+          "kind": "def",
+          "qualified": "test_missing_forged_and_malformed_rpm_binding_refused",
+          "line": 165,
+          "test": true
+        },
+        {
+          "name": "test_later_rpmdb_layer_replaces_previous_database_not_stale_package",
+          "kind": "def",
+          "qualified": "test_later_rpmdb_layer_replaces_previous_database_not_stale_package",
+          "line": 196,
+          "test": true
+        },
+        {
+          "name": "test_rpmdb_whiteout_and_opaque_directory_cannot_preserve_stale_owner",
+          "kind": "def",
+          "qualified": "test_rpmdb_whiteout_and_opaque_directory_cannot_preserve_stale_owner",
+          "line": 218,
+          "test": true
+        },
+        {
+          "name": "test_duplicate_rpmdb_in_single_layer_fails_closed",
+          "kind": "def",
+          "qualified": "test_duplicate_rpmdb_in_single_layer_fails_closed",
+          "line": 229,
+          "test": true
+        },
+        {
+          "name": "test_database_symlink_and_sqlite_wal_not_accepted",
+          "kind": "def",
+          "qualified": "test_database_symlink_and_sqlite_wal_not_accepted",
+          "line": 243,
+          "test": true
+        },
+        {
+          "name": "test_ambiguous_packages_not_accepted",
+          "kind": "def",
+          "qualified": "test_ambiguous_packages_not_accepted",
+          "line": 256,
+          "test": true
+        },
+        {
+          "name": "test_elf_wrong_machine_and_truncated_build_id_unproven",
+          "kind": "def",
+          "qualified": "test_elf_wrong_machine_and_truncated_build_id_unproven",
+          "line": 275,
+          "test": true
+        },
+        {
+          "name": "test_rpm_header_truncation_and_duplicate_tags_refused",
+          "kind": "def",
+          "qualified": "test_rpm_header_truncation_and_duplicate_tags_refused",
+          "line": 286,
+          "test": true
+        },
+        {
+          "name": "test_other_package_cannot_claim_bootc_file",
+          "kind": "def",
+          "qualified": "test_other_package_cannot_claim_bootc_file",
+          "line": 293,
+          "test": true
+        },
+        {
+          "name": "test_bounded_db_paths_are_explicit_and_no_executable_import",
+          "kind": "def",
+          "qualified": "test_bounded_db_paths_are_explicit_and_no_executable_import",
+          "line": 300,
+          "test": true
+        },
+        {
+          "name": "test_embedded_to_filesystem_string_never_proves_runtime_subcommand",
+          "kind": "def",
+          "qualified": "test_embedded_to_filesystem_string_never_proves_runtime_subcommand",
+          "line": 306,
+          "test": true
+        },
+        {
+          "name": "test_path_hints_never_claim_rpm_package_binding_or_authority",
+          "kind": "def",
+          "qualified": "test_path_hints_never_claim_rpm_package_binding_or_authority",
+          "line": 330,
+          "test": true
+        },
+        {
+          "name": "test_oversize_signed_rpm_db_never_raises_install_authority",
+          "kind": "def",
+          "qualified": "test_oversize_signed_rpm_db_never_raises_install_authority",
+          "line": 349,
+          "test": true
+        },
+        {
+          "name": "test_zero_byte_rpm_placeholder_is_not_a_database_or_authority",
+          "kind": "def",
+          "qualified": "test_zero_byte_rpm_placeholder_is_not_a_database_or_authority",
+          "line": 372,
+          "test": true
+        },
+        {
+          "name": "test_only_empty_rpmdb_keeps_binding_unproven",
+          "kind": "def",
+          "qualified": "test_only_empty_rpmdb_keeps_binding_unproven",
+          "line": 393,
+          "test": true
+        },
+        {
+          "name": "test_derived_sqlite_shm_and_empty_wal_cannot_override_package",
+          "kind": "def",
+          "qualified": "test_derived_sqlite_shm_and_empty_wal_cannot_override_package",
+          "line": 404,
+          "test": true
+        },
+        {
+          "name": "test_nonempty_sqlite_wal_still_blocks_package_binding",
+          "kind": "def",
+          "qualified": "test_nonempty_sqlite_wal_still_blocks_package_binding",
+          "line": 425,
+          "test": true
+        },
+        {
+          "name": "test_real_sqlite_wal_format_header_immutable_read_only_binding",
+          "kind": "def",
+          "qualified": "test_real_sqlite_wal_format_header_immutable_read_only_binding",
+          "line": 445,
+          "test": true
+        },
+        {
+          "name": "test_rpmdb_sqlite_serialized_header_without_magic_still_binds_exact_elf",
+          "kind": "def",
+          "qualified": "test_rpmdb_sqlite_serialized_header_without_magic_still_binds_exact_elf",
+          "line": 483,
+          "test": true
+        },
+        {
+          "name": "test_malformed_magicless_rpmdb_header_rejected_before_any_package_claim",
+          "kind": "def",
+          "qualified": "test_malformed_magicless_rpmdb_header_rejected_before_any_package_claim",
+          "line": 510,
+          "test": true
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "ref": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "path": "auto_tests/tests/test_bazzite_qcow2_deployment_readback.py",
+      "blob": "bd3337e5089fa31e895d8379bbfe0eb03446a9ec",
+      "symbols": [
+        {
+          "name": "header",
+          "kind": "def",
+          "qualified": "header",
+          "line": 28,
+          "test": false
+        },
+        {
+          "name": "local_fd",
+          "kind": "def",
+          "qualified": "local_fd",
+          "line": 44,
+          "test": false
+        },
+        {
+          "name": "claim",
+          "kind": "def",
+          "qualified": "claim",
+          "line": 54,
+          "test": false
+        },
+        {
+          "name": "assert_denied",
+          "kind": "def",
+          "qualified": "assert_denied",
+          "line": 76,
+          "test": false
+        },
+        {
+          "name": "test_actual_readonly_fd_qcow2_header_bytes_not_installed_disk",
+          "kind": "def",
+          "qualified": "test_actual_readonly_fd_qcow2_header_bytes_not_installed_disk",
+          "line": 87,
+          "test": true
+        },
+        {
+          "name": "test_a_foreign_qcow2_inode_never_confers_source_identity",
+          "kind": "def",
+          "qualified": "test_a_foreign_qcow2_inode_never_confers_source_identity",
+          "line": 102,
+          "test": true
+        },
+        {
+          "name": "test_b_backing_swap_is_refused_before_guest_or_efi_read",
+          "kind": "def",
+          "qualified": "test_b_backing_swap_is_refused_before_guest_or_efi_read",
+          "line": 122,
+          "test": true
+        },
+        {
+          "name": "test_c_to_j_negative_claims_always_fail_closed",
+          "kind": "def",
+          "qualified": "test_c_to_j_negative_claims_always_fail_closed",
+          "line": 149,
+          "test": true
+        },
+        {
+          "name": "test_e_unauthenticated_deployment_without_real_host_fd",
+          "kind": "def",
+          "qualified": "test_e_unauthenticated_deployment_without_real_host_fd",
+          "line": 158,
+          "test": true
+        },
+        {
+          "name": "test_j_without_recovery_checkpoint_fails_before_host_claim",
+          "kind": "def",
+          "qualified": "test_j_without_recovery_checkpoint_fails_before_host_claim",
+          "line": 164,
+          "test": true
+        },
+        {
+          "name": "test_wrong_image_type_never_parsed_as_deployment",
+          "kind": "def",
+          "qualified": "test_wrong_image_type_never_parsed_as_deployment",
+          "line": 180,
+          "test": true
+        },
+        {
+          "name": "test_fd_writable_refused_before_reads",
+          "kind": "def",
+          "qualified": "test_fd_writable_refused_before_reads",
+          "line": 191,
+          "test": true
+        },
+        {
+          "name": "test_none_or_untrusted_source_never_authenticates_deployment",
+          "kind": "def",
+          "qualified": "test_none_or_untrusted_source_never_authenticates_deployment",
+          "line": 201,
+          "test": true
+        },
+        {
+          "name": "test_cli_is_stdout_only_and_never_accepts_image_or_output_path",
+          "kind": "def",
+          "qualified": "test_cli_is_stdout_only_and_never_accepts_image_or_output_path",
+          "line": 214,
+          "test": true
+        }
+      ],
+      "identical_dev_paths": []
     }
   ],
   "dev_files": [],
