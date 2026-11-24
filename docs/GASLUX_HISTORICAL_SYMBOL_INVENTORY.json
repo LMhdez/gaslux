@@ -9623,6 +9623,157 @@
           "test": false
         }
       ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_linux_result_focus.py",
+      "blob": "507c2d348feb72a343f9365763f841a58e5811d4",
+      "symbol_count": 6,
+      "matches": [
+        {
+          "name": "read",
+          "kind": "def",
+          "qualified": "test_window_readiness_waits_for_real_fresh_visibility_without_accepting.read",
+          "line": 118,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_live_allocation_resize.py",
+      "blob": "59483c9a0be4785f52efe89110a9034eede4e9a0",
+      "symbol_count": 1,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_live_label_inheritance.py",
+      "blob": "5d328c3ff5a0bac2e46f3a024be5f0392d2d9455",
+      "symbol_count": 1,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_live_log_archive.py",
+      "blob": "77a88851c73c1513725cc0f2c4d5c4f0d48fbb03",
+      "symbol_count": 2,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_live_storage_preflight.py",
+      "blob": "8dffec71b9a255a58694c68be0a04ae5c7587c18",
+      "symbol_count": 1,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_local_filepool.py",
+      "blob": "62a2190d89a466e36d387ec24b7c1c189b6a851f",
+      "symbol_count": 15,
+      "matches": [
+        {
+          "name": "prepare",
+          "kind": "def",
+          "qualified": "test_signed_filepool_preparation_verifies_before_upload.prepare",
+          "line": 89,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_localization.py",
+      "blob": "e70976a248111706b85c699a574fee2fa9812cc9",
+      "symbol_count": 32,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_logging_config.py",
+      "blob": "088465609d7f460d3a34d4d75b38c14647350bda",
+      "symbol_count": 1,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_boundary_dev_integration.py",
+      "blob": "b21ac463a53840a8c249378d9be490badf933e64",
+      "symbol_count": 7,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_boundary_model.py",
+      "blob": "550e8b2e0fa0ef386438e45af477cf6b63645389",
+      "symbol_count": 13,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_host_fd_dev_integration.py",
+      "blob": "7543af67332c2c07db7decfba95f1527fa5a4480",
+      "symbol_count": 10,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_host_fd_evidence.py",
+      "blob": "43dfeb4d4019245a0f45079d40e2961502bbbce2",
+      "symbol_count": 25,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_host_fd_safety_fixes.py",
+      "blob": "9223ffe076ab2a7369760b136ee492ac2e35e4a4",
+      "symbol_count": 20,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_one_shot_ledger_offline.py",
+      "blob": "a930ba6f3b9c36257964c0cfd350bd33d3b058b0",
+      "symbol_count": 56,
+      "matches": [
+        {
+          "name": "setUp",
+          "kind": "def",
+          "qualified": "LedgerTests.setUp",
+          "line": 112,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_qemu_real_disk_readonly.py",
+      "blob": "ab57c014b9b47c1444c877d9e029994923c3b775",
+      "symbol_count": 20,
+      "matches": [
+        {
+          "name": "pinned",
+          "kind": "def",
+          "qualified": "pinned",
+          "line": 59,
+          "test": false
+        },
+        {
+          "name": "shutdown",
+          "kind": "def",
+          "qualified": "shutdown",
+          "line": 187,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_observer_readonly_evidence_subset.py",
+      "blob": "50964527b61bdc02f962d0544c189a368c970960",
+      "symbol_count": 11,
+      "matches": []
     }
   ],
   "limitations": [
