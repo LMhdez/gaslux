@@ -227,7 +227,7 @@ class TrustedPublisherTests(unittest.TestCase):
     @staticmethod
     def _job_allowed(workflow: str, job: str, facts: dict[str, str]) -> bool:
         """Evaluate the actual YAML if expression, with no eval/exec."""
-        section = workflow.split(f"  {job}:\n", 1)[1].split("\n  ", 1)[0]
+        section = re.split(r"(?m)^  [A-Za-z0-9_]+:\s*$", workflow.split(f"  {job}:\n", 1)[1], maxsplit=1)[0]
         header = section.split("    runs-on:", 1)[0]
         predicate = header.split("    if: >-\n", 1)[1].split(
             "    environment:", 1
@@ -307,7 +307,7 @@ class TrustedPublisherTests(unittest.TestCase):
             (".github/workflows/gaslux-agent-feature-factory.yml", "publish_draft"),
         ):
             workflow = (SCRIPT.parents[2] / file).read_text()
-            section = workflow.split(f"  {job}:\n", 1)[1].split("\n  ", 1)[0]
+            section = re.split(r"(?m)^  [A-Za-z0-9_]+:\s*$", workflow.split(f"  {job}:\n", 1)[1], maxsplit=1)[0]
             before, credential = section.split("    steps:\n", 1)
             self.assertIn("github.repository == 'LMhdez/gaslux'", before)
             self.assertIn("github.ref == 'refs/heads/main'", before)
