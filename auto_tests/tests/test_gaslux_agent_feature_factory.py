@@ -138,7 +138,7 @@ class FeatureFactoryTests(unittest.TestCase):
                 target = root / path
                 target.parent.mkdir(parents=True, exist_ok=True)
                 with target.open("a", encoding="utf-8") as output:
-                    output.write(f"def assess_{role}_lifecycle(evidence: dict) -> dict:\\n")
+                    output.write(f"def assess_{role}_lifecycle(evidence: dict) -> dict:\n")
             with patch.object(factory, "git", return_value="a" * 40), \
                  patch.object(factory.subprocess, "run") as run:
                 result = factory.plan(root)
