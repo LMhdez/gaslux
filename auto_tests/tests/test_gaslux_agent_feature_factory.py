@@ -42,6 +42,111 @@ class FeatureFactoryTests(unittest.TestCase):
             self.assertNotIn("..", Path(test).parts)
             factory.validate_addition(role, valid(role), execute=True)
 
+    def test_goal_discovery_is_bounded_read_only_and_uses_real_dev_matrix(self):
+        """A claimed six-role catalog is blocked work, not completion."""
+        platforms = [
+            "windows10-bios-mbr", "windows10-uefi-gpt", "windows11-uefi-gpt",
+        ]
+        goal = {
+            "schema_version": 1, "platforms": platforms,
+            "gates": list(factory.GATES),
+            "automatic_safe_gates": list(factory.GATES[:2]),
+            "protected_gates": list(factory.GATES[2:]),
+            "backends": [
+                {
+                    "id": role, "priority": i, "issue_numbers": [],
+                    "platforms": platforms[1:] if role == "bazzite" else platforms,
+                }
+                for i, role in enumerate(factory.TASKS)
+            ],
+        }
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            docs = root / "docs/autonomy"
+            docs.mkdir(parents=True)
+            evidence = {"schema_version": 1, "records": []}
+            def store():
+                (docs / "goal.json").write_text(json.dumps(goal))
+                (docs / "evidence.json").write_text(json.dumps(evidence))
+            store()
+            result = factory.discover_goal_backlog(root)
+            self.assertEqual(result["status"], "blocked")
+            self.assertEqual(result["required_gate_slots"], 136)
+            self.assertEqual(result["independently_verified_slots"], 0)
+            self.assertEqual({x["role"] for x in result["next_gates"]},
+                             set(factory.TASKS))
+            self.assertTrue(all(
+                not x["code_authorized"] and not x["release_eligible"]
+                for x in result["next_gates"]
+            ))
+            self.assertEqual(result["next_gates"][-1]["platform"],
+                             "windows10-uefi-gpt")
+            self.assertEqual(result["next_gates"][0]["state"], "missing_evidence")
+
+            evidence["records"] = [{
+                "backend": "mint", "platform": platforms[0],
+                "gate": factory.GATES[0], "claimed_pass": True,
+            }]
+            store()
+            result = factory.discover_goal_backlog(root)
+            self.assertEqual(result["next_gates"][0]["state"],
+                             "declared_unverified")
+            self.assertEqual(result["independently_verified_slots"], 0)
+            evidence["records"] *= 2
+            store()
+            with self.assertRaises(ValueError):
+                factory.discover_goal_backlog(root)
+            evidence["records"] = []
+            goal["backends"][-1]["platforms"] = platforms
+            store()
+            with self.assertRaises(ValueError):
+                factory.discover_goal_backlog(root)
+            goal["backends"][-1]["platforms"] = platforms[1:]
+            goal["gates"][0] = "synthetic-success"
+            store()
+            with self.assertRaises(ValueError):
+                factory.discover_goal_backlog(root)
+
+    def test_plan_reports_real_blocked_gates_when_all_six_roles_claimed(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            platforms = [
+                "windows10-bios-mbr", "windows10-uefi-gpt",
+                "windows11-uefi-gpt",
+            ]
+            docs = root / "docs/autonomy"
+            docs.mkdir(parents=True)
+            (docs / "goal.json").write_text(json.dumps({
+                "schema_version": 1,
+                "platforms": platforms,
+                "gates": list(factory.GATES),
+                "automatic_safe_gates": list(factory.GATES[:2]),
+                "protected_gates": list(factory.GATES[2:]),
+                "backends": [
+                    {
+                        "id": role, "priority": i, "issue_numbers": [],
+                        "platforms": platforms[1:] if role == "bazzite"
+                                     else platforms,
+                    }
+                    for i, role in enumerate(factory.TASKS)
+                ],
+            }))
+            (docs / "evidence.json").write_text(
+                json.dumps({"schema_version": 1, "records": []})
+            )
+            for role, (path, _, _) in factory.TASKS.items():
+                target = root / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with target.open("a", encoding="utf-8") as output:
+                    output.write(f"def assess_{role}_lifecycle(evidence: dict) -> dict:\n")
+            with patch.object(factory, "git", return_value="a" * 40), \
+                 patch.object(factory.subprocess, "run") as run:
+                result = factory.plan(root)
+                run.assert_not_called()
+            self.assertEqual(result["status"], "blocked")
+            self.assertEqual(result["base"], "a" * 40)
+            self.assertEqual(len(result["next_gates"]), 6)
+
     def test_no_remote_writer_or_insecure_backend_authority(self):
         for role in factory.TASKS:
             src = valid(role)

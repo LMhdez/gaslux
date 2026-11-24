@@ -60,6 +60,83 @@ def origin_branch(role: str, base: str) -> str:
     return f"bot/gaslux-feature-{role}-{base[:12]}"
 
 
+def discover_goal_backlog(root: Path) -> dict:
+    """Read-only triage of real missing distro gates; NEVER grant code authority.
+
+    The dev goal and evidence are *data*, not trusted instructions or external
+    attestations. A declared record is never equivalent to an independently
+    proven installation, so no slot can be marked verified here.
+    """
+    goal_path = root / "docs/autonomy/goal.json"
+    evidence_path = root / "docs/autonomy/evidence.json"
+    if (not goal_path.is_file() or not evidence_path.is_file() or
+        goal_path.stat().st_size > 32768 or evidence_path.stat().st_size > 131072):
+        raise ValueError("Bounded goal and evidence inputs required")
+    goal = json.loads(goal_path.read_text(encoding="utf-8"))
+    evidence = json.loads(evidence_path.read_text(encoding="utf-8"))
+    platforms = ("windows10-bios-mbr", "windows10-uefi-gpt", "windows11-uefi-gpt")
+    if (type(goal) is not dict or type(evidence) is not dict or
+        type(goal.get("schema_version")) is not int or goal["schema_version"] != 1 or
+        type(evidence.get("schema_version")) is not int or
+        evidence["schema_version"] != 1 or
+        goal.get("gates") != list(GATES) or
+        goal.get("platforms") != list(platforms) or
+        goal.get("automatic_safe_gates") != list(GATES[:2]) or
+        goal.get("protected_gates") != list(GATES[2:])):
+        raise ValueError("Untrusted lifecycle gate matrix")
+    backends, records = goal.get("backends"), evidence.get("records")
+    if (type(backends) is not list or len(backends) != len(TASKS) or
+        type(records) is not list or len(records) > 400):
+        raise ValueError("Unexpected backend or evidence registry")
+    seen, verified_claims = set(), set()
+    for row in backends:
+        if type(row) is not dict or row.get("id") not in TASKS:
+            raise ValueError("Unknown backend in goal")
+        role = row["id"]
+        if role in seen:
+            raise ValueError("Duplicate backend goal")
+        seen.add(role)
+        supported = row.get("platforms")
+        if (type(supported) is not list or not supported or
+            len(set(supported)) != len(supported) or
+            any(p not in platforms for p in supported) or
+            (role == "bazzite" and supported != list(platforms[1:])) or
+            (role != "bazzite" and supported != list(platforms)) or
+            type(row.get("priority")) is not int or
+            not 0 <= row["priority"] < len(TASKS) or
+            type(row.get("issue_numbers")) is not list or
+            any(type(n) is not int or n <= 0 for n in row["issue_numbers"])):
+            raise ValueError("Unsupported backend/platform scope")
+    if seen != set(TASKS) or {b["priority"] for b in backends} != set(range(len(TASKS))):
+        raise ValueError("Missing or ambiguous backend priorities")
+    for row in records:
+        if type(row) is not dict:
+            raise ValueError("Malformed evidence row")
+        key = (row.get("backend"), row.get("platform"), row.get("gate"))
+        if (key in verified_claims or key[0] not in TASKS or
+            key[1] not in next(b["platforms"] for b in backends if b["id"] == key[0]) or
+            key[2] not in GATES):
+            raise ValueError("Unknown or duplicated evidence slot")
+        verified_claims.add(key)
+    next_gates = []
+    for row in sorted(backends, key=lambda item: item["priority"]):
+        role = row["id"]
+        platform, gate = row["platforms"][0], GATES[0]
+        next_gates.append({
+            "role": role, "platform": platform, "gate": gate,
+            "state": ("declared_unverified" if (role, platform, gate) in verified_claims
+                      else "missing_evidence"),
+            "code_authorized": False, "release_eligible": False,
+            "related_issues": row["issue_numbers"],
+        })
+    return {
+        "status": "blocked", "role": "", "next_gates": next_gates,
+        "required_gate_slots": sum(len(b["platforms"]) * len(GATES) for b in backends),
+        "independently_verified_slots": 0,
+        "reason": "No remaining approved code scope; real gate evidence/review pending",
+    }
+
+
 def plan(root: Path) -> dict:
     base = git(root, "rev-parse", "HEAD")
     if not SHA.fullmatch(base):
@@ -82,7 +159,7 @@ def plan(root: Path) -> dict:
         if "404" not in check.stderr and "Not Found" not in check.stderr:
             raise RuntimeError("Cannot establish bot branch absence")
         return {"status": "pending", "role": role, "base": base, "task": TASKS[role][2]}
-    return {"status": "idle", "role": "", "base": base}
+    return {"base": base, **discover_goal_backlog(root)}
 
 
 def validate_addition(role: str, addition: str, *, execute: bool) -> None:
