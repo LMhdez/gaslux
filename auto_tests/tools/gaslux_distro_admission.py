@@ -55,6 +55,34 @@ def exact_append(before, after, role, *, formatted=False):
     return addition.rstrip()
 
 
+# Fixed, deliberately narrow semantic contract for the five queued helpers.
+# Independent of the more general Factory AST allowlist.
+LIFECYCLE_GATES = (
+    "source-authenticity", "windows-preflight", "install", "linux-first-boot",
+    "windows-return", "linux-update-reboot", "uninstall-windows-integrity",
+    "fault-injection-rollback",
+)
+
+
+def require_fixed_lifecycle(role, addition):
+    if role not in QUEUE.values():
+        raise ValueError("Unreviewed lifecycle role")
+    actual = ast.dump(ast.parse(addition), include_attributes=False)
+    # Only the two observed local names are admitted. No normalization of
+    # arbitrary identifiers, control flow, calls, constants or dict keys.
+    for local in ("missing", "missingGates"):
+        expected = (
+            f"def assess_{role}_lifecycle(evidence: dict) -> dict:\n"
+            f"    gates = {LIFECYCLE_GATES!r}\n"
+            f"    {local} = sorted([name for name in gates if evidence.get(name) is not True])\n"
+            f"    return {{'backend': {role!r}, 'missingGates': {local}, "
+            "'installationAuthorized': False, 'releaseEligible': False}\n"
+        )
+        if actual == ast.dump(ast.parse(expected), include_attributes=False):
+            return
+    raise ValueError("Helper violates fixed non-writer lifecycle semantics")
+
+
 def single_parent(sha):
     parents = api("GET", f"/git/commits/{sha}")["parents"]
     if len(parents) != 1 or not valid_sha(parents[0].get("sha")):
@@ -86,6 +114,7 @@ def candidate_append(pr, role, sha, path):
     one_path_commit(original, generated, path)
     before = source_at(path, original)
     first = exact_append(before, source_at(path, generated), role)
+    require_fixed_lifecycle(role, first)
     repair_actor = None
     if count == 2:
         one_path_commit(generated, sha, path)
