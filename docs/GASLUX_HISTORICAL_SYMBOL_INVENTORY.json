@@ -10393,6 +10393,308 @@
           "test": false
         }
       ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/azerty_qwerty.py",
+      "blob": "cc6fc755d51ec5be317e9246e01b9f068cf0e1b4",
+      "symbol_count": 8,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 285,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/campaign_client.py",
+      "blob": "501a4a7858fed73bf39fc4b3ab71f313b20dc291",
+      "symbol_count": 17,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "CampaignProgress.__init__",
+          "line": 135,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 347,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/campaign_display.py",
+      "blob": "05b90b5900119b014144a4cb2ec7b6416e6368b6",
+      "symbol_count": 17,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "TerminalDisplay.__init__",
+          "line": 157,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 315,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/compact_ovmf_target.py",
+      "blob": "a3541aefb7f11be30fb198c0f7ebca24dba06b66",
+      "symbol_count": 5,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 142,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/deployment_audit.py",
+      "blob": "fa72fefbc0c931b4b3f3b297ed4103e1d0c51d2f",
+      "symbol_count": 43,
+      "matches": [
+        {
+          "name": "read",
+          "kind": "def",
+          "qualified": "read",
+          "line": 202,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 1245,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/force_uefi_bootnext_failure.py",
+      "blob": "69aa7a93301562a664db454c9e911ad8a799912b",
+      "symbol_count": 1,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 13,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/gaslux_agent_implement.py",
+      "blob": "a38b77cac1347fe15f0b3d10e9267fc9de2f9f32",
+      "symbol_count": 8,
+      "matches": [
+        {
+          "name": "digest",
+          "kind": "def",
+          "qualified": "digest",
+          "line": 34,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "run",
+          "line": 135,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 195,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/gaslux_candidate_live_boot.sh",
+      "blob": "251ca4f645576ec3c3401cbe9a4cbe40683c9ad7",
+      "symbol_count": 2,
+      "matches": [
+        {
+          "name": "die",
+          "kind": "shell_function",
+          "qualified": "die",
+          "line": 7,
+          "test": false
+        },
+        {
+          "name": "cleanup",
+          "kind": "shell_function",
+          "qualified": "cleanup",
+          "line": 24,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/goal_supervisor.py",
+      "blob": "1edc1b71105e48f6f92a20e00d45455310f23ba6",
+      "symbol_count": 4,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 125,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/gpt_fd_crosscheck_offline_compat.py",
+      "blob": "f77922802dddf351c2be8554b29162e3d271f16d",
+      "symbol_count": 11,
+      "matches": [
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 24,
+          "test": false
+        },
+        {
+          "name": "_guid",
+          "kind": "def",
+          "qualified": "_guid",
+          "line": 29,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/local_coder_agent_benchmark.py",
+      "blob": "8c997969cfaae1f8237f4256e8d4dda8d68ccbed",
+      "symbol_count": 7,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 121,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/local_coder_logging_repair.py",
+      "blob": "6e0c19fb844d44287398f971b8eaaeb4e48bbb95",
+      "symbol_count": 7,
+      "matches": [
+        {
+          "name": "digest",
+          "kind": "def",
+          "qualified": "digest",
+          "line": 32,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 114,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/observer_one_shot_ledger_offline.py",
+      "blob": "f9b7f556aaf1672454008e42e92736814caa83ef",
+      "symbol_count": 22,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "Refused.__init__",
+          "line": 56,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "OfflineLedger.__init__",
+          "line": 330,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/protected_authority_readiness_offline.py",
+      "blob": "8107393f01f36d8ec362ef8c7923793e75e1df37",
+      "symbol_count": 4,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/rank_capture_changes.py",
+      "blob": "170d13c14ac2d430b913d2ecaf5c74aedd1e79c2",
+      "symbol_count": 3,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 30,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/structured_coder_probe.py",
+      "blob": "6209887e29a416713e8899b686e7fb5331d79553",
+      "symbol_count": 9,
+      "matches": [
+        {
+          "name": "sha256",
+          "kind": "def",
+          "qualified": "sha256",
+          "line": 54,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 262,
+          "test": false
+        }
+      ]
     }
   ],
   "limitations": [
