@@ -119,7 +119,22 @@ def match_mint_223_iso_descriptor(candidate: dict) -> dict:
         "releaseEligible": False,
     }
 
+
 def assess_cachyos_lifecycle(evidence: dict) -> dict:
-    gates = ('source-authenticity', 'windows-preflight', 'install', 'linux-first-boot', 'windows-return', 'linux-update-reboot', 'uninstall-windows-integrity', 'fault-injection-rollback')
+    gates = (
+        "source-authenticity",
+        "windows-preflight",
+        "install",
+        "linux-first-boot",
+        "windows-return",
+        "linux-update-reboot",
+        "uninstall-windows-integrity",
+        "fault-injection-rollback",
+    )
     missingGates = sorted([name for name in gates if evidence.get(name) is not True])
-    return {'backend': 'cachyos', 'missingGates': missingGates, 'installationAuthorized': False, 'releaseEligible': False}
+    return {
+        "backend": "cachyos",
+        "missingGates": missingGates,
+        "installationAuthorized": False,
+        "releaseEligible": False,
+    }
