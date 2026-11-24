@@ -163,3 +163,37 @@ Este relatório é uma avaliação datada, não um novo contrato de segurança, 
 - [Issue #401 — handoff de gaps para tarefas](https://github.com/LMhdez/gaslux/issues/401)
 
 **Direção recomendada:** passar de uma fábrica de código para uma fábrica de funcionalidades comprovadas, sem reduzir a segurança. Manter a documentação atualizada por eventos conforme AGENTS.md; preservar este snapshot histórico e acrescentar observações datadas posteriores, em vez de reescrever resultados.
+
+
+## 9. Auditoria histórica alargada — atualização 24/11/2026, 20:40 UTC
+
+**Complemento ao snapshot das 20:35.** Inventário REST paginado: 413 PRs visíveis entre #1 e #419; 71 merged (incluindo branches experimentais), 88 open, 254 closed sem merge. Não significa auditoria individual das 413. `main=d408ffa603272007d9cb0c2c896ed1789f775a80`, `dev=d89f1547c50787e4640164e34bfd1863134e2908`. O índice estruturado [GASLUX_HISTORICAL_EVIDENCE_INDEX.json](GASLUX_HISTORICAL_EVIDENCE_INDEX.json) é **discovery-only**, separado do registo formal de gates em dev. Nenhuma entrada concede merge, writer ou release. A evidência antiga não equivale a validação do HEAD atual.
+
+### Provas e dependências que devem ser reutilizadas
+
+| Fonte histórica | Resultado verificado nos jobs / limite |
+| --- | --- |
+| [#113 / run 44085976726](https://github.com/LMhdez/gaslux/actions/runs/44085976726) | Windows 10 Enterprise Evaluation instalado em KVM, ISO SHA256 e boot disco-only, shutdown limpo. JSON: windowsClientBootVerified=true, dualBootVerified=false, winReAndBcdRecovered=false. |
+| [#117 / run 44094951108](https://github.com/LMhdez/gaslux/actions/runs/44094951108) | Windows 11 Enterprise Evaluation instalado em KVM, ISO SHA256, disco-only e shutdown limpo. Não comprova recuperação após Linux. |
+| [#119 / run 44095873813](https://github.com/LMhdez/gaslux/actions/runs/44095873813), [#125](https://github.com/LMhdez/gaslux/pull/125) | Validadores de artefactos históricos com SHA e ZIP delimitado. Consistência documental não autentica origem guest. Os três runs antigos já não devolvem artefactos no endpoint list; não assumir que os ZIP estão recuperáveis. |
+| [#260 / run 44704787925](https://github.com/LMhdez/gaslux/actions/runs/44704787925) | Windows→Mint→Windows na mesma COW; logs confirmam Mint firstboot e quarto Windows ESP/BCD/WinRE; nativeGrubDualBootVerified=false, updatesVerified=false, rollbackVerified=false. SHA do run 98d7b450... é histórico, distinto do HEAD final da PR. |
+| [#269 / run 44713947097](https://github.com/LMhdez/gaslux/actions/runs/44713947097) | Windows10/Pop real read-only; Safety DENY_NO_WRITER por transação ausente/inválida e proveniência não autenticada. |
+| [#383 / run 45064724367](https://github.com/LMhdez/gaslux/actions/runs/45064724367) | QCOW2+OVMF restore fixture, não guest. Safety [F-383-01/02](https://github.com/LMhdez/gaslux/pull/383#issuecomment-7085401815) continuam abertos; corrigir confinamento report e TOCTOU OVMF na mesma branch. |
+| [#388 / run 45067845469](https://github.com/LMhdez/gaslux/actions/runs/45067845469) | Reserva física 64,424,517,632 bytes; host 91,255,799,808 bytes antes, 26,831,273,984 depois; 384 MiB ENOSPC e restauro, 60 GiB quota fixture, não exaustão integral. 2/11 checkpoints. ISO portuguesa ausente nesta execução específica. |
+
+**Media:** os logs históricos fixaram Windows 10 Evaluation 5,550,497,792 bytes, Windows 11 Evaluation 8,225,329,152 bytes. Mint 22.3: 3,091,660,800 bytes. Reaproveitar os perfis Microsoft e scripts de `#232@3f44ae2068fabe875f160ca007393f9e3eb99367` (windows_x64_official_evaluation_isos.json, windows_x64_full_iso_sha256.py, windows_x64_tcg_firstboot.py), validar atualmente a origem/licença e orçamento por fase. Não assumir que a #418 ou um armazenamento privado novo são pré-requisitos absolutos. Não publicar ISO, QCOW2, TPM, keys, credenciais ou media licenciado.
+
+**Retenção urgente:** metadados GitHub indicam artefactos #14617010437 (Mint) e #14618774049 (Safety) ainda listados, expiração 27/11/2026 UTC. #14770149177 e #14771887332 expiram 06/12. Os digests e datas constam do índice. Não foram descarregados nem verificados byte a byte nesta auditoria. Preservar somente provas textuais/JSON permitidas, seguindo validadores #119/#125, antes de expiração; não declarar preservação realizada sem confirmar.
+
+### Janela de investigação obrigatória conforme AGENTS.md e AI_POLICY.md em dev
+
+Antes de selecionar ou implementar missão: pesquisar histórico de PRs abertas/fechadas/merged (incluindo bases experimentais), commits e árvores fixadas, workflows históricos e jobs concretos, findings Safety, dependências e artefactos. Usar o manual [AGENT_HISTORICAL_PLAYBOOK.md em dev](https://github.com/LMhdez/gaslux/blob/d89f1547c50787e4640164e34bfd1863134e2908/docs/AGENT_HISTORICAL_PLAYBOOK.md) e [CI_VM_EVIDENCE_INDEX.md em dev](https://github.com/LMhdez/gaslux/blob/d89f1547c50787e4640164e34bfd1863134e2908/docs/CI_VM_EVIDENCE_INDEX.md). Classificar o que existe em dev, o que está numa branch histórica e o que foi observado num run antigo. Preferir recuperar código e evidência, não criar controlador ou workflow duplicado. Revalidar antes de cada decisão; atualizar os documentos afetados na mesma missão. Não relançar VM apenas para atualizar data.
+
+### Ordem de trabalho e autoridade
+
+- P0 preservar provas históricas e reconciliar com Supervisor/Factory (#408 já tem inventário de 136 slots, 34 scope review e 102 protegidos); registo formal continua zero. Não importar automaticamente provas parciais.
+- P0 resolver #383 findings, reconciliar #388 e testar composição exata, integrar apenas após gates aplicáveis. Recuperar Windows histórico e ligação Mint, não recomeçar de uma ISO genérica.
+- P0 rever #416/#417/#418 contra histórico: #417 não deve exigir formal GitHub APPROVE para toda a integração manual delegada quando AGENTS.md admite avaliação técnica independente; autoridade automática exige proveniência autenticada. Não aceitar comentários como credencial. Verificar histórico multi-commit dos branches Ruff e deriva de dev; preservar mudanças únicas. #418 CI #45481512209 SUCCESS; privada opcional. Evitar sobreposição #416/#418.
+- Reutilizar #300/#302 (autoridade protegida/ledger offline deny-only), #307 (FD GPT), #337/#346/#356 (QEMU/GPT read-only), #393/#407 (Mint já merged) e #414 (dedup/Ruff). Não confundir contratos offline com trust root operacional.
+
+Referências de decisões e auditoria: [issue #401, reconciliação histórica](https://github.com/LMhdez/gaslux/issues/401#issuecomment-7143774099), [inventário completo](https://github.com/LMhdez/gaslux/issues/401#issuecomment-7143839879). Nenhum gate formal, código runtime, workflow, scheduler, permissão ou política é alterado por este índice documental.
