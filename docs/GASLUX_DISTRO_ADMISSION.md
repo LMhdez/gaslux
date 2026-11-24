@@ -157,3 +157,38 @@ Lifecycle workflow and require reviewed composition. #383/#388 remain Draft.
 Do not reuse the old quota results as a guarantee of current runner capacity.
 The full VM producer does not yet exist at the required evidence level;
 do not introduce a permissive synthetic VM acceptance verifier to compensate.
+
+
+## Autonomous inventory and technical triage (2026-11-24)
+
+The former v2 diagnostic only enumerated five historical PR numbers. This
+would leave newly generated candidates invisible to the scheduled agent.
+The v3 report dynamically enumerates open Draft PRs targeting dev using a
+bounded, complete GitHub API inventory. The supported five backend scopes,
+exact append/AST contract, CI provenance and all existing authorization
+gates are unchanged. Publisher login AND numeric GitHub identity are
+checked against the two observed publisher identities (41898282 and
+360620437); foreign repositories, unsupported roles, malformed branches,
+closed/non-Draft PRs and impersonation are not admitted. No new publisher
+is implicitly trusted. Duplicate inventory, a full page or more than ten
+candidates blocks inventory processing rather than silently truncating it.
+The observed HEAD is bound into the subsequent per-candidate inspection.
+
+The scheduled Integrator job now exposes a separate deterministic
+automatic_technical_safety_passed result (exact scope/current base/CI
+provenance/no observed objection) and explicit blockers/next_action.
+This is an automated technical assessment of a narrowly scoped helper,
+not a formal independent Safety or backend-owner approval. It does not
+override a formal review requirement, resolve an objection, prove VM
+acceptance, or allow merge. An unknown objection state never passes.
+The job outputs an Actions summary and existing JSON artifact; no new
+workflow, write permission or issue/comment publication is introduced.
+A future authorized planner can consume the blocker codes. The system
+does not yet dispatch repair tasks automatically from this report.
+
+The independent review/owner gate, full VM gate and merge/release denial
+remain in place. Historical fixed QUEUE values are retained as regression
+fixtures/role scope only, not the live PR inventory. The earlier technical
+verdict on 04da81ce5be9fe8478d886377fcd495f6944640e remains historical:
+fresh CI and independent review are required before integrating the new
+HEAD. #417 remains unchanged. Do not activate by bypassing main protection.
