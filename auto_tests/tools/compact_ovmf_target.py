@@ -10,6 +10,7 @@ Never accepts /dev paths, a caller-controlled image path or existing outputs.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -139,17 +140,221 @@ def provision(parent: Path, *, qemu_img: str = "qemu-img") -> dict:
         raise
 
 
+def _hash_private_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _owned_regular(path: Path, parent: Path) -> None:
+    metadata = path.lstat()
+    if (path.parent != parent or not stat.S_ISREG(metadata.st_mode)
+            or metadata.st_uid != os.getuid() or metadata.st_nlink != 1):
+        raise ValueError("unowned, aliased, or non-regular fixture image")
+
+
+def _run_qemu(args: list[str]) -> str:
+    result = subprocess.run(
+        args, check=True, capture_output=True, text=True, timeout=45
+    )
+    return result.stdout
+
+
+def _assert_overlay_backing(
+    overlay: Path, baseline: Path, *, qemu_img: str = "qemu-img"
+) -> None:
+    metadata = json.loads(_run_qemu([
+        qemu_img, "info", "--output=json", "--backing-chain", str(overlay)
+    ]))
+    if (not isinstance(metadata, list) or len(metadata) != 2
+            or metadata[0].get("format") != "qcow2"
+            or metadata[1].get("format") != "qcow2"
+            or metadata[0].get("full-backing-filename") != str(baseline)
+            or Path(metadata[1].get("filename", "")).resolve() != baseline
+            or metadata[0].get("virtual-size") != 16 * 1024**2
+            or metadata[1].get("virtual-size") != 16 * 1024**2):
+        raise ValueError("overlay backing identity/geometry differs from pinned baseline")
+
+
+def _require_corrupt_image_rejected(path: Path, *, qemu_img: str) -> None:
+    """An invalid QCOW2 auto-detected as RAW is also a rejected QCOW2.
+
+    qemu-img info may exit successfully when random bytes are detected as RAW.
+    Exit code zero is never a substitute for verifying the expected format.
+    """
+    result = subprocess.run(
+        [qemu_img, "info", "--output=json", str(path)],
+        capture_output=True, timeout=30, check=False
+    )
+    if result.returncode != 0:
+        return
+    metadata = json.loads(result.stdout)
+    if not isinstance(metadata, dict) or metadata.get("format") == "qcow2":
+        raise ValueError("corrupt fixture was accepted as QCOW2")
+
+
+def prove_restore_fixture(
+    parent: Path, ovmf_vars: Path, *,
+    qemu_img: str = "qemu-img", qemu_io: str = "qemu-io"
+) -> dict:
+    """Prove disposable QCOW2 and firmware-vars reset, NOT Windows recovery.
+
+    All writes are confined to a fresh private temporary directory. No QEMU
+    guest, host block device, production writer, or network endpoint is used.
+    """
+    parent = trusted_parent(parent)
+    source_vars = ovmf_vars.resolve(strict=True)
+    if (not source_vars.is_file() or not 64 * 1024 <= source_vars.stat().st_size
+            <= 8 * 1024**2 or str(source_vars).startswith("/dev/")):
+        raise ValueError("untrusted OVMF_VARS source")
+    work = Path(tempfile.mkdtemp(prefix="gaslux-compact-restore-", dir=parent))
+    os.chmod(work, 0o700)
+    baseline = work / "baseline.qcow2"
+    overlay = work / "write-overlay.qcow2"
+    firmware_base = work / "ovmf-vars-baseline.fd"
+    firmware_write = work / "ovmf-vars-working.fd"
+    def run_io(path: Path, command: str, *, readonly: bool = False) -> None:
+        _run_qemu([qemu_io, "-f", "qcow2", *(["-r"] if readonly else []),
+                   "-c", command, str(path)])
+    def create_overlay(backing: Path, output: Path) -> None:
+        _run_qemu([qemu_img, "create", "-f", "qcow2", "-F", "qcow2",
+                   "-b", str(backing), str(output)])
+        _owned_regular(output, work)
+    try:
+        _run_qemu([qemu_img, "create", "-f", "qcow2", str(baseline), "16M"])
+        _owned_regular(baseline, work)
+        run_io(baseline, "write -P 0xa5 0 4096")
+        expected_baseline = _hash_private_file(baseline)
+        os.chmod(baseline, 0o400)
+        create_overlay(baseline, overlay)
+        _assert_overlay_backing(overlay, baseline, qemu_img=qemu_img)
+        run_io(overlay, "read -P 0xa5 0 4096", readonly=True)
+        run_io(overlay, "write -P 0x5a 0 4096")
+        run_io(overlay, "read -P 0x5a 0 4096", readonly=True)
+        run_io(baseline, "read -P 0xa5 0 4096", readonly=True)
+        if _hash_private_file(baseline) != expected_baseline:
+            raise ValueError("overlay write modified immutable baseline")
+        _owned_regular(overlay, work)
+        overlay.unlink()
+        create_overlay(baseline, overlay)
+        _assert_overlay_backing(overlay, baseline, qemu_img=qemu_img)
+        run_io(overlay, "read -P 0xa5 0 4096", readonly=True)
+        if _hash_private_file(baseline) != expected_baseline:
+            raise ValueError("baseline changed during overlay reset")
+
+        shutil.copyfile(source_vars, firmware_base)
+        _owned_regular(firmware_base, work)
+        expected_vars = _hash_private_file(firmware_base)
+        os.chmod(firmware_base, 0o400)
+        shutil.copyfile(firmware_base, firmware_write)
+        _owned_regular(firmware_write, work)
+        with firmware_write.open("r+b") as mutable:
+            first = mutable.read(1)
+            if len(first) != 1:
+                raise ValueError("empty firmware variables image")
+            mutable.seek(0)
+            mutable.write(bytes([first[0] ^ 0xff]))
+            mutable.flush()
+            os.fsync(mutable.fileno())
+        if (_hash_private_file(firmware_write) == expected_vars
+                or _hash_private_file(firmware_base) != expected_vars):
+            raise ValueError("firmware modification was not isolated")
+        _owned_regular(firmware_write, work)
+        firmware_write.unlink()
+        shutil.copyfile(firmware_base, firmware_write)
+        if (_hash_private_file(firmware_write) != expected_vars
+                or _hash_private_file(firmware_base) != expected_vars):
+            raise ValueError("firmware variables restoration failed")
+
+        # Real QEMU rejection of a deliberately corrupt private overlay.
+        _owned_regular(overlay, work)
+        overlay.unlink()
+        overlay.write_bytes(b"not-a-qcow2")
+        _require_corrupt_image_rejected(overlay, qemu_img=qemu_img)
+        _owned_regular(overlay, work)
+        overlay.unlink()
+
+        # Foreign backing and symlink swaps cannot satisfy exact identity.
+        foreign = work / "foreign.qcow2"
+        wrong = work / "foreign-overlay.qcow2"
+        _run_qemu([qemu_img, "create", "-f", "qcow2", str(foreign), "16M"])
+        create_overlay(foreign, wrong)
+        try:
+            _assert_overlay_backing(wrong, baseline, qemu_img=qemu_img)
+        except ValueError:
+            foreign_backing_rejected = True
+        else:
+            raise ValueError("foreign backing was accepted")
+        swapped = work / "swapped.qcow2"
+        swapped.symlink_to(baseline)
+        try:
+            _owned_regular(swapped, work)
+        except ValueError:
+            symlink_rejected = True
+        else:
+            raise ValueError("symlink swap was accepted")
+        incomplete = work / "interrupted.qcow2"
+        incomplete.write_bytes(b"QFI\xfb" + bytes(32))
+        _require_corrupt_image_rejected(incomplete, qemu_img=qemu_img)
+        if plan(available_bytes=0)["status"] != "BLOCKED_STORAGE":
+            raise ValueError("insufficient capacity incorrectly accepted")
+        return {
+            "schema": "gaslux-compact-restore-fixture-v1",
+            "source_commit": os.environ.get("GITHUB_SHA"),
+            "github_run_id": os.environ.get("GITHUB_RUN_ID"),
+            "runner_name": os.environ.get("RUNNER_NAME"),
+            "fixture_virtual_bytes": 16 * 1024**2,
+            "baseline_sha256_before": expected_baseline,
+            "baseline_sha256_after": _hash_private_file(baseline),
+            "ovmf_vars_sha256_before": expected_vars,
+            "ovmf_vars_sha256_after": _hash_private_file(firmware_write),
+            "ovmf_vars_source_sha256": _hash_private_file(source_vars),
+            "ovmf_vars_bytes": source_vars.stat().st_size,
+            "backing_chain_verified": True,
+            "overlay_changed_without_baseline_mutation": True,
+            "overlay_reset_restored_initial_bytes": True,
+            "ovmf_vars_reset_verified": True,
+            "corrupt_overlay_rejected": True,
+            "foreign_backing_rejected": foreign_backing_rejected,
+            "symlink_swap_rejected": symlink_rejected,
+            "interrupted_overlay_rejected": True,
+            "insufficient_capacity_rejected": True,
+            "quota_verified": False,
+            "lab_writer_admitted": False,
+            "windows_guest_booted": False,
+            "mint_guest_installed": False,
+            "windows_recovery_verified": False,
+            "evidence_level": "SYNTHETIC_DISK_RESTORE_ONLY",
+        }
+    finally:
+        if work.parent != parent or not work.name.startswith("gaslux-compact-restore-"):
+            raise ValueError("refusing unexpected fixture cleanup target")
+        shutil.rmtree(work)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--workspace", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--verify-restoration", action="store_true",
+                        help="prove private baseline/overlay and OVMF reset only")
+    parser.add_argument("--ovmf-vars", type=Path,
+                        help="installed OVMF_VARS firmware template for fixture")
     parser.add_argument("--create", action="store_true",
                         help="create a private sparse qcow2; does NOT start QEMU")
     args = parser.parse_args()
     parent = trusted_parent(args.workspace)
     if args.report.is_symlink():
         raise ValueError("Report may not be a symlink")
-    if args.create:
+    if args.create and args.verify_restoration:
+        parser.error("--create and --verify-restoration are mutually exclusive")
+    if args.verify_restoration:
+        if args.ovmf_vars is None:
+            parser.error("--verify-restoration requires --ovmf-vars")
+        result = prove_restore_fixture(parent, args.ovmf_vars)
+    elif args.create:
         result = provision(parent)
     else:
         result = plan(available_bytes=shutil.disk_usage(parent).free)
