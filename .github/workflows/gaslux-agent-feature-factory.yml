@@ -325,6 +325,8 @@ jobs:
       contents: read
       issues: write
       pull-requests: read
+      checks: read
+      actions: read
     steps:
       - name: Trusted main-only triage source, no persisted Git credential
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -338,7 +340,7 @@ jobs:
           ref: dev
           path: source
           persist-credentials: false
-      - name: Deduplicate real missing-gate task and publish one scope-review issue
+      - name: Route stale Safety candidate or real missing gate, at most one scope-review issue
         env:
           GH_TOKEN: ${{ github.token }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
@@ -348,4 +350,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -B trusted/auto_tests/tools/gaslux_agent_task_triage.py --repo source
+          python3 -B trusted/auto_tests/tools/gaslux_agent_task_triage.py --repo source --with-admission-repair
