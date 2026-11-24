@@ -45,7 +45,8 @@ def source_at(path, ref):
 def exact_append(before, after, role, *, formatted=False):
     prefix = before.rstrip(b"\n") + (b"\n\n\n" if formatted else b"\n\n")
     signature = f"def assess_{role}_lifecycle(".encode()
-    if len(before) > 25000 or signature in before or not after.startswith(prefix):
+    if (len(before) > 25000 or signature in before
+            or not after.startswith(prefix + signature)):
         raise ValueError("Not a single new append")
     addition = after[len(prefix):].decode("utf-8")
     if after != prefix + addition.rstrip().encode("utf-8") + b"\n":
