@@ -560,24 +560,35 @@ def safe_forward_draft_base(root: Path, role: str, old: str, current: str) -> bo
             return False
     return True
 
-def publish(root: Path, evidence_dir: Path, role: str, base: str) -> None:
+def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str = "lifecycle") -> None:
     if os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true":
         raise RuntimeError("GASLUX_AUTONOMY_PAUSED: model Draft publisher blocked")
     if os.getenv("GITHUB_REPOSITORY") != REPO or os.getenv("GITHUB_REF") != "refs/heads/main":
         raise ValueError("Only trusted default-branch Actions may publish")
     # Static-only checks: never execute model text in a token-bearing job.
-    verify(root, evidence_dir, role, base, execute=False)
+    verify(root, evidence_dir, role, base, execute=False, scope=scope)
     git(root, "fetch", "origin", "refs/heads/dev:refs/remotes/origin/dev")
     live = git(root, "rev-parse", "refs/remotes/origin/dev")
     if not safe_forward_draft_base(root, role, base, live):
         print(json.dumps({"status": "stale_or_relevant_dev_change", "role": role}))
         return
-    branch = origin_branch(role, base)
+    if scope == SCOPE2B_ID:
+        # The source and acceptance test are unchanged on a forward-only
+        # rebase; also reject an unrelated change to the pinned release.
+        release = json.loads((root / "release-config.json").read_text(encoding="utf-8"))
+        mint = [x for x in release.get("distributions", [])
+                if type(x) is dict and x.get("id") == "mint"]
+        if (len(mint) != 1 or any(type(mint[0].get(k)) is not type(v) or
+                                  mint[0].get(k) != v for k, v in SCOPE2B_PINS.items())):
+            raise ValueError("Mint release pins drifted; regenerate under new review")
+        branch = scope2b_branch(base)
+    else:
+        branch = origin_branch(role, base)
     addition = (evidence_dir / "addition.py").read_text(encoding="utf-8")
     # Safe forward-only changes are included by ancestry, but this review PR
     # is still always Draft. No model text runs with publication credentials.
     git(root, "checkout", "-b", branch, live)
-    _, proposed = expected_source(root, role, addition)
+    _, proposed = expected_source(root, role, addition, scope=scope)
     (root / TASKS[role][0]).write_bytes(proposed)
     if git(root, "diff", "--name-only") != TASKS[role][0]:
         raise ValueError("Unexpected changed product path")
@@ -585,7 +596,10 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str) -> None:
     git(root, "add", "--", TASKS[role][0])
     subprocess.run(["git", "-C", str(root), "config", "user.name", "github-actions[bot]"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], check=True)
-    subprocess.run(["git", "-C", str(root), "commit", "-m", f"feat({role}): isolated lifecycle evidence proposal"], check=True)
+    commit_subject = (f"feat({role}): check pinned Mint 22.3 ISO descriptor"
+                      if scope == SCOPE2B_ID else
+                      f"feat({role}): isolated lifecycle evidence proposal")
+    subprocess.run(["git", "-C", str(root), "commit", "-m", commit_subject], check=True)
     # No implicit token is available in any model-inference or test runner.
     subprocess.run(["gh", "auth", "setup-git"], check=True)
     subprocess.run(["git", "-C", str(root), "push", "origin", f"HEAD:refs/heads/{branch}"], check=True)
@@ -595,9 +609,22 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str) -> None:
             "**Draft**. Requires backend owner, independent Safety review, full "
             "Windows/Linux VM acceptance and normal CI. **No auto-merge permission; "
             "no installed guest, dual boot, uninstall, disk writer or release proof.**")
+    if scope == SCOPE2B_ID:
+        body = (
+            f"Qwen 3.5 9B task scoped by trusted main for issue #{SCOPE2B_ISSUE}; "
+            f"dev base {base}; platform {SCOPE2B_PLATFORM}; gate {SCOPE2B_GATE}.\n\n"
+            "Adds a **read-only pinned ISO descriptor match**, not cryptographic "
+            "origin validation. Source authenticity remains UNVERIFIED even "
+            "when all declared fields match. No disk/boot/installation authority. "
+            "Independent AST/functional checks and product regressions required. "
+            "This PR must remain Draft pending backend Safety, normal CI and "
+            "separate Windows/Linux VM acceptance. Never auto-merge or release."
+        )
+    title = (f"feat(mint): pinned ISO descriptor preflight from task #{SCOPE2B_ISSUE}"
+             if scope == SCOPE2B_ID else
+             f"feat({role}): autonomous lifecycle evidence proposal")
     subprocess.run(["gh", "pr", "create", "--repo", REPO, "--draft", "--base", "dev",
-                    "--head", branch, "--title", f"feat({role}): autonomous lifecycle evidence proposal",
-                    "--body", body], check=True)
+                    "--head", branch, "--title", title, "--body", body], check=True)
 
 
 def main() -> None:
@@ -606,6 +633,7 @@ def main() -> None:
     cli.add_argument("--repo", type=Path, required=True)
     cli.add_argument("--evidence", type=Path, default=Path("evidence/feature-factory"))
     cli.add_argument("--role", choices=tuple(TASKS))
+    cli.add_argument("--scope", choices=("lifecycle", SCOPE2B_ID), default="lifecycle")
     cli.add_argument("--base")
     args = cli.parse_args()
     root = args.repo.resolve(strict=True)
@@ -615,11 +643,12 @@ def main() -> None:
     if not args.role or not args.base:
         cli.error("Pinned role/base SHA required")
     if args.action == "generate":
-        generate(root, args.evidence, args.role, args.base)
+        generate(root, args.evidence, args.role, args.base, scope=args.scope)
     elif args.action == "verify":
-        print(json.dumps(verify(root, args.evidence, args.role, args.base, execute=True), sort_keys=True))
+        print(json.dumps(verify(root, args.evidence, args.role, args.base,
+                                execute=True, scope=args.scope), sort_keys=True))
     else:
-        publish(root, args.evidence, args.role, args.base)
+        publish(root, args.evidence, args.role, args.base, scope=args.scope)
 
 
 if __name__ == "__main__":
