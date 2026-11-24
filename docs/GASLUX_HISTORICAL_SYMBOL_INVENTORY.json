@@ -10078,6 +10078,321 @@
           "test": false
         }
       ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_separate_allocation_plan.py",
+      "blob": "ce801d91b7e0811b4d0406c8874ff54f23955357",
+      "symbol_count": 18,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_storage_fixture_decryption.py",
+      "blob": "df46e844452285e0d9a74f08dd022afdae8f9fe8",
+      "symbol_count": 10,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_storage_fixtures.py",
+      "blob": "a1eb14e353812bef292263b447b42f2b9c764b99",
+      "symbol_count": 28,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_storage_test_modes.py",
+      "blob": "b34a5afd656fca3258ed8545e097d514e04af977",
+      "symbol_count": 9,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_secondary_disk_mode_does_not_change_later_default_runs.FakeAutomationService.__init__",
+          "line": 57,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_secondary_disk_mode_does_not_change_later_default_runs.FakeAutomationService.run",
+          "line": 60,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_temporary_efi_rollback.py",
+      "blob": "3cbec8584756022599450595a56386e2d7c83469",
+      "symbol_count": 2,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_transport_clients.py",
+      "blob": "d34075d886a8eaf2b9e257ef1789be4061f1730f",
+      "symbol_count": 96,
+      "matches": [
+        {
+          "name": "FakeChannel",
+          "kind": "class",
+          "qualified": "FakeChannel",
+          "line": 54,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "FakeChannel.__init__",
+          "line": 55,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "FakeChannel.close",
+          "line": 84,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "FakeStdin.__init__",
+          "line": 92,
+          "test": false
+        },
+        {
+          "name": "flush",
+          "kind": "def",
+          "qualified": "FakeStdin.flush",
+          "line": 99,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "FakeParamikoClient.__init__",
+          "line": 104,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "FakeParamikoClient.close",
+          "line": 140,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_ssh_text_upload_writes_exactly_one_utf8_bom.FakeRemote.__init__",
+          "line": 146,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_ssh_text_upload_writes_exactly_one_utf8_bom.FakeRemote.__enter__",
+          "line": 149,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_ssh_text_upload_writes_exactly_one_utf8_bom.FakeRemote.__exit__",
+          "line": 152,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_ssh_text_upload_writes_exactly_one_utf8_bom.FakeSftp.__init__",
+          "line": 159,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_ssh_text_upload_writes_exactly_one_utf8_bom.FakeSftp.__enter__",
+          "line": 169,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_ssh_text_upload_writes_exactly_one_utf8_bom.FakeSftp.__exit__",
+          "line": 172,
+          "test": false
+        },
+        {
+          "name": "FakeChannel",
+          "kind": "class",
+          "qualified": "test_ssh_file_upload_sets_a_stall_timeout_and_forwards_progress.FakeChannel",
+          "line": 198,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_ssh_file_upload_sets_a_stall_timeout_and_forwards_progress.FakeSftp.__init__",
+          "line": 205,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_ssh_file_upload_sets_a_stall_timeout_and_forwards_progress.FakeSftp.__enter__",
+          "line": 208,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_ssh_file_upload_sets_a_stall_timeout_and_forwards_progress.FakeSftp.__exit__",
+          "line": 211,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "FakeVncConnection.__init__",
+          "line": 687,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_ubuntu_target_backend_preflight.py",
+      "blob": "6f291af33251ededa3b4876e761be76754690550",
+      "symbol_count": 14,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_uefi_bootentries.py",
+      "blob": "1d119b20df9643123e472e64abfe9628e68a4ccf",
+      "symbol_count": 3,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_uefi_vendor_config.py",
+      "blob": "63adfdc25eda65c155253aec263530a4e27553f2",
+      "symbol_count": 1,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_vision_llm.py",
+      "blob": "36910d2f00d84929f1e705950e94484dbe7a504d",
+      "symbol_count": 19,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_windows_lab_login.py",
+      "blob": "380c5b38dc9a5e974c65f701cbe73fd4ac7c6817",
+      "symbol_count": 7,
+      "matches": [
+        {
+          "name": "lab",
+          "kind": "def",
+          "qualified": "lab",
+          "line": 12,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_windows_preference_migration.py",
+      "blob": "48e06a31f85769b8f595424ec1b074ffad2e0c3e",
+      "symbol_count": 25,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_windows_profile_shortcuts.py",
+      "blob": "edb4f8cb524252dc9a35f1b505e991ae55404a68",
+      "symbol_count": 4,
+      "matches": [
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_verifier_checks_actual_partition_profile_target_and_access.run",
+          "line": 96,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_windows_sharing_inventory.py",
+      "blob": "067f533ffd50f0574a2a3295bf9e408095801f3c",
+      "symbol_count": 27,
+      "matches": [
+        {
+          "name": "fake_run",
+          "kind": "def",
+          "qualified": "test_existing_windows_mount_requires_readonly_norecover_and_known_options.fake_run",
+          "line": 320,
+          "test": false
+        },
+        {
+          "name": "fake_run",
+          "kind": "def",
+          "qualified": "test_existing_windows_mount_rejects_ambiguous_findmnt_state.fake_run",
+          "line": 339,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_windows_vm_host_capacity.py",
+      "blob": "06f9914bda14067972d21015a44bf504924a88c2",
+      "symbol_count": 21,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "FakeVfs.__init__",
+          "line": 17,
+          "test": false
+        },
+        {
+          "name": "setUp",
+          "kind": "def",
+          "qualified": "WindowsVmHostCapacityTests.setUp",
+          "line": 23,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tools/ai_rank_candidate.py",
+      "blob": "f79ae9efb2d6e196e306c172708fc05ccc8082cb",
+      "symbol_count": 4,
+      "matches": [
+        {
+          "name": "preflight",
+          "kind": "def",
+          "qualified": "preflight",
+          "line": 50,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 65,
+          "test": false
+        }
+      ]
     }
   ],
   "limitations": [
