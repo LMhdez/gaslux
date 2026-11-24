@@ -342,7 +342,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
-          GASLUX_PUBLISH_APP_BOT_LOGIN: ${{ vars.GASLUX_PUBLISH_APP_BOT_LOGIN }}
+          # Default only to the observed PR #407 GitHub App actor;
+          # live PR identity/repo/branch checks remain fail-closed.
+          GASLUX_PUBLISH_APP_BOT_LOGIN: ${{ vars.GASLUX_PUBLISH_APP_BOT_LOGIN || 'gaslux-autonomous-publisher[bot]' }}
         shell: bash
         run: |
           set -euo pipefail
