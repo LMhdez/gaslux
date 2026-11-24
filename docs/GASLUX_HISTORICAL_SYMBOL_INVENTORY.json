@@ -7477,6 +7477,188 @@
           "test": false
         }
       ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-ntfs-permissions.py",
+      "blob": "4fc7aa220de842821c2d0b82dca99a13bc1e6901",
+      "symbol_count": 3,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 44,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-offline-ntfs-resize.sh",
+      "blob": "38afe94e5bd606bf26216ded755a10bc69a93ca8",
+      "symbol_count": 2,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-preferred-boot-path.py",
+      "blob": "2202e84f094c1f3e7b2d67ddd8fbb90f51a478c5",
+      "symbol_count": 16,
+      "matches": [
+        {
+          "name": "sha256",
+          "kind": "def",
+          "qualified": "sha256",
+          "line": 25,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 425,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-rollback-common.sh",
+      "blob": "7691c415d2cac9cf7238bfaa62b74249dfc195e1",
+      "symbol_count": 8,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-runner-main.sh",
+      "blob": "28ced1edf72832882dc1a3cff27fe5ff25b16109",
+      "symbol_count": 39,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-runner-stage-common.sh",
+      "blob": "f692394647b0e9ee9cd185d79d352ab958a7267b",
+      "symbol_count": 3,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-secure-boot-chain.py",
+      "blob": "848226a7e29540ea17e17dc27359cd420a60cd14",
+      "symbol_count": 26,
+      "matches": [
+        {
+          "name": "verify",
+          "kind": "def",
+          "qualified": "verify",
+          "line": 457,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 628,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-storage-common.sh",
+      "blob": "6d7fc85b9216625cbf46a247ae83ba3af95b9d0c",
+      "symbol_count": 26,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-sync-efi.sh",
+      "blob": "3c93d6ba0c4538dcf209644a10503ea9f5e1c650",
+      "symbol_count": 11,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-target-common.sh",
+      "blob": "85caac6a1a3b615962f236c32e8049a6ebea5735",
+      "symbol_count": 7,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-uefi-adapter.sh",
+      "blob": "fed5228b27c8f4fa8da9f83f08e6c727da83d6a1",
+      "symbol_count": 25,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-uefi-bootentries.py",
+      "blob": "ade36c549ad21bdc9bdda186e7df839f1ad6beee",
+      "symbol_count": 6,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 94,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-update-grub.sh",
+      "blob": "1cf3ac619fcbaed4958a94cc189b2fc86c94e700",
+      "symbol_count": 1,
+      "matches": [
+        {
+          "name": "cleanup",
+          "kind": "shell_function",
+          "qualified": "cleanup",
+          "line": 22,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix-validate-grub.sh",
+      "blob": "e468cb13c9cda0e85b304e1ca13f59b14d5e3cea",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix_disk_identity_gate.py",
+      "blob": "e82a401d5a160bfb5ca232b9a820417347dfc22a",
+      "symbol_count": 8,
+      "matches": [
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 23,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/live/libertix_installation_policy.py",
+      "blob": "019ae38412d80e98727f8e50e2f5e9adcefce0ea",
+      "symbol_count": 9,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 191,
+          "test": false
+        }
+      ]
     }
   ],
   "limitations": [
