@@ -98,6 +98,16 @@ jobs:
               with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
                   summary.write('### GASLUX: actual unsatisfied lifecycle gates (read-only)\n\n')
                   summary.write('No new Qwen code scope authorized; no installer or release gates proved.\n\n')
+                  summary.write(
+                      f"Full six-distro inventory: {row['required_gate_slots']} "
+                      f"backend/platform/gate slots; {row['scope_review_slots']} "
+                      f"scope-review candidates; {row['protected_vm_slots']} "
+                      f"protected VM/evidence gates. Declared but unverified: "
+                      f"{row['declared_unverified_slots']}; independently verified: "
+                      f"{row['independently_verified_slots']}.\n\n"
+                  )
+                  # Complete inventory stays read-only; triage retains its
+                  # existing conservative six-backend admissibility contract.
                   for item in row['next_gates']:
                       summary.write(
                           f"- {item['role']} / {item['platform']} / {item['gate']}: "
