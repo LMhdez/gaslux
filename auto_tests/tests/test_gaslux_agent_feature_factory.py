@@ -267,6 +267,148 @@ class FeatureFactoryTests(unittest.TestCase):
             self.assertEqual(result["base"], "a" * 40)
             self.assertEqual(len(result["next_gates"]), 6)
 
+    def test_legacy_scope_claims_survive_dev_sha_advance(self):
+        """Do not regenerate five existing bot PRs on a newer dev SHA."""
+        def claim(role, base="a" * 40, *,
+                  author="github-actions[bot]", repo=factory.REPO):
+            return {
+                "state": "open", "draft": True,
+                "head": {
+                    "ref": f"bot/gaslux-feature-{role}-{base[:12]}",
+                    "repo": {"full_name": repo},
+                },
+                "base": {"ref": "dev", "repo": {"full_name": factory.REPO}},
+                "user": {"type": "Bot", "login": author},
+            }
+
+        rows = [
+            claim(role) for role in (
+                "zorin", "cachyos", "popos", "q4os", "bazzite"
+            )
+        ]
+        rows.append({
+            "state": "open", "draft": True,
+            "head": {"ref": "feature/something-else",
+                     "repo": {"full_name": factory.REPO}},
+            "base": {"ref": "dev", "repo": {"full_name": factory.REPO}},
+            "user": {"type": "User", "login": "contributor"},
+        })
+        with patch.object(
+            factory.subprocess, "run",
+            return_value=subprocess.CompletedProcess(
+                args=[], returncode=0, stdout=json.dumps(rows), stderr="",
+            ),
+        ) as gh:
+            claimed = factory.claimed_lifecycle_roles()
+        self.assertEqual(
+            claimed, {"zorin", "cachyos", "popos", "q4os", "bazzite"}
+        )
+        self.assertEqual(gh.call_count, 1)
+        self.assertIn("pulls?state=open", gh.call_args.args[0][2])
+        # Changing dev SHA must not create a second set of role proposals.
+        # Mint is already implemented; all other roles are claimed.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            platforms = [
+                "windows10-bios-mbr", "windows10-uefi-gpt",
+                "windows11-uefi-gpt",
+            ]
+            docs = root / "docs/autonomy"
+            docs.mkdir(parents=True)
+            (docs / "goal.json").write_text(json.dumps({
+                "schema_version": 1,
+                "platforms": platforms,
+                "gates": list(factory.GATES),
+                "automatic_safe_gates": list(factory.GATES[:2]),
+                "protected_gates": list(factory.GATES[2:]),
+                "backends": [{
+                    "id": role, "priority": i, "issue_numbers": [],
+                    "platforms": (platforms[1:] if role == "bazzite"
+                                  else platforms),
+                } for i, role in enumerate(factory.TASKS)],
+            }))
+            (docs / "evidence.json").write_text(
+                json.dumps({"schema_version": 1, "records": []})
+            )
+            for role, (path, _, _) in factory.TASKS.items():
+                target = root / path
+                target.parent.mkdir(parents=True, exist_ok=True)
+                with target.open("a") as output:
+                    output.write(f"# role {role} source\n")
+                    if role == "mint":
+                        output.write(
+                            "def assess_mint_lifecycle(evidence: dict) -> dict:\n"
+                            "    return {}\n"
+                        )
+            with patch.object(factory, "git", return_value="b" * 40), \\
+                 patch.object(factory, "claimed_lifecycle_roles",
+                              return_value=claimed), \\
+                 patch.object(factory.subprocess, "run") as gh:
+                result = factory.plan(root)
+                gh.assert_not_called()
+            self.assertEqual(result["status"], "blocked")
+            self.assertEqual(result["required_gate_slots"], 136)
+            self.assertEqual(result["scope_review_slots"], 34)
+            self.assertEqual(result["protected_vm_slots"], 102)
+
+    def test_legacy_scope_pr_dedup_is_authenticated_and_fails_closed(self):
+        def pr(*, author="github-actions[bot]", role="zorin",
+               repo=factory.REPO):
+            return {
+                "state": "open", "draft": True,
+                "head": {
+                    "ref": f"bot/gaslux-feature-{role}-" + "a" * 12,
+                    "repo": {"full_name": repo},
+                },
+                "base": {"ref": "dev", "repo": {"full_name": factory.REPO}},
+                "user": {"type": "Bot", "login": author},
+            }
+
+        good = pr()
+        cases = [
+            [pr(author="external-unknown[bot]")],
+            [dict(good, draft="false")],
+            [dict(good, state="closed")],
+            [dict(good, base={"ref": "main",
+                              "repo": {"full_name": factory.REPO}})],
+            [dict(good, head={
+                "ref": good["head"]["ref"],
+                "repo": {"full_name": "attacker/gaslux"},
+            })],
+            [{"state": "open"}],
+        ]
+        for bad in cases:
+            with self.subTest(row=bad), patch.object(
+                factory.subprocess, "run",
+                return_value=subprocess.CompletedProcess(
+                    args=[], returncode=0, stdout=json.dumps(bad), stderr="",
+                ),
+            ):
+                with self.assertRaises(ValueError):
+                    factory.claimed_lifecycle_roles()
+        for stdout, code in [
+            ("{}", 0), ("not JSON", 0), (json.dumps([good] * 100), 0),
+            (json.dumps([good]), 1),
+        ]:
+            with self.subTest(stdout=stdout[:30], code=code), patch.object(
+                factory.subprocess, "run",
+                return_value=subprocess.CompletedProcess(
+                    args=[], returncode=code, stdout=stdout,
+                    stderr="GitHub error" if code else "",
+                ),
+            ):
+                with self.assertRaises((RuntimeError, ValueError)):
+                    factory.claimed_lifecycle_roles()
+        with patch.object(
+            factory.subprocess, "run",
+            return_value=subprocess.CompletedProcess(
+                args=[], returncode=0,
+                stdout=json.dumps([pr(author="gaslux-autonomous-publisher[bot]")]),
+                stderr="",
+            ),
+        ):
+            self.assertEqual(factory.claimed_lifecycle_roles(), {"zorin"})
+
     def test_no_remote_writer_or_insecure_backend_authority(self):
         for role in factory.TASKS:
             src = valid(role)
