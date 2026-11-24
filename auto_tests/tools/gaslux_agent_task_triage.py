@@ -81,7 +81,6 @@ def all_issues() -> list[dict]:
 
 # Exact issue author identities only; contributor-controlled text has no authority.
 TRUSTED_TASK_BOT = "github-actions[bot]"
-TRUSTED_REVIEW_AUTHORS = frozenset(("LMhdez", "Dinisiho"))
 
 
 def trusted_task_keys(issues: list[dict]) -> set[tuple[str, str, str]]:
