@@ -38,7 +38,7 @@ def equality_only() -> str:
 def accepted() -> str:
     """Reference producer candidate must use exact type identities for all pins."""
     return (
-        "def match_mint_223_iso_descriptor(candidate: dict) -> dict:\\n"
+        "def match_mint_223_iso_descriptor(candidate: dict) -> dict:\n"
         "    matched = type(candidate) is dict and "
         "type(candidate.get('id')) is str and "
         "candidate.get('id') == 'mint' and "
@@ -49,10 +49,10 @@ def accepted() -> str:
         "candidate.get('isoInstallerSha256') == "
         "'a081ab202cfda17f6924128dbd2de8b63518ac0531bcfe3f1a1b88097c459bd4' "
         "and type(candidate.get('isoInstallerSizeBytes')) is int and "
-        "candidate.get('isoInstallerSizeBytes') == 3091660800\\n"
+        "candidate.get('isoInstallerSizeBytes') == 3091660800\n"
         "    return {'backend': 'mint', 'pinnedDescriptorMatches': matched, "
         "'sourceAuthenticityVerified': False, 'installationAuthorized': False, "
-        "'releaseEligible': False}\\n"
+        "'releaseEligible': False}\n"
     )
 
 
