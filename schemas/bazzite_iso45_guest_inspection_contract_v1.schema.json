@@ -1,0 +1,519 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/LMhdez/gaslux/blob/main/schemas/bazzite_iso45_guest_inspection_contract_v1.schema.json",
+  "title": "Bazzite ISO45 unauthenticated guest inspection PROPOSAL v1 — no authority",
+  "description": "Schema shape only: validation must never grant a guest channel or disk writes.",
+  "type": "object",
+  "properties": {
+    "schemaVersion": {
+      "const": 1
+    },
+    "origin": {
+      "const": "synthetic-untrusted-proposal"
+    },
+    "media": {
+      "type": "object",
+      "properties": {
+        "isoSha256": {
+          "const": "6120b6edc2d87e7bdccf8dfddc8b156552cd50b152cb0a9e9dedb37fb947cbe5"
+        },
+        "isoSizeBytes": {
+          "const": 8377878528
+        },
+        "version": {
+          "const": "45.20261117.1"
+        },
+        "payloadDigest": {
+          "const": "sha256:492f83c738838861464685aed341783c2ea2266c82a9f19f0c867fd301783fd4"
+        },
+        "sourceRunId": {
+          "const": 44822100590
+        },
+        "sourceArtifactId": {
+          "const": 14672623998
+        },
+        "sourceArchiveSha256": {
+          "const": "ba434ddf46e892c80325608b87cf6933da88bda716e144cfd63df0a49904a00c"
+        }
+      },
+      "required": [
+        "isoSha256",
+        "isoSizeBytes",
+        "version",
+        "payloadDigest",
+        "sourceRunId",
+        "sourceArtifactId",
+        "sourceArchiveSha256"
+      ],
+      "additionalProperties": false
+    },
+    "run": {
+      "type": "object",
+      "properties": {
+        "transaction": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{32}$"
+        },
+        "challenge": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "qemuPid": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "qemuStartTicks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "qemuExecutableSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "qemuArgvSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "hostVmId": {
+          "type": "string",
+          "pattern": "^gaslux-bazzite-"
+        },
+        "guestVmId": {
+          "type": "string",
+          "pattern": "^gaslux-bazzite-"
+        },
+        "sequence": {
+          "const": 1
+        }
+      },
+      "required": [
+        "transaction",
+        "challenge",
+        "qemuPid",
+        "qemuStartTicks",
+        "qemuExecutableSha256",
+        "qemuArgvSha256",
+        "hostVmId",
+        "guestVmId",
+        "sequence"
+      ],
+      "additionalProperties": false
+    },
+    "storage": {
+      "type": "object",
+      "properties": {
+        "firmware": {
+          "const": "uefi"
+        },
+        "partitionTable": {
+          "const": "gpt"
+        },
+        "diskCount": {
+          "const": 1
+        },
+        "hostDisk": {
+          "type": "object",
+          "properties": {
+            "serial": {
+              "const": "GLXBAZRO001"
+            },
+            "guid": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+            },
+            "logicalSectorBytes": {
+              "const": 512
+            },
+            "sizeBytes": {
+              "const": 75161927680
+            },
+            "partitions": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "typeGuid": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+                  },
+                  "partuuid": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+                  },
+                  "firstSector": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "lastSector": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "number",
+                  "typeGuid",
+                  "partuuid",
+                  "firstSector",
+                  "lastSector"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "serial",
+            "guid",
+            "logicalSectorBytes",
+            "sizeBytes",
+            "partitions"
+          ],
+          "additionalProperties": false
+        },
+        "guestDisk": {
+          "type": "object",
+          "properties": {
+            "serial": {
+              "const": "GLXBAZRO001"
+            },
+            "guid": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+            },
+            "logicalSectorBytes": {
+              "const": 512
+            },
+            "sizeBytes": {
+              "const": 75161927680
+            },
+            "partitions": {
+              "type": "array",
+              "minItems": 3,
+              "maxItems": 3,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "typeGuid": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+                  },
+                  "partuuid": {
+                    "type": "string",
+                    "pattern": "^[0-9a-f]{8}(-[0-9a-f]{4}){3}-[0-9a-f]{12}$"
+                  },
+                  "firstSector": {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  "lastSector": {
+                    "type": "integer",
+                    "minimum": 1
+                  }
+                },
+                "required": [
+                  "number",
+                  "typeGuid",
+                  "partuuid",
+                  "firstSector",
+                  "lastSector"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": [
+            "serial",
+            "guid",
+            "logicalSectorBytes",
+            "sizeBytes",
+            "partitions"
+          ],
+          "additionalProperties": false
+        },
+        "additionalDisks": {
+          "type": "array",
+          "maxItems": 0
+        },
+        "windowsAttached": {
+          "const": false
+        }
+      },
+      "required": [
+        "firmware",
+        "partitionTable",
+        "diskCount",
+        "hostDisk",
+        "guestDisk",
+        "additionalDisks",
+        "windowsAttached"
+      ],
+      "additionalProperties": false
+    },
+    "collector": {
+      "type": "object",
+      "properties": {
+        "path": {
+          "const": "auto_tests/bazzite_anaconda_readonly_capture.py"
+        },
+        "hostSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "guestSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "transport": {
+          "const": "not-established"
+        },
+        "invoked": {
+          "const": false
+        }
+      },
+      "required": [
+        "path",
+        "hostSha256",
+        "guestSha256",
+        "transport",
+        "invoked"
+      ],
+      "additionalProperties": false
+    },
+    "installer": {
+      "type": "object",
+      "properties": {
+        "service": {
+          "const": "org.fedoraproject.Anaconda.Modules.Storage"
+        },
+        "owner": {
+          "type": "string",
+          "pattern": "^:1\\.[0-9]+$"
+        },
+        "pid": {
+          "type": "integer",
+          "minimum": 2
+        },
+        "startTicks": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "executableSha256": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{64}$"
+        },
+        "version": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._+:-]+$"
+        },
+        "servicePresent": {
+          "const": true
+        }
+      },
+      "required": [
+        "service",
+        "owner",
+        "pid",
+        "startTicks",
+        "executableSha256",
+        "version",
+        "servicePresent"
+      ],
+      "additionalProperties": false
+    },
+    "dbus": {
+      "type": "object",
+      "properties": {
+        "allowlistedMethods": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "GetActions",
+              "GetDevices",
+              "GetDisks",
+              "GetMountPoints",
+              "GetBootDevice",
+              "GetDeviceData",
+              "GetFormatData"
+            ]
+          },
+          "minItems": 2,
+          "maxItems": 7,
+          "allOf": [
+            {
+              "contains": {
+                "const": "GetActions"
+              }
+            },
+            {
+              "contains": {
+                "const": "GetDevices"
+              }
+            }
+          ]
+        },
+        "replies": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 7,
+          "items": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "enum": [
+                  "GetActions",
+                  "GetDevices",
+                  "GetDisks",
+                  "GetMountPoints",
+                  "GetBootDevice",
+                  "GetDeviceData",
+                  "GetFormatData"
+                ]
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 1048576
+              },
+              "sha256": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "elapsedMs": {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 12000
+              },
+              "truncated": {
+                "const": false
+              },
+              "timedOut": {
+                "const": false
+              }
+            },
+            "required": [
+              "method",
+              "text",
+              "sha256",
+              "elapsedMs",
+              "truncated",
+              "timedOut"
+            ],
+            "additionalProperties": false
+          },
+          "contains": {
+            "type": "object",
+            "properties": {
+              "method": {
+                "const": "GetActions"
+              }
+            },
+            "required": [
+              "method"
+            ]
+          }
+        }
+      },
+      "required": [
+        "allowlistedMethods",
+        "replies"
+      ],
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "properties": {
+        "source": {
+          "const": "untrusted-runner"
+        },
+        "independentlyVerified": {
+          "const": false
+        },
+        "trustRoot": {
+          "type": "null"
+        },
+        "safetyApproved": {
+          "const": false
+        },
+        "observerApproved": {
+          "const": false
+        }
+      },
+      "required": [
+        "source",
+        "independentlyVerified",
+        "trustRoot",
+        "safetyApproved",
+        "observerApproved"
+      ],
+      "additionalProperties": false
+    },
+    "permissions": {
+      "type": "object",
+      "properties": {
+        "installationAuthorized": {
+          "const": false
+        },
+        "partitionWriteAuthorized": {
+          "const": false
+        },
+        "gptMetadataWriteAuthorized": {
+          "const": false
+        },
+        "windowsEspWriteAuthorized": {
+          "const": false
+        },
+        "nvramWriteAuthorized": {
+          "const": false
+        },
+        "secureBootEnrollmentAuthorized": {
+          "const": false
+        },
+        "getActionsObserved": {
+          "const": false
+        },
+        "writeSetVerified": {
+          "const": false
+        },
+        "guestCommandChannelAuthorized": {
+          "const": false
+        }
+      },
+      "required": [
+        "installationAuthorized",
+        "partitionWriteAuthorized",
+        "gptMetadataWriteAuthorized",
+        "windowsEspWriteAuthorized",
+        "nvramWriteAuthorized",
+        "secureBootEnrollmentAuthorized",
+        "getActionsObserved",
+        "writeSetVerified",
+        "guestCommandChannelAuthorized"
+      ],
+      "additionalProperties": false
+    }
+  },
+  "required": [
+    "schemaVersion",
+    "origin",
+    "media",
+    "run",
+    "storage",
+    "collector",
+    "installer",
+    "dbus",
+    "provenance",
+    "permissions"
+  ],
+  "additionalProperties": false
+}
