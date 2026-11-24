@@ -102,9 +102,10 @@ class TaskTriageTests(unittest.TestCase):
 
     def test_f40301_foreign_fork_or_author_cannot_claim_bot_pr(self):
         backlog = self.backlog()
+        outsider = self.task_claim_pr(author="outside-contributor")
+        outsider["user"]["type"] = "User"
         for forged in [
-            self.task_claim_pr(repo="attacker/gaslux"),
-            self.task_claim_pr(author="outside-contributor"),
+            self.task_claim_pr(repo="attacker/gaslux"), outsider,
         ]:
             with self.subTest(forged=forged):
                 result = triage.choose(backlog, [forged], [])
@@ -249,9 +250,12 @@ class TaskTriageTests(unittest.TestCase):
             })
         # Only explicit main-source issue-to-gate mappings may defer work.
         self.assertEqual(triage.choose(backlog, [], manual)["role"], "mint")
-        backlog["next_gates"][-1]["related_issues"] = []
+        # Isolate the Bazzite gate so upstream pending roles cannot short-circuit
+        # the scope negative fixture.
+        backlog["next_gates"] = [bazzite]
+        bazzite["related_issues"] = []
         self.assertEqual(triage.choose(backlog, [], manual)["role"], "bazzite")
-        backlog["next_gates"][-1]["gate"] = "install"
+        bazzite["gate"] = "install"
         with self.assertRaises(ValueError):
             triage.choose(backlog, [], manual)
 
@@ -344,6 +348,14 @@ class TaskTriageTests(unittest.TestCase):
             with self.subTest(method=method, route=route):
                 with self.assertRaises(ValueError):
                     triage.api(method, route)
+
+    def test_workflow_passes_only_trusted_main_app_actor_setting(self):
+        workflow = (SCRIPT.parents[2] /
+                    ".github/workflows/gaslux-agent-feature-factory.yml").read_text()
+        _, triage_job = workflow.split("  triage_missing_gates:\n", 1)
+        self.assertIn("GASLUX_PUBLISH_APP_BOT_LOGIN: ${{ vars.GASLUX_PUBLISH_APP_BOT_LOGIN }}",
+                      triage_job)
+        self.assertNotIn("GASLUX_PUBLISH_APP_PRIVATE_KEY", triage_job)
 
     def test_workflow_temporary_write_token_only_in_trusted_triage_job(self):
         workflow = (SCRIPT.parents[2] /
