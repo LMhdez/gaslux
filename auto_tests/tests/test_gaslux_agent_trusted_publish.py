@@ -221,5 +221,23 @@ class TrustedPublisherTests(unittest.TestCase):
             pub.validate(item, self.original, self.changed)
 
 
+    def test_clock_pr_publish_token_is_not_shared_with_untrusted_worker(self):
+        workflow = (
+            SCRIPT.parents[2] / ".github/workflows/gaslux-agent-clock.yml"
+        ).read_text(encoding="utf-8")
+        developer, publisher = workflow.split("  integrator_publisher:\n", 1)
+        self.assertNotIn("GASLUX_PUBLISH_APP_PRIVATE_KEY", developer)
+        self.assertIn("id: publish_identity", publisher)
+        self.assertIn("vars.GASLUX_PUBLISH_APP_CLIENT_ID != ''", publisher)
+        self.assertIn("secrets.GASLUX_PUBLISH_APP_PRIVATE_KEY", publisher)
+        self.assertIn("repositories: gaslux", publisher)
+        self.assertIn("permission-contents: write", publisher)
+        self.assertIn("permission-pull-requests: write", publisher)
+        self.assertIn(
+            "GH_TOKEN: ${{ steps.publish_identity.outputs.token || secrets.GITHUB_TOKEN }}",
+            publisher,
+        )
+        self.assertNotIn("pull_request_target:", workflow)
+
 if __name__ == "__main__":
     unittest.main()
