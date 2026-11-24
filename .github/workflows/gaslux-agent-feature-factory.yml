@@ -208,7 +208,13 @@ jobs:
 
   publish_draft:
     needs: [select, model, safety]
-    if: needs.model.result == 'success' && needs.safety.result == 'success' && github.ref == 'refs/heads/main'
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      needs.model.result == 'success' &&
+      needs.safety.result == 'success'
+    environment: gaslux-main-publisher
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     permissions:
