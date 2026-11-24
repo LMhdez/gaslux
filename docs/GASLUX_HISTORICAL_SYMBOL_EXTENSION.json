@@ -1016,6 +1016,212 @@
       "blob": "1a7f5f93f62e67ff093ec7ff716861fc00e31059",
       "symbol_count": 12,
       "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/stream_events.py",
+      "blob": "5bb8f7f77aa64a8bddaa07e5304297d552c75b4f",
+      "symbol_count": 11,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "StreamEventProjector.__init__",
+          "line": 18,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "docker/iso-builder/build-isos.sh",
+      "blob": "1d3f6d289f64f20ef1e0a6d3b8c725101ac90657",
+      "symbol_count": 3,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "docker/iso-builder/verify-built-iso.sh",
+      "blob": "253b2111c16de027bf0e41990d366bdf19172b7f",
+      "symbol_count": 1,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "grub/render-libertix-menu.py",
+      "blob": "1733f385ef33acfbd5f9c338fb68d69601f84788",
+      "symbol_count": 8,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 83,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "install-party-kit/AdjacentFilepool/populate-filepool.sh",
+      "blob": "bd7c39f9816ca2e55846a3a1cb75be8fb648a2e9",
+      "symbol_count": 5,
+      "matches": [
+        {
+          "name": "die",
+          "kind": "shell_function",
+          "qualified": "die",
+          "line": 36,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/build-iso.sh",
+      "blob": "30ad3e08a2c055111e388ff80afa888b07cc5e24",
+      "symbol_count": 21,
+      "matches": [
+        {
+          "name": "cleanup",
+          "kind": "shell_function",
+          "qualified": "cleanup",
+          "line": 420,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/build-isos-docker.sh",
+      "blob": "a6da652dc03a35bb77e662cfca6ade8780c31dea",
+      "symbol_count": 3,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/generate-release-metadata.py",
+      "blob": "b8d19972cd89edca3dbd98ed66953689497402d6",
+      "symbol_count": 10,
+      "matches": [
+        {
+          "name": "sha256",
+          "kind": "def",
+          "qualified": "sha256",
+          "line": 26,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 354,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/prepare-support-artifacts.py",
+      "blob": "142108acbf7c7d498b41e759668aa217a589d6a9",
+      "symbol_count": 8,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 116,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/render-boot-config.py",
+      "blob": "faf2e53d79e221cfd8a89da0fd8ac0ce6e963320",
+      "symbol_count": 4,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 53,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/sign-distribution-catalog.sh",
+      "blob": "4816e3b5977cbfc620d2538b0c3e4f5d1de7b735",
+      "symbol_count": 7,
+      "matches": [
+        {
+          "name": "die",
+          "kind": "shell_function",
+          "qualified": "die",
+          "line": 15,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/sign-release-metadata.py",
+      "blob": "d81207e66315004d29897fda3b7035b1d4281b19",
+      "symbol_count": 5,
+      "matches": [
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 77,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/sync_filepool_checksums.py",
+      "blob": "b17a934520d2e83790ac999479ed72a507252b00",
+      "symbol_count": 5,
+      "matches": [
+        {
+          "name": "sha256",
+          "kind": "def",
+          "qualified": "sha256",
+          "line": 32,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 116,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-uefi/build.sh",
+      "blob": "65c3570b1838346da114271ff649ba27ed838ea0",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-uefi/live/libertix-install.sh",
+      "blob": "e4737685f07572f407436fb1c86ffddaa1ba0a61",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-uefi/live/libertix-runner.sh",
+      "blob": "555e4b819d74c7808630429fec318a3f51518c95",
+      "symbol_count": 0,
+      "matches": []
     }
   ]
 }
