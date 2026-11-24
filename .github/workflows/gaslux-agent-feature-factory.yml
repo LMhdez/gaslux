@@ -37,6 +37,7 @@ jobs:
         run: |
           set -euo pipefail
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_task_triage.py -v
 
   select:
     if: >-
@@ -53,6 +54,7 @@ jobs:
       active: ${{ steps.plan.outputs.active }}
       role: ${{ steps.plan.outputs.role }}
       base: ${{ steps.plan.outputs.base }}
+      blocked: ${{ steps.plan.outputs.blocked }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -82,6 +84,7 @@ jobs:
               out.write('active=' + str(row['status'] == 'pending').lower() + '\n')
               out.write('role=' + row['role'] + '\n')
               out.write('base=' + row['base'] + '\n')
+              out.write('blocked=' + str(row['status'] == 'blocked').lower() + '\n')
           if row['status'] == 'blocked':
               with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
                   summary.write('### GASLUX: actual unsatisfied lifecycle gates (read-only)\n\n')
@@ -269,3 +272,38 @@ jobs:
           set -euo pipefail
           timeout 120 python3 -I trusted/auto_tests/tools/gaslux_agent_feature_factory.py publish \
             --repo source --role "$ROLE" --base "$BASE" --evidence evidence/feature-factory
+
+  triage_missing_gates:
+    needs: select
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      needs.select.outputs.blocked == 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 6
+    permissions:
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Trusted main-only triage source, no persisted Git credential
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - name: Current dev goal and code are read as untrusted data only
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          path: source
+          persist-credentials: false
+      - name: Deduplicate real missing-gate task and publish one scope-review issue
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B trusted/auto_tests/tools/gaslux_agent_task_triage.py --repo source
