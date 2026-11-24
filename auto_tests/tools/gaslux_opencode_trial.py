@@ -7,6 +7,7 @@ import json
 import os
 from pathlib import Path
 import resource
+import re
 import selectors
 import shutil
 import signal
@@ -38,6 +39,17 @@ PROMPT = (
     "releaseEligible=False. No imports, other functions, loops, shell or I/O. "
     "Use a tuple, comprehension, and literal False flags."
 )
+# CLI --format json structures the event envelope, not the model's answer.
+# The native agent returns source inside the text event, without nested JSON.
+AGENT_PROMPT = PROMPT.replace(
+    "Return exactly one JSON object with key addition, no Markdown. "
+    "Its value is a Python function with signature ",
+    "Return only the Python function source, no explanation and no JSON encoding. "
+    "A single complete Python code block is permitted. Use signature ",
+)
+SIGNATURE = "def assess_mint_lifecycle(evidence: dict) -> dict:"
+MAX_ADDITION_BYTES = 16384
+
 
 
 def prepare(work: Path, source: Path = ROOT):
@@ -78,6 +90,47 @@ class TrialFailure(ValueError):
         self.skills = sorted(set(skills))
         self.counts = counts or {}
         self.detail = detail
+
+
+def decode_candidate(text):
+    """Extract exactly one complete answer; never search prose for executable code."""
+    text = text.strip()
+    if not text or len(text.encode("utf-8")) > MAX_ADDITION_BYTES:
+        raise TrialFailure("CANDIDATE_SIZE_INVALID")
+    if text.startswith("```"):
+        match = re.fullmatch(r"```(python|py|json)?[ \t]*\r?\n(.*?)\r?\n```", text, re.DOTALL)
+        if not match or "```" in match.group(2):
+            raise TrialFailure("CANDIDATE_FENCE_INVALID")
+        language, text = match.group(1), match.group(2).strip()
+        if language == "json" and not text.startswith("{"):
+            raise TrialFailure("CANDIDATE_JSON_INVALID", detail="JSON_FENCE")
+        if language in ("python", "py") and not text.startswith(SIGNATURE):
+            raise TrialFailure("CANDIDATE_FORMAT_INVALID", detail="PYTHON_FENCE")
+    if text.startswith(SIGNATURE):
+        # No repair, code substitution or arbitrary execution. The unchanged
+        # factory.validate_addition() checks every AST node and fixtures next.
+        return text
+    if not text.startswith("{"):
+        raise TrialFailure("CANDIDATE_FORMAT_INVALID", detail="NON_SOURCE_TEXT")
+
+    def unique_keys(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("duplicate key")
+            result[key] = value
+        return result
+
+    try:
+        result = json.loads(text, object_pairs_hook=unique_keys)
+    except (ValueError, UnicodeError):
+        raise TrialFailure("CANDIDATE_JSON_INVALID", detail="JSON_OBJECT") from None
+    if type(result) is not dict or set(result) != {"addition"} or type(result["addition"]) is not str:
+        raise TrialFailure("CANDIDATE_SCHEMA_INVALID")
+    addition = result["addition"]
+    if not addition or len(addition.encode("utf-8")) > MAX_ADDITION_BYTES:
+        raise TrialFailure("CANDIDATE_SIZE_INVALID")
+    return addition
 
 
 def parse_events(raw: bytes):
@@ -148,12 +201,10 @@ def parse_events(raw: bytes):
     if not texts:
         fail("NO_FINAL_TEXT")
     try:
-        result = json.loads("".join(texts).strip())
-    except (ValueError, UnicodeError):
-        fail("CANDIDATE_JSON_INVALID")
-    if type(result) is not dict or set(result) != {"addition"} or type(result["addition"]) is not str:
-        fail("CANDIDATE_SCHEMA_INVALID")
-    return result["addition"], sorted(set(skills))
+        addition = decode_candidate("".join(texts))
+    except TrialFailure as error:
+        fail(error.category, error.detail)
+    return addition, sorted(set(skills))
 
 
 def cli_failure(returncode, raw, stderr):
@@ -271,7 +322,7 @@ def run_cli(binary: Path, work: Path):
     code, raw, stderr = bounded_process(
         [str(binary), "run", "--format", "json", "--agent", "gaslux-lab",
          "--model", MODEL, "First load the native skill gaslux-history-reuse using the skill tool. "
-         "This is a synthetic read-only coding trial, not repository work. Then " + PROMPT],
+         "This is a synthetic read-only coding trial, not repository work. Then " + AGENT_PROMPT],
         work, env)
     if code:
         raise cli_failure(code, raw, stderr)
@@ -315,9 +366,11 @@ def main():
         prepare(work)
         direct = assess(lambda: (factory.call_model(PROMPT), []))
         agent = assess(lambda: run_cli(binary, work))
-    report = {"experiment": "opencode-native-skill-synthetic-v3", "version": VERSION,
+    report = {"experiment": "opencode-native-skill-synthetic-v4", "version": VERSION,
               "model": factory.MODEL, "model_digest": factory.MODEL_DIGEST,
               "direct_num_ctx": 5800, "opencode_configured_context": 65536,
+              "direct_response_contract": "structured_json",
+              "opencode_response_contract": "one_source_function_or_exact_json_envelope",
               "stream_limit_bytes": MAX_EVENTS, "internal_file_limit_bytes": MAX_INTERNAL_FILE,
               "scratch_monitor_limit_bytes": MAX_SCRATCH, "scratch_hard_quota": False,
               "direct": direct, "opencode": agent,
