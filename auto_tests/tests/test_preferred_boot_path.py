@@ -273,7 +273,6 @@ def test_pending_sync_is_retried_on_linux_boot_and_blocks_windows_writers() -> N
     assert restore.index("preferred-boot-path.sync.json") < restore.index("$archiveRoot =")
 
 
-
 @pytest.mark.parametrize("collision", ["symlink", "regular"])
 def test_replace_atomic_rejects_preexisting_temp_before_any_write(
     tmp_path: Path, collision: str
