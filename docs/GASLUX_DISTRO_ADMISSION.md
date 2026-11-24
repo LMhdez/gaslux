@@ -44,3 +44,20 @@ changed semantics, unknown repair identity and noncanonical append fail closed.
 Historical original bases remain stale; exact-current-base, exact-HEAD CI,
 independent Safety, owner/VM evidence and no-merge/no-release invariants remain.
 No candidate is approved by this change. Independent review and CI required.
+
+### Whole-inspection regression (2026-11-24)
+
+The exact candidate base-to-HEAD comparisons were inspected via GitHub for
+#395, #400, #411, #412 and #413: each reported two commits and one modified
+allowlisted source file, +20/-0 lines, with the original source prefix
+preserved and the expected formatted helper appended. This is static source
+inspection, not an independent Safety approval or VM acceptance.
+
+The contract suite now exercises the complete read-only inspection path for
+a representative two-commit candidate, mocking only GitHub API transport
+and running the real AST validator without executing candidate code. It
+covers a valid structural candidate, absent approval, repair-author review,
+stale base, concurrent HEAD drift and an off-scope intermediate commit.
+Even the valid fixture must report blocked, with owner and VM evidence,
+merge and release authorization false. This is an offline regression; live
+scheduled admission and independent review remain separate gates.
