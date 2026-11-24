@@ -132,9 +132,9 @@ def replace_atomic(source: Path, destination: Path, expected_hash: str) -> None:
             current = temporary.lstat()
         except FileNotFoundError:
             return False
-        return (
-            stat.S_ISREG(current.st_mode)
-            and (current.st_dev, current.st_ino) == (owned.st_dev, owned.st_ino)
+        return stat.S_ISREG(current.st_mode) and (current.st_dev, current.st_ino) == (
+            owned.st_dev,
+            owned.st_ino,
         )
 
     try:
