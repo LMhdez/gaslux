@@ -166,6 +166,16 @@ Package updates preserve the boot contract through three persistent guards:
   MokManager into `EFI/Libertix`. The previous chain is archived permanently before an atomic,
   hash-checked replacement, with shim replaced last.
 
+The exceptional Windows-path fallback (`assets/live/libertix-preferred-boot-path.py`)
+uses a durable journal when refreshing `EFI/Microsoft/Boot` and owned recovery
+references. For every replacement payload, staging now requires exclusive,
+non-following creation (`O_CREAT | O_EXCL | O_NOFOLLOW`); an existing staging
+path must fail closed without overwriting or unlinking another inode.
+The offline collision regression covers pre-existing regular files and symlinks,
+not ESP mount identity, mutable directory aliases, post-validation races,
+physical Windows boot safety or end-to-end rollback. Such evidence does not
+authorize writes outside an approved, disposable guest.
+
 These guards cover official kernel, GRUB, shim, and signed-loader package updates. Custom unsigned
 kernels or third-party modules remain subject to the distribution's normal Secure Boot and MOK
 rules.
