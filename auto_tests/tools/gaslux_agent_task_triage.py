@@ -114,32 +114,80 @@ def trusted_task_keys(issues: list[dict]) -> set[tuple[str, str, str]]:
     return result
 
 
+# Owner-vetted canonical existing issue IDs. Mapping resides only in trusted main,
+# never in dev goal JSON or user-supplied issue text. A broad source-authenticity
+# prerequisite may apply to multiple firmware profiles; this grants NO code scope.
+CANONICAL_ISSUE_SCOPE = {
+    3: {
+        "author": "Dinisiho",
+        "title": "CachyOS production-stability acceptance criteria (UEFI, dual boot, rollback)",
+        "keys": frozenset((
+            ("cachyos", "windows10-bios-mbr", "source-authenticity"),
+            ("cachyos", "windows10-uefi-gpt", "source-authenticity"),
+            ("cachyos", "windows11-uefi-gpt", "source-authenticity"),
+        )),
+    },
+    71: {
+        "author": "Dinisiho",
+        "title": "CachyOS: prove Windows 11 UEFI/GPT coexistence, ESP/BCD/WinRE preservation and rollback in QEMU",
+        "keys": frozenset((
+            ("cachyos", "windows11-uefi-gpt", "windows-return"),
+            ("cachyos", "windows11-uefi-gpt", "fault-injection-rollback"),
+        )),
+    },
+    254: {
+        "author": "LMhdez",
+        "title": "Bazzite: bloquear promoção até provar ISO autenticada, write-set e recuperação Windows",
+        "keys": frozenset((
+            ("bazzite", "windows10-uefi-gpt", "source-authenticity"),
+            ("bazzite", "windows11-uefi-gpt", "source-authenticity"),
+        )),
+    },
+}
+APP_BOT_LOGIN = re.compile(r"[a-z0-9](?:[a-z0-9-]{0,78})\\[bot\\]\\Z")
+
+
+def checked_app_bot_login(value: str) -> str:
+    """Trusted workflow setting, not a role/issue value from dev."""
+    if type(value) is not str or (value and not APP_BOT_LOGIN.fullmatch(value)):
+        raise ValueError("Unverified GitHub App bot login configuration")
+    if value == TRUSTED_TASK_BOT:
+        raise ValueError("App identity must differ from the legacy Actions bot")
+    return value
+
+
 def trusted_related_issues(
-    issues: list[dict], role: str, numbers: list[int],
+    issues: list[dict], role: str, platform: str, gate: str, numbers: list[int],
 ) -> list[int]:
-    """A dev-declared reference is not an existing task until checked via API."""
-    if type(numbers) is not list or any(type(n) is not int for n in numbers):
+    """A dev reference only counts with an exact main-pinned gate and issue ID."""
+    if type(numbers) is not list or any(type(n) is not int or n <= 0 for n in numbers):
         raise ValueError("Untrusted related issue list")
+    key = (role, platform, gate)
     matching = []
     for issue in issues:
         if type(issue) is not dict:
             raise ValueError("Malformed issue")
+        n = issue.get("number")
+        vetted = CANONICAL_ISSUE_SCOPE.get(n) if type(n) is int else None
+        if vetted is None or n not in numbers or key not in vetted["keys"]:
+            continue
         author = issue.get("user")
-        title = issue.get("title")
-        if (issue.get("number") not in numbers or
-            issue.get("repository_url") != API or
+        if (issue.get("repository_url") != API or
             issue.get("state") != "open" or
             "pull_request" in issue or
             type(author) is not dict or
-            author.get("login") not in TRUSTED_REVIEW_AUTHORS or
-            type(title) is not str or role not in title.lower()):
+            author.get("login") != vetted["author"] or
+            issue.get("title") != vetted["title"]):
             continue
-        matching.append(issue["number"])
+        matching.append(n)
     return sorted(set(matching))
 
 
-def choose(backlog: dict, prs: list[dict], issues: list[dict]) -> dict:
-    """Choose one reviewable gate; never accept foreign PR/issue dedup claims."""
+def choose(
+    backlog: dict, prs: list[dict], issues: list[dict], *, app_bot_login: str = "",
+) -> dict:
+    """Choose one gate; unknown internal App bots fail closed to prevent duplicates."""
+    app_bot_login = checked_app_bot_login(app_bot_login)
     if backlog.get("status") != "blocked" or type(backlog.get("next_gates")) is not list:
         raise ValueError("Unreviewed task-discovery status")
     if type(prs) is not list or len(prs) >= 100:
@@ -158,8 +206,13 @@ def choose(backlog: dict, prs: list[dict], issues: list[dict]) -> dict:
             head["repo"].get("full_name") == REPO and
             type(base.get("repo")) is dict and
             base["repo"].get("full_name") == REPO and
-            type(author) is dict and author.get("login") == TRUSTED_TASK_BOT):
-            open_roles.add(match.group(1))
+            type(author) is dict and author.get("type") == "Bot"):
+            if author.get("login") in (TRUSTED_TASK_BOT, app_bot_login):
+                open_roles.add(match.group(1))
+            else:
+                # Not safe to dedupe as a known App, nor to create a duplicate
+                # review task while a same-repo bot candidate is unexplained.
+                raise ValueError("Unknown same-repository bot PR actor")
     tracked = trusted_task_keys(issues)
     pending = []
     for task in backlog["next_gates"]:
@@ -175,7 +228,9 @@ def choose(backlog: dict, prs: list[dict], issues: list[dict]) -> dict:
             pending.append({"role": role, "status": "pending_existing_pr"})
             continue
         # IDs from dev are untrusted until a live issue verifies origin and role.
-        related = trusted_related_issues(issues, role, task["related_issues"])
+        related = trusted_related_issues(
+            issues, role, task["platform"], task["gate"], task["related_issues"]
+        )
         if related:
             pending.append({"role": role, "status": "linked_existing_issue",
                             "issues": related})
@@ -237,7 +292,10 @@ def sync(root: Path, *, dry_run: bool = False) -> dict:
     backlog = discover_goal_backlog(root)
     prs = api("GET", "/pulls?state=open&per_page=100")
     issues = all_issues()
-    picked = choose(backlog, prs, issues)
+    picked = choose(
+        backlog, prs, issues,
+        app_bot_login=os.environ.get("GASLUX_PUBLISH_APP_BOT_LOGIN", ""),
+    )
     if picked["status"] != "ready_for_scope_review":
         return {"base": base, **picked}
     payload = issue_payload(picked, base)
