@@ -233,7 +233,7 @@ class AdmissionTests(unittest.TestCase):
         repaired = before + b"\n\n" + function.replace(b"'", b'"')
         pr = {
             "number": 395, "state": "open", "draft": True, "commits": 2,
-            "user": {"login": "gaslux-autonomous-publisher[bot]", "id": 1},
+            "user": {"login": "gaslux-autonomous-publisher[bot]", "id": 360620437},
             "head": {"sha": HEAD, "repo": {"full_name": gate.REPO},
                      "ref": f"bot/gaslux-feature-zorin-{BASE[:12]}"},
             "base": {"ref": "dev", "repo": {"full_name": gate.REPO}},
@@ -317,6 +317,10 @@ class AdmissionTests(unittest.TestCase):
                             "full_vm_acceptance_verified"):
                     self.assertFalse(row[key])
                 self.assertEqual(row["backend_owner_verified"], scenario == "owner_approved")
+                self.assertEqual(row["automatic_technical_safety_passed"],
+                                 scenario not in ("stale_base", "head_drift",
+                                                  "offscope_intermediate", "owner_stale_base",
+                                                  "owner_objection"))
                 if scenario in ("head_drift", "offscope_intermediate"):
                     self.assertFalse(row["exact_scope_verified"])
                     self.assertFalse(row["safety_review_verified"])
@@ -327,6 +331,59 @@ class AdmissionTests(unittest.TestCase):
                     self.assertEqual(row["current_base_verified"], scenario not in ("stale_base", "owner_stale_base"))
                     self.assertEqual(row["safety_review_verified"],
                                      scenario not in ("self_repair_review", "no_review", "owner_objection"))
+
+    def inventory_candidate(self, number=500, role="zorin", **changes):
+        return {"number": number, "state": "open", "draft": True,
+                "user": {"login": "gaslux-autonomous-publisher[bot]", "id": 360620437},
+                "head": {"sha": HEAD, "repo": {"full_name": gate.REPO},
+                         "ref": f"bot/gaslux-feature-{role}-{BASE[:12]}"},
+                "base": {"ref": "dev", "repo": {"full_name": gate.REPO}},
+                **changes}
+
+    def test_discovery_accepts_new_numbers_and_rejects_impersonation(self):
+        good = self.inventory_candidate()
+        other = self.inventory_candidate(501, "bazzite",
+            user={"login": "github-actions[bot]", "id": 41898282})
+        rows = [other, good,
+                self.inventory_candidate(502, "mint"),
+                self.inventory_candidate(503, draft=False),
+                self.inventory_candidate(504, user={"login": "gaslux-autonomous-publisher[bot]", "id": 1}),
+                self.inventory_candidate(505, head={**good["head"], "repo": {"full_name": "fork/gaslux"}}),
+                self.inventory_candidate(506, base={**good["base"], "ref": "main"}),
+                self.inventory_candidate(507, head={**good["head"], "sha": "bad"})]
+        with patch.object(gate, "api", return_value=rows) as api:
+            self.assertEqual(gate.discover_candidates(), {500: ("zorin", HEAD), 501: ("bazzite", HEAD)})
+            api.assert_called_once_with("GET", "/pulls?state=open&base=dev&per_page=100")
+
+    def test_discovery_fails_closed_on_truncation_duplicates_and_overflow(self):
+        good = self.inventory_candidate()
+        for rows in ([good] * 100, [good, good],
+                     [self.inventory_candidate(500 + i) for i in range(11)], [None]):
+            with patch.object(gate, "api", return_value=rows):
+                with self.assertRaises(ValueError):
+                    gate.discover_candidates()
+
+    def test_discovered_head_drift_rejected_before_scope(self):
+        pr = self.inventory_candidate()
+        with patch.object(gate, "api", side_effect=[pr, {"object": {"sha": BASE}}]):
+            row = gate.inspect(500, "zorin", None, expected_head=BASE)
+        self.assertFalse(row["automatic_technical_safety_passed"])
+        self.assertFalse(row["merge_authorized"])
+        self.assertEqual(row["next_action"], "VERIFY_IDENTITY_AND_SCOPE")
+
+    def test_technical_pass_is_not_an_approval_or_merge_grant(self):
+        row = gate.classify({
+            "exact_scope_verified": True, "current_base_verified": True,
+            "ci_verified": True, "ci_workflow_provenance_verified": True,
+            "technical_objection": False, "merge_authorized": False,
+        })
+        self.assertTrue(row["automatic_technical_safety_passed"])
+        self.assertFalse(row["merge_authorized"])
+        self.assertEqual(row["next_action"], "INDEPENDENT_SAFETY_REVIEW")
+        self.assertIn("COLLECT_VM_EVIDENCE", row["blockers"])
+        row["technical_objection"] = True
+        self.assertFalse(gate.classify(row)["automatic_technical_safety_passed"])
+        self.assertEqual(row["next_action"], "RESOLVE_TECHNICAL_OBJECTION")
 
     def test_owner_config_is_strict(self):
         self.assertEqual(gate.parse_owner_ids('{"zorin":3,"cachyos":4}'),
