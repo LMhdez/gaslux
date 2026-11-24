@@ -1,0 +1,601 @@
+{
+  "schema_version": 1,
+  "kind": "historical_symbol_scope_extension",
+  "repository": "LMhdez/gaslux",
+  "dev": "d89f1547c50787e4640164e34bfd1863134e2908",
+  "expected": [
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/grub-theme/generate-theme.sh",
+      "blob": "e0a9099685580d0b2fbf079189b58d2ca92f2cd9"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/plymouth/configure-live-boot-splash.sh",
+      "blob": "99f22bd91f2b38b379ad0ca2dda218f0da8e69b8"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/RUN/run-test-auto.sh",
+      "blob": "e19c0cc3cceb702acd81a6e11328f0b97a6e77e0"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/__init__.py",
+      "blob": "9faa0e01521ab82ede369138892c0235cefd63b6"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/api_requests.py",
+      "blob": "7f787d98580a84e39da85cbe8dc11fb7a970198e"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/api_runtime.py",
+      "blob": "65782000cc47b9d9b036e9061721e1fb30cfc30b"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/__init__.py",
+      "blob": "5ce75ec068dcc5e538acbcad45785c223994bd60"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/network_recovery.py",
+      "blob": "3ab7c43bce44290e18d62c2d48d67b69ffe14600"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/proxmox.py",
+      "blob": "cb9e5d139b187f3f5dc0fe2e7bb267333c6beac4"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/proxmox_serial.py",
+      "blob": "b70dcc1c3ceea22d5300a7fc807d899a11940a9a"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/ssh.py",
+      "blob": "701d6820b604857a0898deb95a44f2798150c998"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/vision_contracts.py",
+      "blob": "c5e7aa49a629936b2195e2b2b9adc43d1897a911"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/vision_llm.py",
+      "blob": "e8a9e6dda3c5d63c8c383b4856b70e1e65e51b04"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/vision_models.py",
+      "blob": "561bbc145bd1fad29251b0969bf4c4905fc58581"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/vision_parsing.py",
+      "blob": "1aa2681149bebc95cd3759bc15225a6a1ed00765"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/vnc.py",
+      "blob": "52c116c8ed056baa0f7c122b5067236f72092be8"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/config.py",
+      "blob": "eefd737153a4d9fc72b2dea95988e34e65182ea1"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/distributions.py",
+      "blob": "e20e3cf389d7e84053e4a3f98411a64f01636f1c"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/errors.py",
+      "blob": "f5ec6ecd21fcf22d2663c1b175fe675f3c272d47"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/filepool/linux-integrity.sh",
+      "blob": "ee1f883ffc69bd2f40f10836a90dd0b16dc1678d"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/logging_config.py",
+      "blob": "7644ca5c5c820c07f1430a37f1b3183ce88a09c4"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/main.py",
+      "blob": "95e629f40b0aec8d636e0a9277b321a139508b94"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/models.py",
+      "blob": "010331d727a7cead9707089df77bf259fc490d8f"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/published_release.py",
+      "blob": "60c78512673edee50799f8f13ffadbed4da9c968"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/scripts/check_linux_preference_migration.py",
+      "blob": "a1d00e09b20820e146249754e41d59f6a80ad01b"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/scripts/check_linux_redirected_documents.py",
+      "blob": "3fb66396cdaa55d608caff370978f0b295b73994"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/scripts/collect_linux_diagnostics.sh",
+      "blob": "f91f006510e5ffa2037785d9cec5cfaeb24608a6"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/scripts/focus_linux_post_install_result.py",
+      "blob": "e9b6eb2c0c02fd87e7002ac79dd3e10ec17ca3fd"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/scripts/linux_check_helper.py",
+      "blob": "7d3de60ad1e4d97b61cb6f701b7819f8cd43c7a1"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/__init__.py",
+      "blob": "06390ea6c03c9f5a41488c62717ae24742d91024"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation.py",
+      "blob": "47af0dec383cc85ce9317d40e93faa6a59c5b9d1"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_campaign.py",
+      "blob": "f71f920d26dd6ff029369bad63b178bf931dcab7"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_diagnostics.py",
+      "blob": "4e5b59f10a33e397b07b0e21ed28c808f92571fa"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_monitoring.py",
+      "blob": "ac4a4d8bf6458d34e17c3b19bbdc3debcd2ee571"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_postinstall.py",
+      "blob": "a50859fc32a30125ea85048e135f668b4c8eba88"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_preflight.py",
+      "blob": "9f8789406351cee6ed10947d5e5601003502da92"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_progress.py",
+      "blob": "833b3279e15c830b66d19cfb67df98967733da53"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_types.py",
+      "blob": "a896733ad0f821d70946160dacd913caf7c0860a"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_windows_checks.py",
+      "blob": "9f2fd3680adb68c9c6b6b9d72300d5fe3a4edc61"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/automation_wizard.py",
+      "blob": "85253072b4d9fab22b5c5ba78e43e97d59a4edb6"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/campaign_dispatch.py",
+      "blob": "cbc2eec7e6115e6b0dccabc285169802c8da655e"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/common.py",
+      "blob": "3e4124f61352d51027198a9419a80f66ebc6c31f"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/local_filepool.py",
+      "blob": "ee30dfca59a34cc13de70c73f22a08be29fcf5d4"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/reset.py",
+      "blob": "5da810db9c592762be2da981b1fdffc38835c4d6"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/source_tree.py",
+      "blob": "99197840681243212d505958284939c754dcf2de"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/validation.py",
+      "blob": "aa546652cb20a72eeca349cd73bf250bba9340a6"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/services/windows_lab_login.py",
+      "blob": "3cd50f68ab62928edd8d5ae9f5b7ef34a603420f"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/storage_fixtures.py",
+      "blob": "1a7f5f93f62e67ff093ec7ff716861fc00e31059"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/stream_events.py",
+      "blob": "5bb8f7f77aa64a8bddaa07e5304297d552c75b4f"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "docker/iso-builder/build-isos.sh",
+      "blob": "1d3f6d289f64f20ef1e0a6d3b8c725101ac90657"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "docker/iso-builder/verify-built-iso.sh",
+      "blob": "253b2111c16de027bf0e41990d366bdf19172b7f"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "grub/render-libertix-menu.py",
+      "blob": "1733f385ef33acfbd5f9c338fb68d69601f84788"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "install-party-kit/AdjacentFilepool/populate-filepool.sh",
+      "blob": "bd7c39f9816ca2e55846a3a1cb75be8fb648a2e9"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/build-iso.sh",
+      "blob": "30ad3e08a2c055111e388ff80afa888b07cc5e24"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/build-isos-docker.sh",
+      "blob": "a6da652dc03a35bb77e662cfca6ade8780c31dea"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/generate-release-metadata.py",
+      "blob": "b8d19972cd89edca3dbd98ed66953689497402d6"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/prepare-support-artifacts.py",
+      "blob": "142108acbf7c7d498b41e759668aa217a589d6a9"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/render-boot-config.py",
+      "blob": "faf2e53d79e221cfd8a89da0fd8ac0ce6e963320"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/sign-distribution-catalog.sh",
+      "blob": "4816e3b5977cbfc620d2538b0c3e4f5d1de7b735"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/sign-release-metadata.py",
+      "blob": "d81207e66315004d29897fda3b7035b1d4281b19"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-tools/sync_filepool_checksums.py",
+      "blob": "b17a934520d2e83790ac999479ed72a507252b00"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-uefi/build.sh",
+      "blob": "65c3570b1838346da114271ff649ba27ed838ea0"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-uefi/live/libertix-install.sh",
+      "blob": "e4737685f07572f407436fb1c86ffddaa1ba0a61"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-uefi/live/libertix-runner.sh",
+      "blob": "555e4b819d74c7808630429fec318a3f51518c95"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso-uefi/target/configure-target.sh",
+      "blob": "650312666517dc0f5123e2ba9e225b8925cde8f0"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso/build.sh",
+      "blob": "acbce0e542beb28f04127d35f028ce2501e1ac68"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso/live/libertix-install.sh",
+      "blob": "fd173c16ffdd5a13ab66091bf3c68e286f41b73c"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso/live/libertix-runner.sh",
+      "blob": "5893a3982617de810e569e714d3eb4894470a60b"
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "iso/target/configure-target.sh",
+      "blob": "fea56c5617e3bae7c32c47ed4ecbfe0830e1eb57"
+    }
+  ],
+  "scanned": [
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/grub-theme/generate-theme.sh",
+      "blob": "e0a9099685580d0b2fbf079189b58d2ca92f2cd9",
+      "symbol_count": 2,
+      "matches": [
+        {
+          "name": "cleanup",
+          "kind": "shell_function",
+          "qualified": "cleanup",
+          "line": 18,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "assets/plymouth/configure-live-boot-splash.sh",
+      "blob": "99f22bd91f2b38b379ad0ca2dda218f0da8e69b8",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/RUN/run-test-auto.sh",
+      "blob": "e19c0cc3cceb702acd81a6e11328f0b97a6e77e0",
+      "symbol_count": 3,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/__init__.py",
+      "blob": "9faa0e01521ab82ede369138892c0235cefd63b6",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/api_requests.py",
+      "blob": "7f787d98580a84e39da85cbe8dc11fb7a970198e",
+      "symbol_count": 3,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/api_runtime.py",
+      "blob": "65782000cc47b9d9b036e9061721e1fb30cfc30b",
+      "symbol_count": 19,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "ProcessOperationLock.__init__",
+          "line": 29,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "ActiveOperationProcess.__init__",
+          "line": 100,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/__init__.py",
+      "blob": "5ce75ec068dcc5e538acbcad45785c223994bd60",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/network_recovery.py",
+      "blob": "3ab7c43bce44290e18d62c2d48d67b69ffe14600",
+      "symbol_count": 7,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "NetworkRecovery.__init__",
+          "line": 16,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/proxmox.py",
+      "blob": "cb9e5d139b187f3f5dc0fe2e7bb267333c6beac4",
+      "symbol_count": 20,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "ProxmoxClient.__init__",
+          "line": 28,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "ProxmoxClient.__enter__",
+          "line": 65,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "ProxmoxClient.__exit__",
+          "line": 68,
+          "test": false
+        },
+        {
+          "name": "_request",
+          "kind": "def",
+          "qualified": "ProxmoxClient._request",
+          "line": 71,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/proxmox_serial.py",
+      "blob": "b70dcc1c3ceea22d5300a7fc807d899a11940a9a",
+      "symbol_count": 7,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "ProxmoxSerialCapture.__init__",
+          "line": 36,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "ProxmoxSerialCapture.run",
+          "line": 81,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/ssh.py",
+      "blob": "701d6820b604857a0898deb95a44f2798150c998",
+      "symbol_count": 33,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "PersistAuthenticatedHostKeyPolicy.__init__",
+          "line": 71,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "SSHClient.__init__",
+          "line": 105,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "SSHClient.__enter__",
+          "line": 131,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "SSHClient.__exit__",
+          "line": 277,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "SSHClient.close",
+          "line": 280,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "SSHClient.run",
+          "line": 292,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/vision_contracts.py",
+      "blob": "c5e7aa49a629936b2195e2b2b9adc43d1897a911",
+      "symbol_count": 0,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/vision_llm.py",
+      "blob": "e8a9e6dda3c5d63c8c383b4856b70e1e65e51b04",
+      "symbol_count": 9,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "VisionLLMClient.__init__",
+          "line": 39,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/vision_models.py",
+      "blob": "561bbc145bd1fad29251b0969bf4c4905fc58581",
+      "symbol_count": 7,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/vision_parsing.py",
+      "blob": "1aa2681149bebc95cd3759bc15225a6a1ed00765",
+      "symbol_count": 3,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/app/clients/vnc.py",
+      "blob": "52c116c8ed056baa0f7c122b5067236f72092be8",
+      "symbol_count": 8,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "VNCClient.__init__",
+          "line": 44,
+          "test": false
+        }
+      ]
+    }
+  ]
+}
