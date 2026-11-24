@@ -2,6 +2,15 @@
 
 > Inventário de referência: 2026-11-22 UTC. Obtido por inspeção dos **19 workflows existentes em dev** e de YAMLs referenciados nas PRs históricas/abertas. Não é uma garantia de execução recente, nem um inventário completo de todas as branches antigas. Para cada trabalho, ler o YAML **no HEAD exato da PR** e os scripts chamados; vários títulos mencionam QEMU sem executar um guest.
 
+
+## 2026-11-24 UTC — SAFETY-1 preferred UEFI staging no-clobber regression (PR #420)
+
+- **Scope:** existing Windows-path EFI updater `assets/live/libertix-preferred-boot-path.py`; not the Windows-side partition writer. Starting `dev` was `d89f1547c50787e4640164e34bfd1863134e2908`. [Draft PR #420](https://github.com/LMhdez/gaslux/pull/420) remains unmerged, pending independent Safety review.
+- **RED:** exact [HEAD `b6b35c5c8cd2036aca192b0eb04b3452f2b62b0f`](https://github.com/LMhdez/gaslux/commit/b6b35c5c8cd2036aca192b0eb04b3452f2b62b0f) in [Action #45484218496](https://github.com/LMhdez/gaslux/actions/runs/45484218496): two pytest cases failed with `DID NOT RAISE FileExistsError`. The old `shutil.copyfile(source, temporary)` followed a pre-existing temporary symlink or truncated an existing regular file under an owned synthetic directory. RED confirms the collision condition in the source, **not** an exploit on a Windows device.
+- **GREEN:** exact code/test [HEAD `0d261ad48ca611ace1a8ea6147468a1cce398458`](https://github.com/LMhdez/gaslux/commit/0d261ad48ca611ace1a8ea6147468a1cce398458) in [Action #45484428843](https://github.com/LMhdez/gaslux/actions/runs/45484428843): **30/30 preferred-boot tests PASS** (including both new cases); `compileall`, Ruff lint and Ruff format PASS. Payload staging now opens `O_CREAT | O_EXCL | O_NOFOLLOW` and only unlinks a staging inode created by this call. Existing journal/replay behavior passes the suite.
+- **Evidence = STATIC/OFFLINE only.** No QEMU guest, EFI physical mutation, authenticated ESP mount, independently checked post-stage pathname race, Windows boot/update/uninstall, BCD/WinRE or rollback demonstration. **Decision:** `DENY` operational/physical writes; at most `ELIGIBLE_FOR_GUEST_TEST` after the independent gate and an owned disposable guest are established. This does not upgrade Mint/Zorin installation certification.
+
+
 ## MINT-LEAN-VM-DESIGN-01 — topologia compacta não admitida (22-11-2026 UTC)
 
 [Despacho Supervisor #7083475088](https://github.com/LMhdez/gaslux/pull/350#issuecomment-7083475088); [relatório técnico na PR #350 #7083591119](https://github.com/LMhdez/gaslux/pull/350#issuecomment-7083591119). **Estado = BLOCKED_SAFETY (pré-admissão, sem quota/restore/Windows comprovados), não BLOCKED_CAPACITY medido para o desenho compacto.** A PR #350 mantém sem alterações o bloqueio forense A/B: seis QCOW2 de 128 GiB exigem 867710795776 bytes; o runner histórico [#45036462842](https://github.com/LMhdez/gaslux/actions/runs/45036462842) tinha 91273920512 bytes e quota não observável. Estes números não são mínimos para Windows+Mint no mesmo disco.
