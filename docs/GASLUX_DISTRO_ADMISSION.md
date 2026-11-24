@@ -82,3 +82,37 @@ read-only admission on trusted main; and separate reviewed, bounded merge
 implementation with pause, race, revocation and post-merge checks. The current
 PR is read-only and does not grant that authority. Never reuse the CI from a
 previous HEAD. No credentials or Safety approval are provisioned here.
+
+
+## Follow-on: authenticated backend owner review (read-only)
+
+Dependent on #417 at `f41ea7b91b4cdbef5be16780954a5997795de4f3`.
+The original reviewed head is preserved. No new workflow or write permissions.
+The repository administrator may provision `GASLUX_BACKEND_OWNER_IDS`, a JSON
+mapping of role to positive numeric GitHub user ID. Missing, malformed, duplicate,
+unknown or oversized configuration fails closed. Example shape (illustrative
+only; these are not configured accounts): `{"zorin":123,"cachyos":456}`.
+
+An actual GitHub APPROVED review from the configured backend owner must have the
+exact candidate commit_id and contain a line in this form:
+
+    GASLUX-BACKEND-OWNER-V1 role=<role> head=<40-hex-head> base=<40-hex-current-dev>
+
+The owner must be distinct from the configured Safety identity, PR publisher and
+repair author. Safety must also be distinct from publisher and repair author.
+A stale base, changes requested, dismissed review, identity collision, wrong
+role, missing review, API failure or observed HEAD drift blocks verification.
+A plain comment or generated JSON does not constitute an attestation.
+Configuration must be controlled by the administrator, with real role
+separation; numeric IDs alone do not establish operational independence.
+
+The v2 report identifies configured roles and can attest the owner-review gate.
+It still never grants merge, writer or release authority. Full VM acceptance
+remains false pending independent, exact-candidate Windows/Linux evidence and
+a trusted evidence transport. No account has been provisioned by this change.
+
+Live inspection (2026-11-24): all five candidate formal-review lists and #417's
+formal-review list were empty. Historical contract workflow successes are not
+installed-guest proof. #263 contains historical Windows/CachyOS experiments;
+these do not prove the current candidate or current dev. Revalidate exact
+ancestry, current base, actual CI and independent evidence before any merge.
