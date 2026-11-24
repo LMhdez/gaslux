@@ -69,38 +69,111 @@ class TaskTriageTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             triage.choose(backlog, [], [])
 
+    def task_marker_issue(self, *, author="github-actions[bot]", repo=None):
+        task = {"role": "mint", "platform": "windows10-bios-mbr",
+                "gate": "source-authenticity"}
+        payload = triage.issue_payload(task, "a" * 40)
+        return {
+            "number": 99, "title": payload["title"], "body": payload["body"],
+            "state": "open", "repository_url": repo or triage.API,
+            "user": {"login": author},
+        }
+
+    def task_claim_pr(self, *, repo=None, author="github-actions[bot]"):
+        return {
+            "head": {"ref": "bot/gaslux-feature-mint-" + "a" * 12,
+                     "repo": {"full_name": repo or triage.REPO}},
+            "base": {"ref": "dev", "repo": {"full_name": triage.REPO}},
+            "user": {"login": author},
+        }
+
     def test_existing_bot_pr_and_existing_issue_defer_not_duplicate(self):
         backlog = self.backlog()
-        prs = [{
-            "head": {"ref": "bot/gaslux-feature-mint-" + "a" * 12},
-            "base": {"ref": "dev"},
-        }]
-        self.assertEqual(triage.choose(backlog, prs, [])["role"], "zorin")
-        marker = triage.issue_payload({
-            "role": "mint", "platform": "windows10-bios-mbr",
-            "gate": "source-authenticity",
-        }, "a" * 40)["body"]
-        self.assertEqual(triage.choose(backlog, [], [{"body": marker}])["role"],
-                         "zorin")
         self.assertEqual(
-            triage.choose(backlog, [], [{"body": marker}])["pending"][0]["status"],
+            triage.choose(backlog, [self.task_claim_pr()], [])["role"],
+            "zorin",
+        )
+        issue = self.task_marker_issue()
+        self.assertEqual(triage.choose(backlog, [], [issue])["role"], "zorin")
+        self.assertEqual(
+            triage.choose(backlog, [], [issue])["pending"][0]["status"],
             "already_queued",
         )
+
+    def test_f40301_foreign_fork_or_author_cannot_claim_bot_pr(self):
+        backlog = self.backlog()
+        for forged in [
+            self.task_claim_pr(repo="attacker/gaslux"),
+            self.task_claim_pr(author="outside-contributor"),
+        ]:
+            with self.subTest(forged=forged):
+                result = triage.choose(backlog, [forged], [])
+                self.assertEqual(result["role"], "mint")
+                self.assertEqual(result["status"], "ready_for_scope_review")
+
+    def test_f40301_foreign_issue_marker_cannot_claim_task(self):
+        backlog = self.backlog()
+        for forged in [
+            self.task_marker_issue(author="external-user"),
+            self.task_marker_issue(repo="https://api.github.com/repos/other/gaslux"),
+            dict(self.task_marker_issue(), title="unrelated support request"),
+            dict(self.task_marker_issue(), body=(
+                "User pasted a marker\n" + self.task_marker_issue()["body"]
+            )),
+        ]:
+            with self.subTest(forged=forged):
+                result = triage.choose(backlog, [], [forged])
+                self.assertEqual(result["role"], "mint")
+        self.assertEqual(
+            triage.trusted_task_keys([self.task_marker_issue()]),
+            {("mint", "windows10-bios-mbr", "source-authenticity")},
+        )
+
+    def test_f40301_untrusted_dev_issue_reference_cannot_claim_task(self):
+        backlog = self.backlog()
+        backlog["next_gates"][0]["related_issues"] = [99999999]
+        self.assertEqual(triage.choose(backlog, [], [])["role"], "mint")
+        # Reusing an unrelated trusted issue ID is not sufficient.
+        unrelated = {
+            "number": 99999999, "title": "Zorin unrelated support request",
+            "repository_url": triage.API, "state": "open",
+            "user": {"login": "LMhdez"},
+        }
+        self.assertEqual(triage.choose(backlog, [], [unrelated])["role"],
+                         "mint")
+        unrelated["title"] = "Mint media authenticity scope review"
+        self.assertEqual(triage.choose(backlog, [], [unrelated])["role"],
+                         "zorin")
+        unrelated["user"]["login"] = "external-user"
+        self.assertEqual(triage.choose(backlog, [], [unrelated])["role"],
+                         "mint")
 
     def test_bazzite_existing_issue_and_prohibited_bios(self):
         backlog = self.backlog()
         bazzite = backlog["next_gates"][-1]
         self.assertEqual(bazzite["platform"], "windows10-uefi-gpt")
         self.assertEqual(bazzite["related_issues"], [254])
-        for b in backlog["next_gates"][:-1]:
-            b["related_issues"] = [9]
-        self.assertEqual(triage.choose(backlog, [], [])["status"],
+        manual = []
+        for role, issue_id in [
+            ("mint", 10), ("zorin", 11), ("cachyos", 3),
+            ("popos", 12), ("q4os", 13), ("bazzite", 254),
+        ]:
+            for task in backlog["next_gates"]:
+                if task["role"] == role:
+                    task["related_issues"] = [issue_id]
+            manual.append({
+                "number": issue_id, "state": "open",
+                "title": f"{role.title()} lifecycle acceptance issue",
+                "repository_url": triage.API,
+                "user": {"login": "LMhdez"},
+            })
+        self.assertEqual(triage.choose(backlog, [], manual)["status"],
                          "waiting_for_review")
         backlog["next_gates"][-1]["related_issues"] = []
-        self.assertEqual(triage.choose(backlog, [], [])["role"], "bazzite")
+        self.assertEqual(triage.choose(backlog, [], manual)["role"], "bazzite")
         backlog["next_gates"][-1]["gate"] = "install"
         with self.assertRaises(ValueError):
-            triage.choose(backlog, [], [])
+            triage.choose(backlog, [], manual)
 
     def test_publisher_requires_unpaused_trusted_main(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -203,6 +276,15 @@ class TaskTriageTests(unittest.TestCase):
         self.assertIn("needs.select.outputs.blocked == 'true'", triage_job)
         self.assertNotIn("GASLUX_PUBLISH_APP_PRIVATE_KEY", triage_job)
         self.assertNotIn("pull_request_target:", workflow)
+        push, rest = workflow.split("  push:\n", 1)
+        push_paths, pr_and_jobs = rest.split("  pull_request:\n", 1)
+        pr_paths = pr_and_jobs.split("\npermissions:", 1)[0]
+        for filename in (
+            "auto_tests/tools/gaslux_agent_task_triage.py",
+            "auto_tests/tests/test_gaslux_agent_task_triage.py",
+        ):
+            self.assertIn("      - " + filename, push_paths)
+            self.assertIn("      - " + filename, pr_paths)
 
 
 if __name__ == "__main__":
