@@ -21,6 +21,12 @@ on:
       - auto_tests/tests/test_gaslux_agent_phase2b.py
       - auto_tests/tools/gaslux_agent_history.py
       - auto_tests/tests/test_gaslux_agent_history.py
+      - auto_tests/tools/gaslux_history_ast.py
+      - auto_tests/tests/test_gaslux_history_ast.py
+      - docs/GASLUX_HISTORICAL_SYMBOL_INVENTORY.json
+      - docs/GASLUX_HISTORICAL_SYMBOL_EXTENSION.json
+      - docs/GASLUX_BACKEND_REUSE_INVENTORY.json
+      - docs/GASLUX_HISTORICAL_FINDINGS.json
       - docs/GASLUX_HISTORICAL_EVIDENCE_INDEX.json
       - docs/GASLUX_HISTORICAL_PR_INVENTORY.json
       - docs/GASLUX_HISTORICAL_DEPENDENCY_AUDIT.json
@@ -37,6 +43,12 @@ on:
       - auto_tests/tests/test_gaslux_agent_phase2b.py
       - auto_tests/tools/gaslux_agent_history.py
       - auto_tests/tests/test_gaslux_agent_history.py
+      - auto_tests/tools/gaslux_history_ast.py
+      - auto_tests/tests/test_gaslux_history_ast.py
+      - docs/GASLUX_HISTORICAL_SYMBOL_INVENTORY.json
+      - docs/GASLUX_HISTORICAL_SYMBOL_EXTENSION.json
+      - docs/GASLUX_BACKEND_REUSE_INVENTORY.json
+      - docs/GASLUX_HISTORICAL_FINDINGS.json
       - docs/GASLUX_HISTORICAL_EVIDENCE_INDEX.json
       - docs/GASLUX_HISTORICAL_PR_INVENTORY.json
       - docs/GASLUX_HISTORICAL_DEPENDENCY_AUDIT.json
@@ -67,7 +79,24 @@ jobs:
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_task_triage.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_phase2b.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_history.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_history_ast.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_trial.py -v
+
+      - name: Verify historical Python AST and reviewed witness differential
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 419 && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          timeout 210 python3 -B auto_tests/tools/gaslux_history_ast.py --output "$RUNNER_TEMP/gaslux-history-ast.json"
+      - name: Retain AST discovery report (no authority)
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 419 && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-history-ast-discovery
+          path: ${{ runner.temp }}/gaslux-history-ast.json
+          if-no-files-found: error
+          retention-days: 14
 
   opencode_trial:
     # Same-repo pilot on #419 only; after integration, explicit main dispatch.
