@@ -58,3 +58,20 @@ The guard was correct but prevents forward progress in a busy multi-agent reposi
 
 This change requires exact-head contract tests and a real `main` workflow run. It does not assert successful PR publication before CI observes it. The autonomous task limit remains two narrowly curated keyboard-mapping features. No physical disk or release authority is affected.
 
+
+
+## Bot-created PR CI: scoped GitHub App publication (2026-11-24)
+
+GitHub's current default `GITHUB_TOKEN` behavior creates `pull_request` checks in `action_required` when an Actions job publishes a PR. That is a platform approval requirement, **not** a passed CI gate. The two **existing** trusted publisher jobs now support optional GitHub App installation-token publication: `gaslux-agent-feature-factory.yml` (`publish_draft`) and `gaslux-agent-clock.yml` (`integrator_publisher`). A token generated from the App identity lets future PR workflows start normally, without a per-PR approval click. The change does not add or duplicate workflows, does not change Qwen/model/safety or backend code, and does not change Integrator's required technical Safety gates.
+
+**One-time repository-owner setup (required before the new mode works):**
+
+1. Register a **private GitHub App**, install it on **only `LMhdez/gaslux`**, and grant only repository `Contents: Read and write` and `Pull requests: Read and write` (`Metadata: Read` is mandatory by GitHub). **Do not** grant Actions write, administration, workflow, secrets, or any other repository permissions. Set webhooks to inactive if no webhook receiver is needed.
+2. Generate a GitHub App private key in GitHub's App settings. Store its complete PEM bytes in the repository **Actions secret** `GASLUX_PUBLISH_APP_PRIVATE_KEY`; never commit the key or paste it in chat.
+3. Set repository **Actions variable** `GASLUX_PUBLISH_APP_CLIENT_ID` to the App client ID (not an installation ID). Keep `GASLUX_AUTONOMY_PAUSED` and all safety restrictions unchanged.
+4. The next normal Factory or Clock publication, after this change has passed independent Safety/CI and been integrated in **`main`**, mints an ephemeral repository-scoped installation token via the pinned `actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc` (v3.4.0). The App token reaches **only** the trusted `publish` command in the final publisher job; the model, untrusted product checkout, Safety and tests never receive the App key. The short-lived token is revoked by the Action after the job.
+5. Confirm on a **new** bot PR that the actor is the configured GitHub App and the normal required PR checks actually run and finish, not `action_required`. The change does not retroactively start checks for already-created PRs (#395/#396); those still need the GitHub UI's normal one-time approval or a separately authorized new reviewable change.
+
+**Compatibility / fail-closed limits:** if the App client ID variable is absent, publication continues via the existing `GITHUB_TOKEN` and emits a warning; PR checks will continue to require manual approval. If the App client ID is set but the key is missing, invalid or the App is not installed for this repository, the publisher fails rather than silently using the weaker identity. Missing CI, independent Safety or required backend review always blocks integration. No new auto-merge, VM-install, physical-disk, production installer or stable authority is introduced.
+
+Reference: [GitHub `GITHUB_TOKEN` event behavior](https://docs.github.com/en/actions/concepts/security/github_token) and [GitHub App authentication](https://docs.github.com/en/apps/creating-github-apps/authenticating-with-a-github-app).
