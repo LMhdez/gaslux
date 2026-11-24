@@ -3160,6 +3160,2256 @@
         }
       ],
       "identical_dev_paths": []
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/test_windows_cachyos_postext4_windows.py",
+      "blob": "5f5d97d13b881c3b11704be8d9c92b6f921ffdc8",
+      "symbols": [
+        {
+          "name": "FourthBootContracts",
+          "kind": "class",
+          "qualified": "FourthBootContracts",
+          "line": 11,
+          "test": false
+        },
+        {
+          "name": "args",
+          "kind": "def",
+          "qualified": "FourthBootContracts.args",
+          "line": 12,
+          "test": false
+        },
+        {
+          "name": "test_no_separate_consent_denied_before_file_or_guest",
+          "kind": "def",
+          "qualified": "FourthBootContracts.test_no_separate_consent_denied_before_file_or_guest",
+          "line": 13,
+          "test": true
+        },
+        {
+          "name": "test_missing_genuine_ext4_and_thirdboot_denied_without_file_io",
+          "kind": "def",
+          "qualified": "FourthBootContracts.test_missing_genuine_ext4_and_thirdboot_denied_without_file_io",
+          "line": 18,
+          "test": true
+        },
+        {
+          "name": "test_invalid_timeout_denied_without_file_io",
+          "kind": "def",
+          "qualified": "FourthBootContracts.test_invalid_timeout_denied_without_file_io",
+          "line": 28,
+          "test": true
+        },
+        {
+          "name": "test_contextual_error_codes_do_not_expand_acceptance",
+          "kind": "def",
+          "qualified": "FourthBootContracts.test_contextual_error_codes_do_not_expand_acceptance",
+          "line": 39,
+          "test": true
+        },
+        {
+          "name": "test_com1_missing_partial_complete_and_untrusted_sources",
+          "kind": "def",
+          "qualified": "FourthBootContracts.test_com1_missing_partial_complete_and_untrusted_sources",
+          "line": 60,
+          "test": true
+        },
+        {
+          "name": "test_bounded_host_timeout_diagnostic_never_claims_boot",
+          "kind": "def",
+          "qualified": "FourthBootContracts.test_bounded_host_timeout_diagnostic_never_claims_boot",
+          "line": 80,
+          "test": true
+        },
+        {
+          "name": "test_qemu_active_until_deadline_is_timeout_not_boot",
+          "kind": "def",
+          "qualified": "FourthBootContracts.test_qemu_active_until_deadline_is_timeout_not_boot",
+          "line": 133,
+          "test": true
+        },
+        {
+          "name": "test_qemu_complete_marker_does_not_pass_without_process_shutdown",
+          "kind": "def",
+          "qualified": "FourthBootContracts.test_qemu_complete_marker_does_not_pass_without_process_shutdown",
+          "line": 145,
+          "test": true
+        },
+        {
+          "name": "test_qemu_exit_error_and_missing_com1_are_distinct",
+          "kind": "def",
+          "qualified": "FourthBootContracts.test_qemu_exit_error_and_missing_com1_are_distinct",
+          "line": 158,
+          "test": true
+        },
+        {
+          "name": "test_qemu_partial_com1_after_clean_shutdown_is_not_boot",
+          "kind": "def",
+          "qualified": "FourthBootContracts.test_qemu_partial_com1_after_clean_shutdown_is_not_boot",
+          "line": 173,
+          "test": true
+        },
+        {
+          "name": "test_qemu_complete_guest_audit_requires_shutdown_and_own_com1",
+          "kind": "def",
+          "qualified": "FourthBootContracts.test_qemu_complete_guest_audit_requires_shutdown_and_own_com1",
+          "line": 184,
+          "test": true
+        },
+        {
+          "name": "test_qemu_guest_failure_marker_blocks_early",
+          "kind": "def",
+          "qualified": "FourthBootContracts.test_qemu_guest_failure_marker_blocks_early",
+          "line": 197,
+          "test": true
+        },
+        {
+          "name": "test_host_diagnostic_detects_modified_ovmf_and_unexpected_disk",
+          "kind": "def",
+          "qualified": "FourthBootContracts.test_host_diagnostic_detects_modified_ovmf_and_unexpected_disk",
+          "line": 208,
+          "test": true
+        },
+        {
+          "name": "test_no_linux_or_rollback_claims",
+          "kind": "def",
+          "qualified": "FourthBootContracts.test_no_linux_or_rollback_claims",
+          "line": 238,
+          "test": true
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/test_windows_cachyos_postpacstrap_windows.py",
+      "blob": "a0b3bcbc0ba0a78de9ca52487d97c72608136583",
+      "symbols": [
+        {
+          "name": "valid_pacstrap",
+          "kind": "def",
+          "qualified": "valid_pacstrap",
+          "line": 18,
+          "test": false
+        },
+        {
+          "name": "lab_env",
+          "kind": "def",
+          "qualified": "lab_env",
+          "line": 45,
+          "test": false
+        },
+        {
+          "name": "PostPacstrapWindowsContracts",
+          "kind": "class",
+          "qualified": "PostPacstrapWindowsContracts",
+          "line": 61,
+          "test": false
+        },
+        {
+          "name": "test_no_consent_rejects_before_any_disk_or_guest",
+          "kind": "def",
+          "qualified": "PostPacstrapWindowsContracts.test_no_consent_rejects_before_any_disk_or_guest",
+          "line": 62,
+          "test": true
+        },
+        {
+          "name": "test_incomplete_or_forged_proof_rejected_before_any_disk",
+          "kind": "def",
+          "qualified": "PostPacstrapWindowsContracts.test_incomplete_or_forged_proof_rejected_before_any_disk",
+          "line": 72,
+          "test": true
+        },
+        {
+          "name": "test_invalid_timeout_rejected_before_disk",
+          "kind": "def",
+          "qualified": "PostPacstrapWindowsContracts.test_invalid_timeout_rejected_before_disk",
+          "line": 95,
+          "test": true
+        },
+        {
+          "name": "test_valid_prerequisites_do_not_claim_dual_boot",
+          "kind": "def",
+          "qualified": "PostPacstrapWindowsContracts.test_valid_prerequisites_do_not_claim_dual_boot",
+          "line": 107,
+          "test": true
+        },
+        {
+          "name": "test_signed_plan_symlink_denied_without_invoking_openssl",
+          "kind": "def",
+          "qualified": "PostPacstrapWindowsContracts.test_signed_plan_symlink_denied_without_invoking_openssl",
+          "line": 118,
+          "test": true
+        },
+        {
+          "name": "test_distinct_serial_and_discard_order_are_enforced_in_source",
+          "kind": "def",
+          "qualified": "PostPacstrapWindowsContracts.test_distinct_serial_and_discard_order_are_enforced_in_source",
+          "line": 127,
+          "test": true
+        },
+        {
+          "name": "test_postboot_gpt_or_protected_windows_hash_change_still_fails_closed",
+          "kind": "def",
+          "qualified": "PostPacstrapWindowsContracts.test_postboot_gpt_or_protected_windows_hash_change_still_fails_closed",
+          "line": 143,
+          "test": true
+        },
+        {
+          "name": "test_bcd_forensic_never_exposes_hive_bytes_or_accepts_changes",
+          "kind": "def",
+          "qualified": "PostPacstrapWindowsContracts.test_bcd_forensic_never_exposes_hive_bytes_or_accepts_changes",
+          "line": 253,
+          "test": true
+        },
+        {
+          "name": "test_real_workflow_auditor_imports_its_windows_verifier",
+          "kind": "def",
+          "qualified": "PostPacstrapWindowsContracts.test_real_workflow_auditor_imports_its_windows_verifier",
+          "line": 278,
+          "test": true
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py",
+      "blob": "d05622012cd771d901e91081bb79f66c501803b7",
+      "symbols": [
+        {
+          "name": "SharedRootPacstrapError",
+          "kind": "class",
+          "qualified": "SharedRootPacstrapError",
+          "line": 42,
+          "test": false
+        },
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 46,
+          "test": false
+        },
+        {
+          "name": "_run",
+          "kind": "def",
+          "qualified": "_run",
+          "line": 51,
+          "test": false
+        },
+        {
+          "name": "_sha",
+          "kind": "def",
+          "qualified": "_sha",
+          "line": 60,
+          "test": false
+        },
+        {
+          "name": "_copy_fresh_ovmf_vars",
+          "kind": "def",
+          "qualified": "_copy_fresh_ovmf_vars",
+          "line": 66,
+          "test": false
+        },
+        {
+          "name": "_owned",
+          "kind": "def",
+          "qualified": "_owned",
+          "line": 84,
+          "test": false
+        },
+        {
+          "name": "_verify_environment",
+          "kind": "def",
+          "qualified": "_verify_environment",
+          "line": 97,
+          "test": false
+        },
+        {
+          "name": "_write_lab_image",
+          "kind": "def",
+          "qualified": "_write_lab_image",
+          "line": 132,
+          "test": false
+        },
+        {
+          "name": "_copy_to_fat",
+          "kind": "def",
+          "qualified": "_copy_to_fat",
+          "line": 153,
+          "test": false
+        },
+        {
+          "name": "_safe_generator_diagnostic",
+          "kind": "def",
+          "qualified": "_safe_generator_diagnostic",
+          "line": 161,
+          "test": false
+        },
+        {
+          "name": "_create_boot_config",
+          "kind": "def",
+          "qualified": "_create_boot_config",
+          "line": 206,
+          "test": false
+        },
+        {
+          "name": "_verify_installed_root",
+          "kind": "def",
+          "qualified": "_verify_installed_root",
+          "line": 262,
+          "test": false
+        },
+        {
+          "name": "_permit_owned_iso_staging_write",
+          "kind": "def",
+          "qualified": "_permit_owned_iso_staging_write",
+          "line": 325,
+          "test": false
+        },
+        {
+          "name": "run_shared_root_pacstrap",
+          "kind": "def",
+          "qualified": "run_shared_root_pacstrap",
+          "line": 374,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/tools/windows_cachyos_bcd_ab_control.py",
+      "blob": "080950022354b68db95e6d11ee35b6e185d262fd",
+      "symbols": [
+        {
+          "name": "BcdAbControlError",
+          "kind": "class",
+          "qualified": "BcdAbControlError",
+          "line": 46,
+          "test": false
+        },
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 50,
+          "test": false
+        },
+        {
+          "name": "_unchanged",
+          "kind": "def",
+          "qualified": "_unchanged",
+          "line": 55,
+          "test": false
+        },
+        {
+          "name": "_cleanup_clone",
+          "kind": "def",
+          "qualified": "_cleanup_clone",
+          "line": 62,
+          "test": false
+        },
+        {
+          "name": "_copy_owned",
+          "kind": "def",
+          "qualified": "_copy_owned",
+          "line": 75,
+          "test": false
+        },
+        {
+          "name": "preflight_ab_clone_capacity",
+          "kind": "def",
+          "qualified": "preflight_ab_clone_capacity",
+          "line": 122,
+          "test": false
+        },
+        {
+          "name": "prepare_matched_checkpoint_clones",
+          "kind": "def",
+          "qualified": "prepare_matched_checkpoint_clones",
+          "line": 162,
+          "test": false
+        },
+        {
+          "name": "tpm_state_trees_independent",
+          "kind": "def",
+          "qualified": "tpm_state_trees_independent",
+          "line": 213,
+          "test": false
+        },
+        {
+          "name": "tpm_state_tree_sha256",
+          "kind": "def",
+          "qualified": "tpm_state_tree_sha256",
+          "line": 229,
+          "test": false
+        },
+        {
+          "name": "prepare_independent_tpm_clones",
+          "kind": "def",
+          "qualified": "prepare_independent_tpm_clones",
+          "line": 254,
+          "test": false
+        },
+        {
+          "name": "swtpm_emulator_command",
+          "kind": "def",
+          "qualified": "swtpm_emulator_command",
+          "line": 285,
+          "test": false
+        },
+        {
+          "name": "tpm_session_observation",
+          "kind": "def",
+          "qualified": "tpm_session_observation",
+          "line": 302,
+          "test": false
+        },
+        {
+          "name": "running_swtpm",
+          "kind": "def",
+          "qualified": "running_swtpm",
+          "line": 322,
+          "test": false
+        },
+        {
+          "name": "block_write_event_names",
+          "kind": "def",
+          "qualified": "block_write_event_names",
+          "line": 390,
+          "test": false
+        },
+        {
+          "name": "prepare_qemu_write_trace",
+          "kind": "def",
+          "qualified": "prepare_qemu_write_trace",
+          "line": 401,
+          "test": false
+        },
+        {
+          "name": "_profile_args",
+          "kind": "def",
+          "qualified": "_profile_args",
+          "line": 454,
+          "test": false
+        },
+        {
+          "name": "_normalized_profile_digest",
+          "kind": "def",
+          "qualified": "_normalized_profile_digest",
+          "line": 470,
+          "test": false
+        },
+        {
+          "name": "run_windows_only_bcd_control",
+          "kind": "def",
+          "qualified": "run_windows_only_bcd_control",
+          "line": 483,
+          "test": false
+        },
+        {
+          "name": "compare_bcd_ab",
+          "kind": "def",
+          "qualified": "compare_bcd_ab",
+          "line": 710,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/tools/windows_cachyos_checkpoint_readiness.py",
+      "blob": "242dd87ae526c1e42d35be5926ba447fda3d4886",
+      "symbols": [
+        {
+          "name": "CheckpointReadinessRefusal",
+          "kind": "class",
+          "qualified": "CheckpointReadinessRefusal",
+          "line": 30,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "CheckpointReadinessRefusal.__init__",
+          "line": 31,
+          "test": false
+        },
+        {
+          "name": "_require",
+          "kind": "def",
+          "qualified": "_require",
+          "line": 38,
+          "test": false
+        },
+        {
+          "name": "_digest_owned",
+          "kind": "def",
+          "qualified": "_digest_owned",
+          "line": 43,
+          "test": false
+        },
+        {
+          "name": "_self_process_uses",
+          "kind": "def",
+          "qualified": "_self_process_uses",
+          "line": 76,
+          "test": false
+        },
+        {
+          "name": "_private",
+          "kind": "def",
+          "qualified": "_private",
+          "line": 95,
+          "test": false
+        },
+        {
+          "name": "_distinct",
+          "kind": "def",
+          "qualified": "_distinct",
+          "line": 104,
+          "test": false
+        },
+        {
+          "name": "inspect_readonly_ab_checkpoint",
+          "kind": "def",
+          "qualified": "inspect_readonly_ab_checkpoint",
+          "line": 116,
+          "test": false
+        },
+        {
+          "name": "matching",
+          "kind": "def",
+          "qualified": "inspect_readonly_ab_checkpoint.matching",
+          "line": 156,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/tools/windows_cachyos_postext4_windows.py",
+      "blob": "341200b803bd22f0d7e4d58013851712b3711456",
+      "symbols": [
+        {
+          "name": "FourthBootError",
+          "kind": "class",
+          "qualified": "FourthBootError",
+          "line": 30,
+          "test": false
+        },
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 31,
+          "test": false
+        },
+        {
+          "name": "boot_failure_code",
+          "kind": "def",
+          "qualified": "boot_failure_code",
+          "line": 35,
+          "test": false
+        },
+        {
+          "name": "read_bounded_com1_witness",
+          "kind": "def",
+          "qualified": "read_bounded_com1_witness",
+          "line": 43,
+          "test": false
+        },
+        {
+          "name": "observe_windows_qemu",
+          "kind": "def",
+          "qualified": "observe_windows_qemu",
+          "line": 63,
+          "test": false
+        },
+        {
+          "name": "record_windows_boot_failure",
+          "kind": "def",
+          "qualified": "record_windows_boot_failure",
+          "line": 93,
+          "test": false
+        },
+        {
+          "name": "add_tpm_device",
+          "kind": "def",
+          "qualified": "add_tpm_device",
+          "line": 165,
+          "test": false
+        },
+        {
+          "name": "add_qemu_trace",
+          "kind": "def",
+          "qualified": "add_qemu_trace",
+          "line": 179,
+          "test": false
+        },
+        {
+          "name": "verify_windows_post_ext4",
+          "kind": "def",
+          "qualified": "verify_windows_post_ext4",
+          "line": 195,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/tools/windows_cachyos_postpacstrap_windows.py",
+      "blob": "6ff053ffa07b187d1c7a777002881f2133ff9b76",
+      "symbols": [
+        {
+          "name": "PostPacstrapWindowsError",
+          "kind": "class",
+          "qualified": "PostPacstrapWindowsError",
+          "line": 35,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "PostPacstrapWindowsError.__init__",
+          "line": 36,
+          "test": false
+        },
+        {
+          "name": "_read_bcd_readonly",
+          "kind": "def",
+          "qualified": "_read_bcd_readonly",
+          "line": 42,
+          "test": false
+        },
+        {
+          "name": "summarize_bcd_difference",
+          "kind": "def",
+          "qualified": "summarize_bcd_difference",
+          "line": 71,
+          "test": false
+        },
+        {
+          "name": "record_span",
+          "kind": "def",
+          "qualified": "summarize_bcd_difference.record_span",
+          "line": 87,
+          "test": false
+        },
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 133,
+          "test": false
+        },
+        {
+          "name": "preflight",
+          "kind": "def",
+          "qualified": "preflight",
+          "line": 138,
+          "test": false
+        },
+        {
+          "name": "signed_lab_plan",
+          "kind": "def",
+          "qualified": "signed_lab_plan",
+          "line": 185,
+          "test": false
+        },
+        {
+          "name": "verify_windows_with_installed_root",
+          "kind": "def",
+          "qualified": "verify_windows_with_installed_root",
+          "line": 224,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "ref": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "path": "auto_tests/tools/windows_x64_tcg_firstboot.py",
+      "blob": "2e1a8127119028c1bf50d48e6b318620784a5232",
+      "symbols": [
+        {
+          "name": "LabError",
+          "kind": "class",
+          "qualified": "LabError",
+          "line": 48,
+          "test": false
+        },
+        {
+          "name": "require",
+          "kind": "def",
+          "qualified": "require",
+          "line": 52,
+          "test": false
+        },
+        {
+          "name": "validate_environment",
+          "kind": "def",
+          "qualified": "validate_environment",
+          "line": 57,
+          "test": false
+        },
+        {
+          "name": "MicrosoftOnlyRedirect",
+          "kind": "class",
+          "qualified": "MicrosoftOnlyRedirect",
+          "line": 110,
+          "test": false
+        },
+        {
+          "name": "redirect_request",
+          "kind": "def",
+          "qualified": "MicrosoftOnlyRedirect.redirect_request",
+          "line": 113,
+          "test": false
+        },
+        {
+          "name": "download_verified_iso",
+          "kind": "def",
+          "qualified": "download_verified_iso",
+          "line": 122,
+          "test": false
+        },
+        {
+          "name": "derive_no_prompt_uefi_lab_iso",
+          "kind": "def",
+          "qualified": "derive_no_prompt_uefi_lab_iso",
+          "line": 154,
+          "test": false
+        },
+        {
+          "name": "witness_powershell",
+          "kind": "def",
+          "qualified": "witness_powershell",
+          "line": 210,
+          "test": false
+        },
+        {
+          "name": "generate_unattend",
+          "kind": "def",
+          "qualified": "generate_unattend",
+          "line": 276,
+          "test": false
+        },
+        {
+          "name": "tag",
+          "kind": "def",
+          "qualified": "generate_unattend.tag",
+          "line": 284,
+          "test": false
+        },
+        {
+          "name": "child",
+          "kind": "def",
+          "qualified": "generate_unattend.child",
+          "line": 287,
+          "test": false
+        },
+        {
+          "name": "component",
+          "kind": "def",
+          "qualified": "generate_unattend.component",
+          "line": 294,
+          "test": false
+        },
+        {
+          "name": "validate_oobe_answer_pass",
+          "kind": "def",
+          "qualified": "validate_oobe_answer_pass",
+          "line": 407,
+          "test": false
+        },
+        {
+          "name": "send_first_iso_boot_key",
+          "kind": "def",
+          "qualified": "send_first_iso_boot_key",
+          "line": 444,
+          "test": false
+        },
+        {
+          "name": "boot_vm",
+          "kind": "def",
+          "qualified": "boot_vm",
+          "line": 474,
+          "test": false
+        },
+        {
+          "name": "build_two_stage_qemu_args",
+          "kind": "def",
+          "qualified": "build_two_stage_qemu_args",
+          "line": 573,
+          "test": false
+        },
+        {
+          "name": "restart_owned_swtpm_for_second_guest",
+          "kind": "def",
+          "qualified": "restart_owned_swtpm_for_second_guest",
+          "line": 614,
+          "test": false
+        },
+        {
+          "name": "scan_dvd_firmware_starts",
+          "kind": "def",
+          "qualified": "scan_dvd_firmware_starts",
+          "line": 688,
+          "test": false
+        },
+        {
+          "name": "scan_two_stage_dvd_serial",
+          "kind": "def",
+          "qualified": "scan_two_stage_dvd_serial",
+          "line": 698,
+          "test": false
+        },
+        {
+          "name": "boot_two_stage_windows",
+          "kind": "def",
+          "qualified": "boot_two_stage_windows",
+          "line": 725,
+          "test": false
+        },
+        {
+          "name": "probe_no_prompt_uefi_dvd",
+          "kind": "def",
+          "qualified": "probe_no_prompt_uefi_dvd",
+          "line": 818,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 853,
+          "test": false
+        },
+        {
+          "name": "restart_guest_tpm",
+          "kind": "def",
+          "qualified": "main.restart_guest_tpm",
+          "line": 1164,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "popos",
+      "pr": 298,
+      "ref": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "path": "auto_tests/test_popos_six_gpt_contract.py",
+      "blob": "7a6181768776468e9a9b4147342412689a75f6ea",
+      "symbols": [
+        {
+          "name": "sample_plan",
+          "kind": "def",
+          "qualified": "sample_plan",
+          "line": 31,
+          "test": false
+        },
+        {
+          "name": "signed_fixture_with_change",
+          "kind": "def",
+          "qualified": "signed_fixture_with_change",
+          "line": 88,
+          "test": false
+        },
+        {
+          "name": "SixGptNegativeTests",
+          "kind": "class",
+          "qualified": "SixGptNegativeTests",
+          "line": 97,
+          "test": false
+        },
+        {
+          "name": "test_fixed_geometry_exact_six_and_28g_root",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_fixed_geometry_exact_six_and_28g_root",
+          "line": 98,
+          "test": true
+        },
+        {
+          "name": "test_owned_write_endpoints_accept_only_five_and_six",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_owned_write_endpoints_accept_only_five_and_six",
+          "line": 106,
+          "test": true
+        },
+        {
+          "name": "test_all_protected_gpt_and_unallocated_writes_refused",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_all_protected_gpt_and_unallocated_writes_refused",
+          "line": 116,
+          "test": true
+        },
+        {
+          "name": "test_qemu_bio_trace_parser_denylist",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_qemu_bio_trace_parser_denylist",
+          "line": 144,
+          "test": true
+        },
+        {
+          "name": "test_safety_f02_multiple_devices_and_concatenated_events",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_safety_f02_multiple_devices_and_concatenated_events",
+          "line": 172,
+          "test": true
+        },
+        {
+          "name": "test_f02_mixed_identity_truncated_unknown_and_fabricated",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_f02_mixed_identity_truncated_unknown_and_fabricated",
+          "line": 185,
+          "test": true
+        },
+        {
+          "name": "test_f01_path_replacement_preserves_foreign_directory",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_f01_path_replacement_preserves_foreign_directory",
+          "line": 212,
+          "test": true
+        },
+        {
+          "name": "test_f01_inode_symlink_hardlink_reuse_and_partial_creation",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_f01_inode_symlink_hardlink_reuse_and_partial_creation",
+          "line": 240,
+          "test": true
+        },
+        {
+          "name": "test_f01_ovmf_vars_pinned_inode_replacement",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_f01_ovmf_vars_pinned_inode_replacement",
+          "line": 284,
+          "test": true
+        },
+        {
+          "name": "test_f01_enospc_fails_without_unlink",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_f01_enospc_fails_without_unlink",
+          "line": 314,
+          "test": true
+        },
+        {
+          "name": "test_f03_tool_errors_never_become_typed_detection",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_f03_tool_errors_never_become_typed_detection",
+          "line": 337,
+          "test": true
+        },
+        {
+          "name": "test_f04_real_offline_qcow2_zero_data_and_clean",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_f04_real_offline_qcow2_zero_data_and_clean",
+          "line": 373,
+          "test": true
+        },
+        {
+          "name": "test_safety_f04_zero_overlay_and_invalid_map",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_safety_f04_zero_overlay_and_invalid_map",
+          "line": 427,
+          "test": true
+        },
+        {
+          "name": "test_valid_plan_is_permanently_no_writer",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_valid_plan_is_permanently_no_writer",
+          "line": 469,
+          "test": true
+        },
+        {
+          "name": "test_schema_accepts_synthetic_only_and_rejects_permissions",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_schema_accepts_synthetic_only_and_rejects_permissions",
+          "line": 486,
+          "test": true
+        },
+        {
+          "name": "test_replay_manifest_tamper_and_foreign_transaction_fail",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_replay_manifest_tamper_and_foreign_transaction_fail",
+          "line": 501,
+          "test": true
+        },
+        {
+          "name": "test_foreign_guid_lba_partuuid_serial_and_gpt_hash_refused",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_foreign_guid_lba_partuuid_serial_and_gpt_hash_refused",
+          "line": 514,
+          "test": true
+        },
+        {
+          "name": "test_production_flags_and_topology_are_never_authorized",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_production_flags_and_topology_are_never_authorized",
+          "line": 536,
+          "test": true
+        },
+        {
+          "name": "test_ovmf_template_and_checkpoint_foreign_rejection",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_ovmf_template_and_checkpoint_foreign_rejection",
+          "line": 548,
+          "test": true
+        },
+        {
+          "name": "test_injected_fault_recovery_rejects_partial_or_foreign_overlay",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_injected_fault_recovery_rejects_partial_or_foreign_overlay",
+          "line": 563,
+          "test": true
+        },
+        {
+          "name": "test_readonly_fsck_partition_copy_and_untrusted_bounds",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_readonly_fsck_partition_copy_and_untrusted_bounds",
+          "line": 579,
+          "test": true
+        },
+        {
+          "name": "test_fsck_probe_requires_frozen_backing_and_false_writer_flags",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_fsck_probe_requires_frozen_backing_and_false_writer_flags",
+          "line": 626,
+          "test": true
+        },
+        {
+          "name": "test_six_gpt_has_no_executable_qemu_or_distinst",
+          "kind": "def",
+          "qualified": "SixGptNegativeTests.test_six_gpt_has_no_executable_qemu_or_distinst",
+          "line": 638,
+          "test": true
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "popos",
+      "pr": 298,
+      "ref": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "path": "auto_tests/tools/gaslux_popos_six_gpt_contract.py",
+      "blob": "c06b1ed6348172eadf74afc62e4e5ed0a7890077",
+      "symbols": [
+        {
+          "name": "Partition",
+          "kind": "class",
+          "qualified": "Partition",
+          "line": 37,
+          "test": false
+        },
+        {
+          "name": "end",
+          "kind": "def",
+          "qualified": "Partition.end",
+          "line": 47,
+          "test": false
+        },
+        {
+          "name": "as_dict",
+          "kind": "def",
+          "qualified": "Partition.as_dict",
+          "line": 50,
+          "test": false
+        },
+        {
+          "name": "part",
+          "kind": "def",
+          "qualified": "part",
+          "line": 64,
+          "test": false
+        },
+        {
+          "name": "validate_geometry",
+          "kind": "def",
+          "qualified": "validate_geometry",
+          "line": 100,
+          "test": false
+        },
+        {
+          "name": "canonical_digest",
+          "kind": "def",
+          "qualified": "canonical_digest",
+          "line": 127,
+          "test": false
+        },
+        {
+          "name": "validate_plan",
+          "kind": "def",
+          "qualified": "validate_plan",
+          "line": 138,
+          "test": false
+        },
+        {
+          "name": "classify_sector_write",
+          "kind": "def",
+          "qualified": "classify_sector_write",
+          "line": 233,
+          "test": false
+        },
+        {
+          "name": "audit_qemu_trace",
+          "kind": "def",
+          "qualified": "audit_qemu_trace",
+          "line": 257,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "popos",
+      "pr": 298,
+      "ref": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "path": "auto_tests/tools/gaslux_popos_six_gpt_fsck.py",
+      "blob": "952703a501df3aa6ffcb277d50297858edc6f963",
+      "symbols": [
+        {
+          "name": "copy_owned_partition",
+          "kind": "def",
+          "qualified": "copy_owned_partition",
+          "line": 28,
+          "test": false
+        },
+        {
+          "name": "verify_read_only_fsck",
+          "kind": "def",
+          "qualified": "verify_read_only_fsck",
+          "line": 61,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 119,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "popos",
+      "pr": 298,
+      "ref": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "path": "auto_tests/tools/gaslux_popos_six_gpt_lab.py",
+      "blob": "e74749e3a1a573ced382178c740e686263287567",
+      "symbols": [
+        {
+          "name": "hosted",
+          "kind": "def",
+          "qualified": "hosted",
+          "line": 63,
+          "test": false
+        },
+        {
+          "name": "sha_region",
+          "kind": "def",
+          "qualified": "sha_region",
+          "line": 88,
+          "test": false
+        },
+        {
+          "name": "sector_bytes",
+          "kind": "def",
+          "qualified": "sector_bytes",
+          "line": 110,
+          "test": false
+        },
+        {
+          "name": "write_canary",
+          "kind": "def",
+          "qualified": "write_canary",
+          "line": 120,
+          "test": false
+        },
+        {
+          "name": "verify_sfdisk_gpt",
+          "kind": "def",
+          "qualified": "verify_sfdisk_gpt",
+          "line": 136,
+          "test": false
+        },
+        {
+          "name": "verify_esp_canary",
+          "kind": "def",
+          "qualified": "verify_esp_canary",
+          "line": 168,
+          "test": false
+        },
+        {
+          "name": "verify_fs_types",
+          "kind": "def",
+          "qualified": "verify_fs_types",
+          "line": 195,
+          "test": false
+        },
+        {
+          "name": "verify_canaries",
+          "kind": "def",
+          "qualified": "verify_canaries",
+          "line": 217,
+          "test": false
+        },
+        {
+          "name": "ProtectedFaultDetected",
+          "kind": "class",
+          "qualified": "ProtectedFaultDetected",
+          "line": 231,
+          "test": false
+        },
+        {
+          "name": "PinnedResource",
+          "kind": "class",
+          "qualified": "PinnedResource",
+          "line": 235,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "PinnedResource.__init__",
+          "line": 238,
+          "test": false
+        },
+        {
+          "name": "verify",
+          "kind": "def",
+          "qualified": "PinnedResource.verify",
+          "line": 253,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "PinnedResource.close",
+          "line": 264,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "PinnedResource.__enter__",
+          "line": 267,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "PinnedResource.__exit__",
+          "line": 270,
+          "test": false
+        },
+        {
+          "name": "parse_qcow_map",
+          "kind": "def",
+          "qualified": "parse_qcow_map",
+          "line": 274,
+          "test": false
+        },
+        {
+          "name": "child_owned_extents",
+          "kind": "def",
+          "qualified": "child_owned_extents",
+          "line": 325,
+          "test": false
+        },
+        {
+          "name": "ensure_empty_child",
+          "kind": "def",
+          "qualified": "ensure_empty_child",
+          "line": 334,
+          "test": false
+        },
+        {
+          "name": "verify_injected_fault",
+          "kind": "def",
+          "qualified": "verify_injected_fault",
+          "line": 341,
+          "test": false
+        },
+        {
+          "name": "private_ovmf_copy",
+          "kind": "def",
+          "qualified": "private_ovmf_copy",
+          "line": 381,
+          "test": false
+        },
+        {
+          "name": "prepare",
+          "kind": "def",
+          "qualified": "prepare",
+          "line": 396,
+          "test": false
+        },
+        {
+          "name": "write_text_exclusive",
+          "kind": "def",
+          "qualified": "write_text_exclusive",
+          "line": 529,
+          "test": false
+        },
+        {
+          "name": "write_json_exclusive",
+          "kind": "def",
+          "qualified": "write_json_exclusive",
+          "line": 538,
+          "test": false
+        },
+        {
+          "name": "read_plan",
+          "kind": "def",
+          "qualified": "read_plan",
+          "line": 542,
+          "test": false
+        },
+        {
+          "name": "verify_checkpoint",
+          "kind": "def",
+          "qualified": "verify_checkpoint",
+          "line": 549,
+          "test": false
+        },
+        {
+          "name": "rehearse_recovery",
+          "kind": "def",
+          "qualified": "rehearse_recovery",
+          "line": 593,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 675,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "popos",
+      "pr": 298,
+      "ref": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "path": "auto_tests/tools/gaslux_popos_six_gpt_ownership.py",
+      "blob": "5f22534ea8666eef15bcef3a44826bac3835418f",
+      "symbols": [
+        {
+          "name": "identity",
+          "kind": "def",
+          "qualified": "identity",
+          "line": 61,
+          "test": false
+        },
+        {
+          "name": "SafeWorkspace",
+          "kind": "class",
+          "qualified": "SafeWorkspace",
+          "line": 65,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "SafeWorkspace.__init__",
+          "line": 68,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "SafeWorkspace.close",
+          "line": 107,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "SafeWorkspace.__enter__",
+          "line": 119,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "SafeWorkspace.__exit__",
+          "line": 122,
+          "test": false
+        },
+        {
+          "name": "check_directories",
+          "kind": "def",
+          "qualified": "SafeWorkspace.check_directories",
+          "line": 125,
+          "test": false
+        },
+        {
+          "name": "inspect",
+          "kind": "def",
+          "qualified": "SafeWorkspace.inspect",
+          "line": 137,
+          "test": false
+        },
+        {
+          "name": "evidence_bytes",
+          "kind": "def",
+          "qualified": "SafeWorkspace.evidence_bytes",
+          "line": 186,
+          "test": false
+        },
+        {
+          "name": "export",
+          "kind": "def",
+          "qualified": "SafeWorkspace.export",
+          "line": 210,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "run",
+          "line": 244,
+          "test": false
+        },
+        {
+          "name": "main",
+          "kind": "def",
+          "qualified": "main",
+          "line": 292,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "q4os",
+      "pr": 318,
+      "ref": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "path": "auto_tests/tests/test_q4os_qmp_process_observability.py",
+      "blob": "2e396bc1c3a194f04c586e5756104c019cdbd21a",
+      "symbols": [
+        {
+          "name": "lab",
+          "kind": "def",
+          "qualified": "lab",
+          "line": 19,
+          "test": false
+        },
+        {
+          "name": "drive",
+          "kind": "def",
+          "qualified": "drive",
+          "line": 33,
+          "test": false
+        },
+        {
+          "name": "Process",
+          "kind": "class",
+          "qualified": "drive.Process",
+          "line": 37,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "drive.Process.__init__",
+          "line": 40,
+          "test": false
+        },
+        {
+          "name": "poll",
+          "kind": "def",
+          "qualified": "drive.Process.poll",
+          "line": 44,
+          "test": false
+        },
+        {
+          "name": "wait",
+          "kind": "def",
+          "qualified": "drive.Process.wait",
+          "line": 47,
+          "test": false
+        },
+        {
+          "name": "FakeChannel",
+          "kind": "class",
+          "qualified": "drive.FakeChannel",
+          "line": 54,
+          "test": false
+        },
+        {
+          "name": "bind_verified_session",
+          "kind": "def",
+          "qualified": "drive.FakeChannel.bind_verified_session",
+          "line": 55,
+          "test": false
+        },
+        {
+          "name": "negotiate_protocol",
+          "kind": "def",
+          "qualified": "drive.FakeChannel.negotiate_protocol",
+          "line": 58,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "drive.FakeChannel.close",
+          "line": 61,
+          "test": false
+        },
+        {
+          "name": "fake_qmp",
+          "kind": "def",
+          "qualified": "drive.fake_qmp",
+          "line": 64,
+          "test": false
+        },
+        {
+          "name": "socket_identity",
+          "kind": "def",
+          "qualified": "drive.socket_identity",
+          "line": 84,
+          "test": false
+        },
+        {
+          "name": "guard_process",
+          "kind": "def",
+          "qualified": "drive.guard_process",
+          "line": 99,
+          "test": false
+        },
+        {
+          "name": "guard_peer",
+          "kind": "def",
+          "qualified": "drive.guard_peer",
+          "line": 103,
+          "test": false
+        },
+        {
+          "name": "fake_supervise",
+          "kind": "def",
+          "qualified": "drive.fake_supervise",
+          "line": 107,
+          "test": false
+        },
+        {
+          "name": "fake_birth_identity",
+          "kind": "def",
+          "qualified": "drive.fake_birth_identity",
+          "line": 120,
+          "test": false
+        },
+        {
+          "name": "signal_fails",
+          "kind": "def",
+          "qualified": "drive.fake_birth_identity.signal_fails",
+          "line": 138,
+          "test": false
+        },
+        {
+          "name": "fake_pidfd_signal",
+          "kind": "def",
+          "qualified": "drive.fake_birth_identity.fake_pidfd_signal",
+          "line": 144,
+          "test": false
+        },
+        {
+          "name": "test_bounded_failure_codes",
+          "kind": "def",
+          "qualified": "test_bounded_failure_codes",
+          "line": 201,
+          "test": true
+        },
+        {
+          "name": "test_early_exit_has_only_allowlisted_details",
+          "kind": "def",
+          "qualified": "test_early_exit_has_only_allowlisted_details",
+          "line": 222,
+          "test": true
+        },
+        {
+          "name": "test_synthetic_qmp_never_reports_operational_success",
+          "kind": "def",
+          "qualified": "test_synthetic_qmp_never_reports_operational_success",
+          "line": 230,
+          "test": true
+        },
+        {
+          "name": "test_socket_symlink_and_non_socket_rejected_before_any_qmp",
+          "kind": "def",
+          "qualified": "test_socket_symlink_and_non_socket_rejected_before_any_qmp",
+          "line": 242,
+          "test": true
+        },
+        {
+          "name": "test_pid_mismatch_in_connected_socket_is_refused",
+          "kind": "def",
+          "qualified": "test_pid_mismatch_in_connected_socket_is_refused",
+          "line": 258,
+          "test": true
+        },
+        {
+          "name": "Socket",
+          "kind": "class",
+          "qualified": "test_pid_mismatch_in_connected_socket_is_refused.Socket",
+          "line": 259,
+          "test": false
+        },
+        {
+          "name": "getsockopt",
+          "kind": "def",
+          "qualified": "test_pid_mismatch_in_connected_socket_is_refused.Socket.getsockopt",
+          "line": 260,
+          "test": false
+        },
+        {
+          "name": "Channel",
+          "kind": "class",
+          "qualified": "test_pid_mismatch_in_connected_socket_is_refused.Channel",
+          "line": 265,
+          "test": false
+        },
+        {
+          "name": "Foreign",
+          "kind": "class",
+          "qualified": "test_pid_mismatch_in_connected_socket_is_refused.Foreign",
+          "line": 268,
+          "test": false
+        },
+        {
+          "name": "test_workflow_never_triggers_windows_on_push",
+          "kind": "def",
+          "qualified": "test_workflow_never_triggers_windows_on_push",
+          "line": 275,
+          "test": true
+        },
+        {
+          "name": "test_kvm_and_tcg_machine_graph_and_wait_budgets",
+          "kind": "def",
+          "qualified": "test_kvm_and_tcg_machine_graph_and_wait_budgets",
+          "line": 286,
+          "test": true
+        },
+        {
+          "name": "test_real_foreign_same_uid_qmp_peer_receives_zero_commands",
+          "kind": "def",
+          "qualified": "test_real_foreign_same_uid_qmp_peer_receives_zero_commands",
+          "line": 305,
+          "test": true
+        },
+        {
+          "name": "test_real_python_child_reaped_despite_report_io_fault",
+          "kind": "def",
+          "qualified": "test_real_python_child_reaped_despite_report_io_fault",
+          "line": 374,
+          "test": true
+        },
+        {
+          "name": "FaultyOutput",
+          "kind": "class",
+          "qualified": "test_real_python_child_reaped_despite_report_io_fault.FaultyOutput",
+          "line": 379,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_real_python_child_reaped_despite_report_io_fault.FaultyOutput.__init__",
+          "line": 380,
+          "test": false
+        },
+        {
+          "name": "fileno",
+          "kind": "def",
+          "qualified": "test_real_python_child_reaped_despite_report_io_fault.FaultyOutput.fileno",
+          "line": 383,
+          "test": false
+        },
+        {
+          "name": "flush",
+          "kind": "def",
+          "qualified": "test_real_python_child_reaped_despite_report_io_fault.FaultyOutput.flush",
+          "line": 386,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "test_real_python_child_reaped_despite_report_io_fault.FaultyOutput.close",
+          "line": 391,
+          "test": false
+        },
+        {
+          "name": "fault_open",
+          "kind": "def",
+          "qualified": "test_real_python_child_reaped_despite_report_io_fault.fault_open",
+          "line": 396,
+          "test": false
+        },
+        {
+          "name": "test_symlink_swap_after_initial_validation_refused_before_spawn",
+          "kind": "def",
+          "qualified": "test_symlink_swap_after_initial_validation_refused_before_spawn",
+          "line": 442,
+          "test": true
+        },
+        {
+          "name": "pin_then_swap",
+          "kind": "def",
+          "qualified": "test_symlink_swap_after_initial_validation_refused_before_spawn.pin_then_swap",
+          "line": 450,
+          "test": false
+        },
+        {
+          "name": "test_pinned_fd_remains_on_original_inode_after_path_swap",
+          "kind": "def",
+          "qualified": "test_pinned_fd_remains_on_original_inode_after_path_swap",
+          "line": 475,
+          "test": true
+        },
+        {
+          "name": "test_unproven_qemu_backing_contract_blocks_real_spawn",
+          "kind": "def",
+          "qualified": "test_unproven_qemu_backing_contract_blocks_real_spawn",
+          "line": 494,
+          "test": true
+        },
+        {
+          "name": "never_popen",
+          "kind": "def",
+          "qualified": "test_unproven_qemu_backing_contract_blocks_real_spawn.never_popen",
+          "line": 499,
+          "test": false
+        },
+        {
+          "name": "test_strict_reason_code_allowlist_never_exposes_tokens",
+          "kind": "def",
+          "qualified": "test_strict_reason_code_allowlist_never_exposes_tokens",
+          "line": 517,
+          "test": true
+        },
+        {
+          "name": "test_r01_autonomous_boot_rejected_before_opening_qmp",
+          "kind": "def",
+          "qualified": "test_r01_autonomous_boot_rejected_before_opening_qmp",
+          "line": 526,
+          "test": true
+        },
+        {
+          "name": "forbidden_qmp",
+          "kind": "def",
+          "qualified": "test_r01_autonomous_boot_rejected_before_opening_qmp.forbidden_qmp",
+          "line": 537,
+          "test": false
+        },
+        {
+          "name": "test_r01_foreign_injected_channel_and_no_guard_rejected",
+          "kind": "def",
+          "qualified": "test_r01_foreign_injected_channel_and_no_guard_rejected",
+          "line": 547,
+          "test": true
+        },
+        {
+          "name": "ForeignQmp",
+          "kind": "class",
+          "qualified": "test_r01_foreign_injected_channel_and_no_guard_rejected.ForeignQmp",
+          "line": 558,
+          "test": false
+        },
+        {
+          "name": "send_key_once",
+          "kind": "def",
+          "qualified": "test_r01_foreign_injected_channel_and_no_guard_rejected.ForeignQmp.send_key_once",
+          "line": 559,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "test_r01_foreign_injected_channel_and_no_guard_rejected.ForeignQmp.close",
+          "line": 562,
+          "test": false
+        },
+        {
+          "name": "test_r02_arbitrary_factory_never_runs_under_closed_gate",
+          "kind": "def",
+          "qualified": "test_r02_arbitrary_factory_never_runs_under_closed_gate",
+          "line": 577,
+          "test": true
+        },
+        {
+          "name": "malicious_factory",
+          "kind": "def",
+          "qualified": "test_r02_arbitrary_factory_never_runs_under_closed_gate.malicious_factory",
+          "line": 581,
+          "test": false
+        },
+        {
+          "name": "test_r03_legacy_cli_never_leaks_arbitrary_boot_reason",
+          "kind": "def",
+          "qualified": "test_r03_legacy_cli_never_leaks_arbitrary_boot_reason",
+          "line": 612,
+          "test": true
+        },
+        {
+          "name": "test_r01_lowlevel_qmp_has_no_unbound_command_path",
+          "kind": "def",
+          "qualified": "test_r01_lowlevel_qmp_has_no_unbound_command_path",
+          "line": 646,
+          "test": true
+        },
+        {
+          "name": "Forged",
+          "kind": "class",
+          "qualified": "test_r01_lowlevel_qmp_has_no_unbound_command_path.Forged",
+          "line": 661,
+          "test": false
+        },
+        {
+          "name": "verify",
+          "kind": "def",
+          "qualified": "test_r01_lowlevel_qmp_has_no_unbound_command_path.Forged.verify",
+          "line": 664,
+          "test": false
+        },
+        {
+          "name": "test_r02_public_factory_is_not_spawn_authority",
+          "kind": "def",
+          "qualified": "test_r02_public_factory_is_not_spawn_authority",
+          "line": 688,
+          "test": true
+        },
+        {
+          "name": "test_r02_direct_internal_core_without_child_has_no_spawn",
+          "kind": "def",
+          "qualified": "test_r02_direct_internal_core_without_child_has_no_spawn",
+          "line": 707,
+          "test": true
+        },
+        {
+          "name": "forbidden",
+          "kind": "def",
+          "qualified": "test_r02_direct_internal_core_without_child_has_no_spawn.forbidden",
+          "line": 711,
+          "test": false
+        },
+        {
+          "name": "test_r02_public_cli_refuses_without_spawn_even_with_host_claims",
+          "kind": "def",
+          "qualified": "test_r02_public_cli_refuses_without_spawn_even_with_host_claims",
+          "line": 730,
+          "test": true
+        },
+        {
+          "name": "forbidden",
+          "kind": "def",
+          "qualified": "test_r02_public_cli_refuses_without_spawn_even_with_host_claims.forbidden",
+          "line": 744,
+          "test": false
+        },
+        {
+          "name": "test_r03_unexpected_exception_stays_redacted_in_legacy_cli",
+          "kind": "def",
+          "qualified": "test_r03_unexpected_exception_stays_redacted_in_legacy_cli",
+          "line": 777,
+          "test": true
+        },
+        {
+          "name": "unexpected",
+          "kind": "def",
+          "qualified": "test_r03_unexpected_exception_stays_redacted_in_legacy_cli.unexpected",
+          "line": 784,
+          "test": false
+        },
+        {
+          "name": "test_r01_pidfd_provenance_and_unsupervised_session_denied",
+          "kind": "def",
+          "qualified": "test_r01_pidfd_provenance_and_unsupervised_session_denied",
+          "line": 820,
+          "test": true
+        },
+        {
+          "name": "Fabricated",
+          "kind": "class",
+          "qualified": "test_r01_pidfd_provenance_and_unsupervised_session_denied.Fabricated",
+          "line": 871,
+          "test": false
+        },
+        {
+          "name": "poll",
+          "kind": "def",
+          "qualified": "test_r01_pidfd_provenance_and_unsupervised_session_denied.Fabricated.poll",
+          "line": 874,
+          "test": false
+        },
+        {
+          "name": "test_r01_kernel_pidfd_binding_and_fd_substitution_real_children",
+          "kind": "def",
+          "qualified": "test_r01_kernel_pidfd_binding_and_fd_substitution_real_children",
+          "line": 913,
+          "test": true
+        },
+        {
+          "name": "test_r01_post_authentication_socket_swap_denies_send_key",
+          "kind": "def",
+          "qualified": "test_r01_post_authentication_socket_swap_denies_send_key",
+          "line": 962,
+          "test": true
+        },
+        {
+          "name": "SyntheticOwner",
+          "kind": "class",
+          "qualified": "test_r01_post_authentication_socket_swap_denies_send_key.SyntheticOwner",
+          "line": 979,
+          "test": false
+        },
+        {
+          "name": "poll",
+          "kind": "def",
+          "qualified": "test_r01_post_authentication_socket_swap_denies_send_key.SyntheticOwner.poll",
+          "line": 982,
+          "test": false
+        },
+        {
+          "name": "test_r02_fabricated_synthetic_child_never_claims_qemu_spawn",
+          "kind": "def",
+          "qualified": "test_r02_fabricated_synthetic_child_never_claims_qemu_spawn",
+          "line": 1014,
+          "test": true
+        },
+        {
+          "name": "Invented",
+          "kind": "class",
+          "qualified": "test_r02_fabricated_synthetic_child_never_claims_qemu_spawn.Invented",
+          "line": 1017,
+          "test": false
+        },
+        {
+          "name": "poll",
+          "kind": "def",
+          "qualified": "test_r02_fabricated_synthetic_child_never_claims_qemu_spawn.Invented.poll",
+          "line": 1020,
+          "test": false
+        },
+        {
+          "name": "wait",
+          "kind": "def",
+          "qualified": "test_r02_fabricated_synthetic_child_never_claims_qemu_spawn.Invented.wait",
+          "line": 1023,
+          "test": false
+        },
+        {
+          "name": "test_r02_preexisting_python_child_cannot_reach_qmp",
+          "kind": "def",
+          "qualified": "test_r02_preexisting_python_child_cannot_reach_qmp",
+          "line": 1049,
+          "test": true
+        },
+        {
+          "name": "forbidden_qmp",
+          "kind": "def",
+          "qualified": "test_r02_preexisting_python_child_cannot_reach_qmp.forbidden_qmp",
+          "line": 1054,
+          "test": false
+        },
+        {
+          "name": "test_r03_dangling_symlink_report_is_bounded_refusal",
+          "kind": "def",
+          "qualified": "test_r03_dangling_symlink_report_is_bounded_refusal",
+          "line": 1094,
+          "test": true
+        },
+        {
+          "name": "test_r02_real_unix_socket_never_receives_synthetic_qmp",
+          "kind": "def",
+          "qualified": "test_r02_real_unix_socket_never_receives_synthetic_qmp",
+          "line": 1133,
+          "test": true
+        },
+        {
+          "name": "args_after_preflight",
+          "kind": "def",
+          "qualified": "test_r02_real_unix_socket_never_receives_synthetic_qmp.args_after_preflight",
+          "line": 1169,
+          "test": false
+        },
+        {
+          "name": "test_safety_cleanup_foreign_pidfd_never_signals_other_live_child",
+          "kind": "def",
+          "qualified": "test_safety_cleanup_foreign_pidfd_never_signals_other_live_child",
+          "line": 1225,
+          "test": true
+        },
+        {
+          "name": "test_safety_synthetic_foreign_pidfd_factory_has_zero_foreign_signals",
+          "kind": "def",
+          "qualified": "test_safety_synthetic_foreign_pidfd_factory_has_zero_foreign_signals",
+          "line": 1256,
+          "test": true
+        },
+        {
+          "name": "test_safety_cleanup_matching_real_pidfd_reaps_owned_child",
+          "kind": "def",
+          "qualified": "test_safety_cleanup_matching_real_pidfd_reaps_owned_child",
+          "line": 1299,
+          "test": true
+        }
+      ],
+      "identical_dev_paths": []
+    },
+    {
+      "role": "q4os",
+      "pr": 318,
+      "ref": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "path": "auto_tests/tests/test_q4os_win10_qmp_boot.py",
+      "blob": "da3452f0dd1663eab99e2a08db5f538196a36b18",
+      "symbols": [
+        {
+          "name": "FakeQemu",
+          "kind": "class",
+          "qualified": "FakeQemu",
+          "line": 24,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "FakeQemu.__init__",
+          "line": 25,
+          "test": false
+        },
+        {
+          "name": "serve",
+          "kind": "def",
+          "qualified": "FakeQemu.serve",
+          "line": 38,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "FakeQemu.close",
+          "line": 75,
+          "test": false
+        },
+        {
+          "name": "lab",
+          "kind": "def",
+          "qualified": "lab",
+          "line": 81,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "run",
+          "line": 93,
+          "test": false
+        },
+        {
+          "name": "SyntheticOwner",
+          "kind": "class",
+          "qualified": "run.SyntheticOwner",
+          "line": 106,
+          "test": false
+        },
+        {
+          "name": "poll",
+          "kind": "def",
+          "qualified": "run.SyntheticOwner.poll",
+          "line": 109,
+          "test": false
+        },
+        {
+          "name": "test_prompt_detected_key_acknowledged_progress_observed_once",
+          "kind": "def",
+          "qualified": "test_prompt_detected_key_acknowledged_progress_observed_once",
+          "line": 145,
+          "test": true
+        },
+        {
+          "name": "test_prompt_missing_is_refused_without_keyboard_input",
+          "kind": "def",
+          "qualified": "test_prompt_missing_is_refused_without_keyboard_input",
+          "line": 159,
+          "test": true
+        },
+        {
+          "name": "test_qmp_unavailable_refused",
+          "kind": "def",
+          "qualified": "test_qmp_unavailable_refused",
+          "line": 171,
+          "test": true
+        },
+        {
+          "name": "test_malformed_qmp_greeting_refused",
+          "kind": "def",
+          "qualified": "test_malformed_qmp_greeting_refused",
+          "line": 176,
+          "test": true
+        },
+        {
+          "name": "test_qmp_key_send_error_refused",
+          "kind": "def",
+          "qualified": "test_qmp_key_send_error_refused",
+          "line": 187,
+          "test": true
+        },
+        {
+          "name": "test_efi_shell_detected_before_prompt_is_refused",
+          "kind": "def",
+          "qualified": "test_efi_shell_detected_before_prompt_is_refused",
+          "line": 199,
+          "test": true
+        },
+        {
+          "name": "test_boot_timeout_marker_refused",
+          "kind": "def",
+          "qualified": "test_boot_timeout_marker_refused",
+          "line": 211,
+          "test": true
+        },
+        {
+          "name": "test_dvd_key_not_taken_no_disk_progress_refused",
+          "kind": "def",
+          "qualified": "test_dvd_key_not_taken_no_disk_progress_refused",
+          "line": 223,
+          "test": true
+        },
+        {
+          "name": "test_later_reboot_never_receives_second_key",
+          "kind": "def",
+          "qualified": "test_later_reboot_never_receives_second_key",
+          "line": 235,
+          "test": true
+        },
+        {
+          "name": "test_serial_log_symlink_refused",
+          "kind": "def",
+          "qualified": "test_serial_log_symlink_refused",
+          "line": 249,
+          "test": true
+        },
+        {
+          "name": "test_private_directory_required",
+          "kind": "def",
+          "qualified": "test_private_directory_required",
+          "line": 264,
+          "test": true
+        },
+        {
+          "name": "test_workflow_runs_qmp_once_and_never_exports_vm_password",
+          "kind": "def",
+          "qualified": "test_workflow_runs_qmp_once_and_never_exports_vm_password",
+          "line": 271,
+          "test": true
+        },
+        {
+          "name": "test_windows_qemu_workflow_bash_scripts_parse_without_execution",
+          "kind": "def",
+          "qualified": "test_windows_qemu_workflow_bash_scripts_parse_without_execution",
+          "line": 292,
+          "test": true
+        },
+        {
+          "name": "_run_denied_report_cli",
+          "kind": "def",
+          "qualified": "_run_denied_report_cli",
+          "line": 312,
+          "test": false
+        },
+        {
+          "name": "denied",
+          "kind": "def",
+          "qualified": "_run_denied_report_cli.denied",
+          "line": 315,
+          "test": false
+        },
+        {
+          "name": "test_r03_exclusive_report_existing_paths_and_symlinks",
+          "kind": "def",
+          "qualified": "test_r03_exclusive_report_existing_paths_and_symlinks",
+          "line": 338,
+          "test": true
+        },
+        {
+          "name": "test_r03_directory_swapped_after_descriptor_pinning",
+          "kind": "def",
+          "qualified": "test_r03_directory_swapped_after_descriptor_pinning",
+          "line": 367,
+          "test": true
+        },
+        {
+          "name": "open_and_swap",
+          "kind": "def",
+          "qualified": "test_r03_directory_swapped_after_descriptor_pinning.open_and_swap",
+          "line": 381,
+          "test": false
+        },
+        {
+          "name": "test_r03_report_io_faults_fail_closed_no_traceback",
+          "kind": "def",
+          "qualified": "test_r03_report_io_faults_fail_closed_no_traceback",
+          "line": 399,
+          "test": true
+        },
+        {
+          "name": "track_open",
+          "kind": "def",
+          "qualified": "test_r03_report_io_faults_fail_closed_no_traceback.track_open",
+          "line": 412,
+          "test": false
+        },
+        {
+          "name": "fault_write",
+          "kind": "def",
+          "qualified": "test_r03_report_io_faults_fail_closed_no_traceback.fault_write",
+          "line": 418,
+          "test": false
+        },
+        {
+          "name": "fault_fsync",
+          "kind": "def",
+          "qualified": "test_r03_report_io_faults_fail_closed_no_traceback.fault_fsync",
+          "line": 426,
+          "test": false
+        },
+        {
+          "name": "fault_close",
+          "kind": "def",
+          "qualified": "test_r03_report_io_faults_fail_closed_no_traceback.fault_close",
+          "line": 431,
+          "test": false
+        }
+      ],
+      "identical_dev_paths": []
     }
   ],
   "dev_files": [],
