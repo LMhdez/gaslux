@@ -250,16 +250,73 @@ def discover_goal_backlog(root: Path) -> dict:
     }
 
 
+# A dev merge must not re-enable inference for old, still-open lifecycle
+# proposals. A role is claimed by any authenticated same-repository Draft PR
+# with an approved lifecycle branch name, regardless of its original base SHA.
+FEATURE_BRANCH = re.compile(
+    r"bot/gaslux-feature-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}\\Z"
+)
+FEATURE_BOTS = {"github-actions[bot]", "gaslux-autonomous-publisher[bot]"}
+
+
+def claimed_lifecycle_roles() -> set[str]:
+    """Bounded, authenticated open-PR dedup; unavailable history fails closed."""
+    response = subprocess.run(
+        ["gh", "api", f"repos/{REPO}/pulls?state=open&per_page=100"],
+        text=True, capture_output=True, check=False, timeout=25,
+    )
+    if response.returncode != 0:
+        raise RuntimeError("Cannot retrieve open lifecycle PRs for dedup")
+    try:
+        prs = json.loads(response.stdout)
+    except (ValueError, TypeError) as exc:
+        raise ValueError("Invalid lifecycle PR list") from exc
+    if type(prs) is not list or len(prs) >= 100:
+        raise ValueError("Unbounded or malformed lifecycle PR list")
+    claimed = set()
+    for pr in prs:
+        if type(pr) is not dict:
+            raise ValueError("Malformed lifecycle PR")
+        head, base, author = pr.get("head"), pr.get("base"), pr.get("user")
+        if type(head) is not dict or type(base) is not dict or type(author) is not dict:
+            raise ValueError("Incomplete lifecycle PR identity")
+        ref = head.get("ref")
+        match = FEATURE_BRANCH.fullmatch(ref) if type(ref) is str else None
+        if match is None:
+            continue
+        # An unrecognised branch cannot silently suppress a legitimate role;
+        # nor may it trigger duplicate inference while its owner is unknown.
+        if (pr.get("state") != "open" or type(pr.get("draft")) is not bool or
+            base.get("ref") != "dev" or
+            type(base.get("repo")) is not dict or
+            base["repo"].get("full_name") != REPO or
+            type(head.get("repo")) is not dict or
+            head["repo"].get("full_name") != REPO or
+            author.get("type") != "Bot" or
+            author.get("login") not in FEATURE_BOTS):
+            raise ValueError("Untrusted lifecycle PR claims a restricted role")
+        claimed.add(match.group(1))
+    return claimed
+
+
 def plan(root: Path) -> dict:
     base = git(root, "rev-parse", "HEAD")
     if not SHA.fullmatch(base):
         raise ValueError("Invalid pinned dev checkout")
     start = int(os.environ.get("GASLUX_ROLE_OFFSET", "0")) % len(TASKS)
     roles = list(TASKS)
+    # Query PR history only when at least one legacy function is missing.
+    # This also preserves old fully-implemented offline test behavior.
+    missing_roles = {
+        role for role in roles
+        if (root / TASKS[role][0]).is_file()
+        and f"def assess_{role}_lifecycle(" not in
+        (root / TASKS[role][0]).read_text()
+    }
+    claimed = claimed_lifecycle_roles() if missing_roles else set()
     for offset in range(len(roles)):
         role = roles[(start + offset) % len(roles)]
-        target = root / TASKS[role][0]
-        if not target.is_file() or f"def assess_{role}_lifecycle(" in target.read_text():
+        if role not in missing_roles or role in claimed:
             continue
         branch = origin_branch(role, base)
         check = subprocess.run(
