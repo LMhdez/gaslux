@@ -78,7 +78,7 @@ class OpenCodeTrialTests(unittest.TestCase):
         rows = event_rows()
         rows[-1]["part"]["text"] = "not json; SECRET_SENTINEL"
         row = trial.assess(lambda: trial.parse_events(encode(rows)))
-        self.assertEqual(row["failure"], "CANDIDATE_JSON_INVALID")
+        self.assertEqual(row["failure"], "CANDIDATE_FORMAT_INVALID")
         self.assertEqual(row["native_skills"], [trial.SKILL])
         self.assertEqual(row["event_counts"], {"tool_use": 1, "text": 1})
         self.assertNotIn("SECRET_SENTINEL", json.dumps(row))
@@ -145,6 +145,47 @@ class OpenCodeTrialTests(unittest.TestCase):
             with self.assertRaisesRegex(trial.TrialFailure, "CLI_TIMEOUT"):
                 trial.bounded_process([sys.executable, "-c", "import time; time.sleep(10)"],
                                       Path(tmp), {}, timeout=0.2)
+
+
+    def test_native_agent_source_contract(self):
+        source = ("def assess_mint_lifecycle(evidence: dict) -> dict:\n"
+                  "    gates = " + repr(trial.factory.GATES) + "\n"
+                  "    missing = sorted([name for name in gates if evidence.get(name) is not True])\n"
+                  "    return {'backend': 'mint', 'missingGates': missing, "
+                  "'installationAuthorized': False, 'releaseEligible': False}\n")
+        for answer in (source, "```python\n" + source + "```",
+                       "```json\n" + json.dumps({"addition": source}) + "\n```",
+                       json.dumps({"addition": source})):
+            rows = event_rows()
+            rows[-1]["part"]["text"] = answer
+            row = trial.assess(lambda: trial.parse_events(encode(rows)))
+            self.assertIs(row["accepted"], True)
+            self.assertEqual(row["native_skills"], [trial.SKILL])
+
+    def test_source_decoding_never_extracts_from_prose_or_multiple_blocks(self):
+        source = trial.SIGNATURE + "\n    return {}"
+        for answer in ("Here is the function:\n```python\n" + source + "\n```",
+                       "```python\n" + source + "\n```\nmore",
+                       "```python\n" + source + "\n```\n```python\n" + source + "\n```",
+                       '{"addition":"a","addition":"b"}',
+                       '{"addition":"a","permission":true}',
+                       "```json\n" + source + "\n```",
+                       "x" * (trial.MAX_ADDITION_BYTES + 1)):
+            with self.assertRaises(trial.TrialFailure):
+                trial.decode_candidate(answer)
+
+    def test_raw_python_is_still_checked_by_unchanged_ast(self):
+        rows = event_rows()
+        rows[-1]["part"]["text"] = trial.SIGNATURE + "\n    import os\n    return {}"
+        row = trial.assess(lambda: trial.parse_events(encode(rows)))
+        self.assertIs(row["accepted"], False)
+        self.assertEqual(row["failure_stage"], "ast_functional_guard")
+        self.assertEqual(row["native_skills"], [trial.SKILL])
+
+    def test_agent_prompt_does_not_require_double_json(self):
+        self.assertIn("Return only the Python function source", trial.AGENT_PROMPT)
+        self.assertNotIn("Return exactly one JSON object", trial.AGENT_PROMPT)
+        self.assertIn("Return exactly one JSON object", trial.PROMPT)
 
 
 if __name__ == "__main__":
