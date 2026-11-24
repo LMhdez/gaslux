@@ -13,6 +13,7 @@ on:
       - auto_tests/tests/test_gaslux_agent_feature_factory.py
       - auto_tests/tools/gaslux_agent_task_triage.py
       - auto_tests/tests/test_gaslux_agent_task_triage.py
+      - auto_tests/tests/test_gaslux_agent_phase2b.py
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-feature-factory.yml
@@ -20,6 +21,7 @@ on:
       - auto_tests/tests/test_gaslux_agent_feature_factory.py
       - auto_tests/tools/gaslux_agent_task_triage.py
       - auto_tests/tests/test_gaslux_agent_task_triage.py
+      - auto_tests/tests/test_gaslux_agent_phase2b.py
 
 permissions:
   contents: read
@@ -42,6 +44,7 @@ jobs:
           set -euo pipefail
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_task_triage.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_phase2b.py -v
 
   select:
     if: >-
@@ -59,6 +62,7 @@ jobs:
       role: ${{ steps.plan.outputs.role }}
       base: ${{ steps.plan.outputs.base }}
       blocked: ${{ steps.plan.outputs.blocked }}
+      scope: ${{ steps.plan.outputs.scope }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -89,6 +93,7 @@ jobs:
               out.write('role=' + row['role'] + '\n')
               out.write('base=' + row['base'] + '\n')
               out.write('blocked=' + str(row['status'] == 'blocked').lower() + '\n')
+              out.write('scope=' + row.get('scope', 'lifecycle') + '\n')
           if row['status'] == 'blocked':
               with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
                   summary.write('### GASLUX: actual unsatisfied lifecycle gates (read-only)\n\n')
@@ -110,6 +115,7 @@ jobs:
     env:
       ROLE: ${{ needs.select.outputs.role }}
       BASE: ${{ needs.select.outputs.base }}
+      SCOPE: ${{ needs.select.outputs.scope }}
       OLLAMA_HOST: 127.0.0.1:11434
       OLLAMA_NUM_PARALLEL: '1'
     steps:
@@ -128,6 +134,7 @@ jobs:
           set -euo pipefail
           test "$(git -C source rev-parse HEAD)" = "$BASE"
           python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
+          python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_phase2b.py -v
       - name: Install hash-pinned unprivileged local inference engine
         shell: bash
         run: |
@@ -153,9 +160,9 @@ jobs:
         run: |
           set -euo pipefail
           timeout 700 python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py generate \
-            --repo source --role "$ROLE" --base "$BASE" --evidence evidence/feature-factory
+            --repo source --role "$ROLE" --base "$BASE" --scope "$SCOPE" --evidence evidence/feature-factory
           python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py verify \
-            --repo source --role "$ROLE" --base "$BASE" --evidence evidence/feature-factory
+            --repo source --role "$ROLE" --base "$BASE" --scope "$SCOPE" --evidence evidence/feature-factory
       - name: Recompile and run relevant current-dev product regression tests without write token
         shell: bash
         run: |
@@ -216,11 +223,13 @@ jobs:
         env:
           ROLE: ${{ needs.select.outputs.role }}
           BASE: ${{ needs.select.outputs.base }}
+          SCOPE: ${{ needs.select.outputs.scope }}
         run: |
           set -euo pipefail
           python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
+          python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_phase2b.py -v
           python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py verify \
-            --repo source --role "$ROLE" --base "$BASE" --evidence evidence/feature-factory
+            --repo source --role "$ROLE" --base "$BASE" --scope "$SCOPE" --evidence evidence/feature-factory
 
   publish_draft:
     needs: [select, model, safety]
@@ -272,10 +281,11 @@ jobs:
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           ROLE: ${{ needs.select.outputs.role }}
           BASE: ${{ needs.select.outputs.base }}
+          SCOPE: ${{ needs.select.outputs.scope }}
         run: |
           set -euo pipefail
           timeout 120 python3 -I trusted/auto_tests/tools/gaslux_agent_feature_factory.py publish \
-            --repo source --role "$ROLE" --base "$BASE" --evidence evidence/feature-factory
+            --repo source --role "$ROLE" --base "$BASE" --scope "$SCOPE" --evidence evidence/feature-factory
 
   triage_missing_gates:
     needs: select
