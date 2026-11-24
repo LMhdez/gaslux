@@ -107,6 +107,101 @@ class FeatureFactoryTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 factory.discover_goal_backlog(root)
 
+    def test_full_six_distro_gate_inventory_is_blocked_without_real_evidence(self):
+        """Enumerate 136 exact slots; dev JSON cannot grant product authority."""
+        platforms = [
+            "windows10-bios-mbr", "windows10-uefi-gpt",
+            "windows11-uefi-gpt",
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            docs = root / "docs/autonomy"
+            docs.mkdir(parents=True)
+            goal = {
+                "schema_version": 1,
+                "gates": list(factory.GATES),
+                "platforms": platforms,
+                "automatic_safe_gates": list(factory.GATES[:2]),
+                "protected_gates": list(factory.GATES[2:]),
+                "backends": [
+                    {
+                        "id": role, "priority": i,
+                        "platforms": platforms[1:] if role == "bazzite"
+                                     else platforms,
+                        "issue_numbers": [],
+                    }
+                    for i, role in enumerate(factory.TASKS)
+                ],
+            }
+            (docs / "goal.json").write_text(json.dumps(goal))
+            evidence = {"schema_version": 1, "records": []}
+            (docs / "evidence.json").write_text(json.dumps(evidence))
+            result = factory.discover_goal_backlog(root)
+            items = result["work_items"]
+            self.assertEqual(result["status"], "blocked")
+            self.assertEqual(len(items), 136)
+            self.assertEqual(result["required_gate_slots"], 136)
+            self.assertEqual(result["scope_review_slots"], 34)
+            self.assertEqual(result["protected_vm_slots"], 102)
+            self.assertEqual(result["declared_unverified_slots"], 0)
+            self.assertEqual(result["independently_verified_slots"], 0)
+            self.assertEqual(len(result["next_gates"]), 6)
+            self.assertEqual(
+                len(set((x["role"], x["platform"], x["gate"]) for x in items)),
+                136,
+            )
+            self.assertFalse(any(
+                x["role"] == "bazzite" and
+                x["platform"] == "windows10-bios-mbr" for x in items
+            ))
+            for item in items:
+                with self.subTest(key=(item["role"], item["platform"],
+                                       item["gate"])):
+                    self.assertIs(item["code_authorized"], False)
+                    self.assertIs(item["installation_authorized"], False)
+                    self.assertIs(item["release_eligible"], False)
+                    self.assertEqual(
+                        item["prerequisite_gates"],
+                        list(factory.GATES[:factory.GATES.index(item["gate"])]),
+                    )
+                    self.assertEqual(
+                        item["scope_status"],
+                        "needs_scope_review" if item["gate"] in factory.GATES[:2]
+                        else "blocked_external_vm_evidence",
+                    )
+                    self.assertEqual(
+                        item["source_target"], factory.TASKS[item["role"]][0]
+                    )
+                    self.assertEqual(
+                        item["test_target"],
+                        "auto_tests/tests/" + factory.TASKS[item["role"]][1],
+                    )
+            # Even attacker-controlled records claiming full installation
+            # verification cannot become independently verified.
+            evidence["records"] = [
+                {"backend": "mint", "platform": "windows10-bios-mbr",
+                 "gate": "source-authenticity", "claimed_pass": True},
+                {"backend": "bazzite", "platform": "windows11-uefi-gpt",
+                 "gate": "fault-injection-rollback", "verified": True,
+                 "release_eligible": True},
+            ]
+            (docs / "evidence.json").write_text(json.dumps(evidence))
+            later = factory.discover_goal_backlog(root)
+            self.assertEqual(later["declared_unverified_slots"], 2)
+            self.assertEqual(later["independently_verified_slots"], 0)
+            self.assertEqual(later["scope_review_slots"], 34)
+            self.assertEqual(later["protected_vm_slots"], 102)
+            claimed = [
+                x for x in later["work_items"]
+                if x["state"] == "declared_unverified"
+            ]
+            self.assertEqual(len(claimed), 2)
+            self.assertTrue(all(
+                x["code_authorized"] is False and
+                x["installation_authorized"] is False and
+                x["release_eligible"] is False for x in claimed
+            ))
+
     def test_plan_reports_real_blocked_gates_when_all_six_roles_claimed(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
