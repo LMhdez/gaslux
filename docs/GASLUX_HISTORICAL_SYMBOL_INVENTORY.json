@@ -10759,5 +10759,210 @@
     "whole_blob_matches": 0,
     "historical_declarations_without_name_match": 668,
     "semantic_equivalence_verified": 0
-  }
+  },
+  "role_summary": [
+    {
+      "role": "mint",
+      "files": 5,
+      "declarations": 141,
+      "lexical_tests": 60,
+      "same_name_declarations": 18
+    },
+    {
+      "role": "zorin",
+      "files": 4,
+      "declarations": 44,
+      "lexical_tests": 10,
+      "same_name_declarations": 8
+    },
+    {
+      "role": "cachyos",
+      "files": 11,
+      "declarations": 190,
+      "lexical_tests": 84,
+      "same_name_declarations": 20
+    },
+    {
+      "role": "popos",
+      "files": 5,
+      "declarations": 77,
+      "lexical_tests": 23,
+      "same_name_declarations": 17
+    },
+    {
+      "role": "q4os",
+      "files": 5,
+      "declarations": 174,
+      "lexical_tests": 48,
+      "same_name_declarations": 34
+    },
+    {
+      "role": "bazzite",
+      "files": 12,
+      "declarations": 162,
+      "lexical_tests": 87,
+      "same_name_declarations": 23
+    }
+  ],
+  "targeted_comparisons": [
+    {
+      "kind": "historical_cross_branch_source_span_match",
+      "path": "auto_tests/tools/windows_x64_tcg_firstboot.py",
+      "left": {
+        "pr": 260,
+        "sha": "7ab2a431767d212566ab57b834f299f8308dbda6",
+        "blob": "705de8571d8ff814f9f59995ff00e71c39cfd783"
+      },
+      "right": {
+        "pr": 263,
+        "sha": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+        "blob": "2e1a8127119028c1bf50d48e6b318620784a5232"
+      },
+      "matching_top_level_function_spans": [
+        "require",
+        "validate_environment",
+        "download_verified_iso",
+        "derive_no_prompt_uefi_lab_iso",
+        "witness_powershell",
+        "generate_unattend",
+        "validate_oobe_answer_pass",
+        "send_first_iso_boot_key",
+        "boot_vm",
+        "build_two_stage_qemu_args",
+        "restart_owned_swtpm_for_second_guest",
+        "scan_dvd_firmware_starts",
+        "scan_two_stage_dvd_serial",
+        "boot_two_stage_windows",
+        "probe_no_prompt_uefi_dvd"
+      ],
+      "different": [
+        "main"
+      ],
+      "left_only": [
+        "workspace_has_active_mount",
+        "cleanup_private_workspace"
+      ],
+      "right_only": [],
+      "method": "Exact text comparison after trimming trailing whitespace of lexically delimited top-level def spans; excludes decorators, globals, imports and class definitions. Not proof of behavior or safe composition.",
+      "semantic_equivalence_verified": false
+    },
+    {
+      "kind": "same_name_different_contract",
+      "name": "validate_plan",
+      "left": {
+        "pr": 298,
+        "path": "auto_tests/tools/gaslux_popos_six_gpt_contract.py",
+        "sha": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+        "line": 138,
+        "signature": "(plan: dict, transaction_id: str) -> None"
+      },
+      "right": {
+        "path": "assets/live/libertix-installation-plan.py",
+        "sha": "d89f1547c50787e4640164e34bfd1863134e2908",
+        "line": 198,
+        "signature": "(plan: Any, *, require_installer: bool = False) -> dict[str, Any]"
+      },
+      "observation": "Historical function checks a fixed synthetic GPT transaction and partition layout; current function checks installation-plan schema and cross-field rules. Different contract; do not substitute by name.",
+      "semantic_equivalence_verified": false
+    }
+  ],
+  "reuse_review_leads": [
+    {
+      "role": "mint",
+      "historical_prs": [
+        260,
+        263,
+        383,
+        388
+      ],
+      "current_paths": [
+        "auto_tests/tools/compact_ovmf_target.py",
+        "assets/live/libertix-first-boot-verify.py",
+        "auto_tests/tools/verify_windows_guest_recovery.py",
+        "assets/live/gaslux_distribution_capabilities.py"
+      ],
+      "gap": "Existing allocation and installed-system/Windows observation validators do not replace historical Windows two-stage harness or same-COW validation. Reconcile the two historic harness variants and retain cleanup differences.",
+      "proof": "capability_overlap_only"
+    },
+    {
+      "role": "zorin",
+      "historical_prs": [
+        224,
+        264
+      ],
+      "current_paths": [
+        "assets/live/libertix-first-boot-verify.py",
+        "auto_tests/tools/verify_windows_guest_recovery.py"
+      ],
+      "gap": "Existing first-boot/Windows validators are reusable contracts; isolated Zorin initramfs regeneration and real shared COW harness not shown equivalent.",
+      "proof": "capability_overlap_only"
+    },
+    {
+      "role": "cachyos",
+      "historical_prs": [
+        248,
+        263,
+        314,
+        335
+      ],
+      "current_paths": [
+        "assets/live/gaslux_distribution_capabilities.py",
+        "auto_tests/tools/verify_windows_guest_recovery.py",
+        "auto_tests/tools/gpt_fd_crosscheck_offline_compat.py"
+      ],
+      "gap": "Offline GPT/Windows recovery evidence does not replace native pacstrap or BCD A/B attribution. Reconcile common Windows harness before recovering distro-specific code.",
+      "proof": "capability_overlap_only"
+    },
+    {
+      "role": "popos",
+      "historical_prs": [
+        291,
+        298,
+        324,
+        329,
+        353
+      ],
+      "current_paths": [
+        "assets/live/gaslux_popos_preflight.py",
+        "assets/live/libertix-installation-plan.py",
+        "auto_tests/installer_observer/qemu_local_disk_witness.py"
+      ],
+      "gap": "Native live diagnostics and production plan validation are distinct from synthetic six-GPT ownership, fsck and trace. Same-name validate_plan is not interchangeable.",
+      "proof": "capability_overlap_only"
+    },
+    {
+      "role": "q4os",
+      "historical_prs": [
+        299,
+        318,
+        338,
+        345,
+        351
+      ],
+      "current_paths": [
+        "assets/live/gaslux_q4os_preflight.py",
+        "auto_tests/installer_observer/host_fd_boundary.py",
+        "auto_tests/installer_observer/qemu_local_disk_witness.py"
+      ],
+      "gap": "Reuse current HOST-only measurement primitives; historical authenticated QMP session/supervisor and native Calamares remain separate scopes. Current witness never starts VM.",
+      "proof": "capability_overlap_only"
+    },
+    {
+      "role": "bazzite",
+      "historical_prs": [
+        250,
+        262,
+        280,
+        320,
+        357
+      ],
+      "current_paths": [
+        "assets/live/gaslux_bazzite_preflight.py",
+        "assets/live/gaslux_bazzite_iso_signature.py",
+        "auto_tests/installer_observer/qemu_local_disk_witness.py"
+      ],
+      "gap": "Existing ISO signature gate checks caller-pinned digest/key and detached signature, not native installer or OCI/RPM/deployment provenance. Preserve separate historical research and denial.",
+      "proof": "capability_overlap_only"
+    }
+  ]
 }

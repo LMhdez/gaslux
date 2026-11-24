@@ -50,3 +50,7 @@ A presença em dev de `assess_mint_lifecycle` e `match_mint_223_iso_descriptor` 
 ## 4. Continuação
 
 Pesquisar implementações equivalentes por função/teste e blobs noutros caminhos; inspecionar dependências já verificadas; separar extração non-writer de VM real; resolver findings antes de execução. Acrescentar evidências com run/job, resultado negativo, origem, limites e revalidação. Priorizar preservação dos artefactos autorizados ainda disponíveis, sem exportar ISO/QCOW2/TPM/segredos. Não introduzir workflow duplicado nem preencher o registo formal com este inventário. Os seis dossiers existentes continuam referências canónicas. Nenhum consumidor automático novo foi implementado neste lote documental.
+
+## 5. Recuperação ao nível das funções e testes
+
+Consultar [inventário de símbolos e comparações](GASLUX_HISTORICAL_SYMBOL_AUDIT.md) e [JSON](GASLUX_HISTORICAL_SYMBOL_INVENTORY.json). Índice de 42 fontes históricas e 178 atuais; não confundir coincidência nominal com equivalência. Primeiro alvo: reconciliar os dois harness Windows antes de recuperar implementações de cada distro.
