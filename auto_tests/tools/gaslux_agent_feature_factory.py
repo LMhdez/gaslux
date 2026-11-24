@@ -36,6 +36,24 @@ TASKS = {
     "bazzite": ("assets/live/gaslux_bazzite_preflight.py", "test_bazzite_atomic_preflight.py",
                 "Provide fail-closed Bazzite Atomic lifecycle evidence classification"),
 }
+# P0 Phase 2B: one trusted, reviewable, read-only product feature. This exact
+# scope requires independent Safety review before its code is merged to main.
+# Issue #404 remains a task request, not an executable authorization itself.
+SCOPE2B_ID = "mint-iso-pins-v1"
+SCOPE2B_ISSUE = 404
+SCOPE2B_FN = "match_mint_223_iso_descriptor"
+SCOPE2B_TARGET = TASKS["mint"][0]
+SCOPE2B_PLATFORM = "windows10-bios-mbr"
+SCOPE2B_GATE = "source-authenticity"
+SCOPE2B_TASK = ("Check the pinned Mint 22.3 ISO descriptor against trusted release "
+                "identity without granting authenticity, installation or release.")
+SCOPE2B_PINS = {
+    "id": "mint",
+    "isoInstaller": "https://pub.linuxmint.io/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso",
+    "isoInstallerSha256": "a081ab202cfda17f6924128dbd2de8b63518ac0531bcfe3f1a1b88097c459bd4",
+    "isoInstallerSizeBytes": 3091660800,
+}
+
 SAFE_BUILTINS = {
     "all": all, "any": any, "bool": bool, "dict": dict, "isinstance": isinstance,
     "len": len, "list": list, "set": set, "sorted": sorted, "str": str, "tuple": tuple,
@@ -58,6 +76,57 @@ def origin_branch(role: str, base: str) -> str:
     if role not in TASKS or not SHA.fullmatch(base):
         raise ValueError("Invalid role or source SHA")
     return f"bot/gaslux-feature-{role}-{base[:12]}"
+
+
+def scope2b_branch(base: str) -> str:
+    if not SHA.fullmatch(base):
+        raise ValueError("Invalid scope2b dev SHA")
+    return f"bot/gaslux-scope2b-mint-pins-{base[:12]}"
+
+
+def scope2b_eligible(root: Path, base: str) -> bool:
+    """Admission uses authenticated GitHub issue data AND trusted main scope."""
+    target = root / SCOPE2B_TARGET
+    if (not target.is_file() or
+        f"def {SCOPE2B_FN}(".encode() in target.read_bytes()):
+        return False
+    release = json.loads((root / "release-config.json").read_text(encoding="utf-8"))
+    items = release.get("distributions")
+    if (type(items) is not list or
+        len([x for x in items if type(x) is dict and x.get("id") == "mint"]) != 1):
+        raise ValueError("Untrusted release descriptor shape")
+    mint = next(x for x in items if type(x) is dict and x.get("id") == "mint")
+    if any(type(mint.get(k)) is not type(v) or mint.get(k) != v
+           for k, v in SCOPE2B_PINS.items()):
+        raise ValueError("Dev Mint media pins moved: scope needs re-review")
+    issue = subprocess.run(
+        ["gh", "api", f"repos/{REPO}/issues/{SCOPE2B_ISSUE}"],
+        capture_output=True, text=True, timeout=20, check=False,
+    )
+    if issue.returncode != 0:
+        raise RuntimeError("Cannot authenticate reviewed scope issue")
+    row = json.loads(issue.stdout)
+    if (type(row) is not dict or row.get("number") != SCOPE2B_ISSUE or
+        row.get("state") != "open" or row.get("repository_url") !=
+        f"https://api.github.com/repos/{REPO}" or
+        type(row.get("user")) is not dict or
+        row["user"].get("login") != "github-actions[bot]" or
+        row.get("title") !=
+        "[GASLUX-AUTO] mint / windows10-bios-mbr / source-authenticity: scope & acceptance" or
+        not isinstance(row.get("body"), str) or
+        row["body"].splitlines()[0] !=
+        "<!-- GASLUX-AUTOTASK:mint:windows10-bios-mbr:source-authenticity -->"):
+        raise ValueError("Unexpected issue #404 identity or gate")
+    branch = scope2b_branch(base)
+    check = subprocess.run(
+        ["gh", "api", f"repos/{REPO}/git/ref/heads/{branch}"],
+        text=True, capture_output=True, check=False, timeout=20,
+    )
+    if check.returncode == 0:
+        return False
+    if "404" not in check.stderr and "Not Found" not in check.stderr:
+        raise RuntimeError("Cannot establish scoped bot branch absence")
+    return True
 
 
 def discover_goal_backlog(root: Path) -> dict:
@@ -158,8 +227,16 @@ def plan(root: Path) -> dict:
         # A 404 means unclaimed; other GitHub failures must never trigger work.
         if "404" not in check.stderr and "Not Found" not in check.stderr:
             raise RuntimeError("Cannot establish bot branch absence")
-        return {"status": "pending", "role": role, "base": base, "task": TASKS[role][2]}
-    return {"base": base, **discover_goal_backlog(root)}
+        return {"status": "pending", "role": role, "base": base, "task": TASKS[role][2], "scope": "lifecycle"}
+    backlog = discover_goal_backlog(root)
+    if scope2b_eligible(root, base):
+        return {
+            "status": "pending", "role": "mint", "base": base,
+            "scope": SCOPE2B_ID, "task": SCOPE2B_TASK,
+            "gate": SCOPE2B_GATE, "platform": SCOPE2B_PLATFORM,
+            "issue": SCOPE2B_ISSUE,
+        }
+    return {"base": base, **backlog}
 
 
 def validate_addition(role: str, addition: str, *, execute: bool) -> None:
