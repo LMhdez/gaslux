@@ -84,12 +84,12 @@ jobs:
               out.write('base=' + row['base'] + '\n')
           if row['status'] == 'blocked':
               with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
-                  summary.write('### GASLUX: actual unsatisfied lifecycle gates (read-only)\\n\\n')
-                  summary.write('No new Qwen code scope authorized; no installer or release gates proved.\\n\\n')
+                  summary.write('### GASLUX: actual unsatisfied lifecycle gates (read-only)\n\n')
+                  summary.write('No new Qwen code scope authorized; no installer or release gates proved.\n\n')
                   for item in row['next_gates']:
                       summary.write(
                           f"- {item['role']} / {item['platform']} / {item['gate']}: "
-                          f"{item['state']} — Safety/owner scope review required\\n"
+                          f"{item['state']} — Safety/owner scope review required\n"
                       )
           PY
 
