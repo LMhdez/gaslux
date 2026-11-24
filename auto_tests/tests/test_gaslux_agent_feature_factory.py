@@ -309,5 +309,27 @@ class FeatureFactoryTests(unittest.TestCase):
                 self.assertFalse(evidence.exists())
 
 
+    def test_generated_pr_ci_identity_is_main_scoped_and_minimal(self):
+        workflows = (
+            (".github/workflows/gaslux-agent-feature-factory.yml", "publish_draft"),
+            (".github/workflows/gaslux-agent-clock.yml", "integrator_publisher"),
+        )
+        for path, job in workflows:
+            workflow = (SCRIPT.parents[2] / path).read_text(encoding="utf-8")
+            before, publisher = workflow.split(f"  {job}:\n", 1)
+            self.assertNotIn("GASLUX_PUBLISH_APP_PRIVATE_KEY", before)
+            self.assertNotIn("pull_request_target:", workflow)
+            self.assertIn("id: publish_identity", publisher)
+            self.assertIn("vars.GASLUX_PUBLISH_APP_CLIENT_ID != ''", publisher)
+            self.assertIn("secrets.GASLUX_PUBLISH_APP_PRIVATE_KEY", publisher)
+            self.assertIn("repositories: gaslux", publisher)
+            self.assertIn("permission-contents: write", publisher)
+            self.assertIn("permission-pull-requests: write", publisher)
+            self.assertIn("GH_TOKEN: ${{ steps.publish_identity.outputs.token || secrets.GITHUB_TOKEN }}", publisher)
+            self.assertLess(
+                publisher.index("id: publish_identity"),
+                publisher.index("GH_TOKEN: ${{ steps.publish_identity.outputs.token"),
+            )
+
 if __name__ == "__main__":
     unittest.main()
