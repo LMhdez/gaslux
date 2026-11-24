@@ -114,6 +114,105 @@ class AdmissionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 gate.candidate_append({"commits": count}, "zorin", HEAD, "allowed.py")
 
+    def test_full_read_only_admission_for_repaired_history(self):
+        generated = "c" * 40
+        drift = "d" * 40
+        path = gate.TASKS["zorin"][0]
+        before = b"# existing source\n"
+        gates = (
+            "source-authenticity", "windows-preflight", "install",
+            "linux-first-boot", "windows-return", "linux-update-reboot",
+            "uninstall-windows-integrity", "fault-injection-rollback",
+        )
+        function = (
+            "def assess_zorin_lifecycle(evidence: dict) -> dict:\n"
+            f"    gates = {gates!r}\n"
+            "    missing = sorted([name for name in gates if evidence.get(name) is not True])\n"
+            "    return {'backend': 'zorin', 'missingGates': missing, "
+            "'installationAuthorized': False, 'releaseEligible': False}\n"
+        ).encode()
+        initial = before + b"\n" + function
+        repaired = before + b"\n\n" + function.replace(b"'", b'"')
+        pr = {
+            "number": 395, "state": "open", "draft": True, "commits": 2,
+            "user": {"login": "gaslux-autonomous-publisher[bot]", "id": 1},
+            "head": {"sha": HEAD, "repo": {"full_name": gate.REPO},
+                     "ref": f"bot/gaslux-feature-zorin-{BASE[:12]}"},
+            "base": {"ref": "dev", "repo": {"full_name": gate.REPO}},
+        }
+        file_row = {"filename": path, "status": "modified",
+                    "additions": 20, "deletions": 0}
+        checks = [{"name": name, "head_sha": HEAD, "status": "completed",
+                   "conclusion": "success", "app": {"slug": "github-actions"}}
+                  for name in gate.COMMON_CHECKS | {"read-only-contracts"}]
+
+        for scenario in ("valid", "self_repair_review", "no_review",
+                         "stale_base", "head_drift", "offscope_intermediate"):
+            with self.subTest(scenario=scenario):
+                live_dev = drift if scenario == "stale_base" else BASE
+                reviewer = 9 if scenario == "self_repair_review" else 2
+                reviews = [] if scenario == "no_review" else [{
+                    "user": {"id": reviewer}, "state": "APPROVED", "commit_id": HEAD,
+                    "body": f"GASLUX-SAFETY-V1 head={HEAD} base={live_dev}",
+                }]
+                pr_reads = 0
+
+                def api(method, route):
+                    nonlocal pr_reads
+                    self.assertEqual(method, "GET")
+                    if route == "/pulls/395":
+                        pr_reads += 1
+                        if scenario == "head_drift" and pr_reads > 1:
+                            return {**pr, "head": {**pr["head"], "sha": drift}}
+                        return pr
+                    if route == "/git/ref/heads/dev":
+                        return {"object": {"sha": live_dev}}
+                    if route == "/pulls/395/files?per_page=100":
+                        return [file_row]
+                    if route == f"/git/commits/{HEAD}":
+                        return {"parents": [{"sha": generated}]}
+                    if route == f"/git/commits/{generated}":
+                        return {"parents": [{"sha": BASE}]}
+                    for parent, child in ((BASE, generated), (generated, HEAD)):
+                        if route == f"/compare/{parent}...{child}":
+                            files = [file_row]
+                            if scenario == "offscope_intermediate" and child == generated:
+                                files.append({"filename": "other.py", "status": "modified"})
+                            return {"status": "ahead", "ahead_by": 1, "behind_by": 0,
+                                    "total_commits": 1, "merge_base_commit": {"sha": parent},
+                                    "files": files}
+                    for ref, raw in ((BASE, before), (generated, initial), (HEAD, repaired)):
+                        if route == f"/contents/{path}?ref={ref}":
+                            return {"type": "file", "encoding": "base64",
+                                    "content": gate.base64.b64encode(raw).decode()}
+                    if route == f"/commits/{HEAD}":
+                        return {"author": {"id": 9}}
+                    if route == f"/commits/{HEAD}/check-runs?per_page=100":
+                        return {"total_count": len(checks), "check_runs": checks}
+                    if route == "/pulls/395/reviews?per_page=100":
+                        return reviews
+                    if route == "/issues/395/comments?per_page=100":
+                        return []
+                    self.fail(f"Unexpected API route: {route}")
+
+                # Only the API transport is mocked; real source checks and AST
+                # validation run without executing the proposed helper.
+                with patch.object(gate, "api", side_effect=api):
+                    row = gate.inspect(395, "zorin", reviewer)
+                self.assertEqual(row["status"], "blocked")
+                for key in ("merge_authorized", "release_eligible",
+                            "backend_owner_verified", "full_vm_acceptance_verified"):
+                    self.assertFalse(row[key])
+                if scenario in ("head_drift", "offscope_intermediate"):
+                    self.assertFalse(row["exact_scope_verified"])
+                    self.assertFalse(row["safety_review_verified"])
+                else:
+                    self.assertTrue(row["exact_scope_verified"])
+                    self.assertTrue(row["ci_verified"])
+                    self.assertEqual(row["current_base_verified"], scenario != "stale_base")
+                    self.assertEqual(row["safety_review_verified"],
+                                     scenario not in ("self_repair_review", "no_review"))
+
     def test_api_failure_is_blocked(self):
         with patch.object(gate, "api", side_effect=RuntimeError("offline")):
             row = gate.inspect(395, "zorin", 2)
