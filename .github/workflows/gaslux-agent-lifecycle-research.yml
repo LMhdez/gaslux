@@ -59,6 +59,445 @@ jobs:
           assert not any(line.startswith('secrets.') for line in lines)
           print('Six read-only backend roles have no GitHub write authority')
           PY
+      - name: Assert composed lab authority boundaries
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path('.github/workflows/gaslux-agent-lifecycle-research.yml').read_text()
+          jobs = text.split('\njobs:\n', 1)[1]
+          sections = dict(re.findall(r'^  ([a-z_]+):\n(.*?)(?=^  [a-z_]+:\n|\Z)', jobs, re.M | re.S))
+          assert set(sections) == {
+              'workflow_contract', 'backend_research', 'compact_vm_admission',
+              'official_mint_live_guest', 'windows_vm_and_safety_readiness',
+              'private_windows_media',
+          }
+          readiness = sections['windows_vm_and_safety_readiness']
+          media = sections['private_windows_media']
+          for section in (readiness, media):
+              guard = section.split('    runs-on:', 1)[0]
+              assert "github.ref == 'refs/heads/main'" in guard
+              assert "github.repository == 'LMhdez/gaslux'" in guard
+              assert "vars.GASLUX_AUTONOMY_PAUSED != 'true'" in guard
+              assert "github.event_name == 'schedule'" in guard
+              assert "github.event_name == 'workflow_dispatch'" in guard
+              assert "github.event_name == 'pull_request'" not in guard
+              assert 'ref: ${{ github.sha }}' in section
+              assert 'persist-credentials: false' in section
+              assert 'contents: read' in section
+              assert not re.search(r'^\s+[\w-]+: write\s*
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_windows_media_preflight.py -v
+      - name: Validate real current-dev research entrypoints before enabling scheduler
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          persist-credentials: false
+      - name: Install pinned Python runner
+        run: python3 -m pip install 'pytest==9.0.2'
+      - name: Offline preflight for every backend research job
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_goal_supervisor.py -v
+          python3 -B auto_tests/tools/goal_supervisor.py > /tmp/gaslux-goal.json
+          for pattern in \
+            test_compact_ovmf_target.py \
+            test_windows_vm_host_capacity.py \
+            test_popos_native_preflight.py \
+            test_q4os_native_preflight.py \
+            test_bazzite_atomic_preflight.py \
+            test_bazzite_iso_signature.py; do
+            test -f "auto_tests/tests/$pattern"
+            case "$pattern" in
+              test_compact_ovmf_target.py|test_windows_vm_host_capacity.py)
+                python3 -B -m unittest discover -s auto_tests/tests -p "$pattern" -v ;;
+              *)
+                python3 -B -m pytest -q "auto_tests/tests/$pattern" ;;
+            esac
+          done
+          test -f auto_tests/tools/gaslux_candidate_live_boot.sh
+          bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
+
+  private_windows_media:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      vars.GASLUX_WINDOWS_MEDIA_ENABLED == 'true' &&
+      ((github.event_name == 'schedule' && github.event.schedule == '31 3 * * *') ||
+       (github.event_name == 'workflow_dispatch' && inputs.windows_media_preflight == true))
+    runs-on: ubuntu-24.04
+    environment: gaslux-windows-media
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Run offline transport contracts
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_windows_media_preflight.py -v
+      - name: Fetch and hash private Windows ISO, erase it before reporting
+        env:
+          GASLUX_WINDOWS_MEDIA_URL: ${{ secrets.GASLUX_WINDOWS_MEDIA_URL }}
+          GASLUX_WINDOWS_MEDIA_AUTHORIZATION_REF: ${{ secrets.GASLUX_WINDOWS_MEDIA_AUTHORIZATION_REF }}
+          GASLUX_WINDOWS_MEDIA_HOST: ${{ vars.GASLUX_WINDOWS_MEDIA_HOST }}
+          GASLUX_WINDOWS_MEDIA_SHA256: ${{ vars.GASLUX_WINDOWS_MEDIA_SHA256 }}
+          GASLUX_WINDOWS_MEDIA_SIZE_BYTES: ${{ vars.GASLUX_WINDOWS_MEDIA_SIZE_BYTES }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p evidence
+          python3 -B auto_tests/tools/gaslux_windows_media_preflight.py > evidence/windows-media-preflight.json
+          cat evidence/windows-media-preflight.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-private-windows-media-preflight
+          path: evidence/windows-media-preflight.json
+          retention-days: 14
+          if-no-files-found: error
+
+  backend_research:
+    if: vars.GASLUX_AUTONOMY_PAUSED != 'true' && github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        backend:
+          - mint
+          - zorin
+          - cachyos
+          - popos
+          - q4os
+          - bazzite
+    env:
+      GASLUX_BACKEND: ${{ matrix.backend }}
+    steps:
+      - name: Read current dev without retaining any GitHub credential
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          persist-credentials: false
+      - name: Independently check goal matrix before backend-specific contracts
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_goal_supervisor.py -v
+          python3 -B auto_tests/tools/goal_supervisor.py > /tmp/gaslux-objective.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          report = json.loads(Path('evidence/goal-progress.json').read_text())
+          assert report['blocked_for_automerge'] is True
+          assert report['release_eligible'] is False
+          assert report['total_required_gates'] > 0
+          PY
+      - name: Install pinned Python runner
+        run: python3 -m pip install 'pytest==9.0.2'
+      - name: Execute safe backend contract regressions (no installer or disk writer)
+        id: offline
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$GASLUX_BACKEND" in
+            mint|zorin)
+              patterns=(test_compact_ovmf_target.py test_windows_vm_host_capacity.py)
+              ;;
+            cachyos)
+              patterns=(test_windows_vm_host_capacity.py test_compact_ovmf_target.py)
+              ;;
+            popos)
+              patterns=(test_popos_native_preflight.py)
+              ;;
+            q4os)
+              patterns=(test_q4os_native_preflight.py)
+              ;;
+            bazzite)
+              patterns=(test_bazzite_atomic_preflight.py test_bazzite_iso_signature.py)
+              ;;
+            *)
+              echo '::error::Unknown backend'; exit 1 ;;
+          esac
+          for pattern in "${patterns[@]}"; do
+            test -f "auto_tests/tests/$pattern"
+            case "$pattern" in
+              test_compact_ovmf_target.py|test_windows_vm_host_capacity.py)
+                python3 -B -m unittest discover -s auto_tests/tests -p "$pattern" -v ;;
+              *)
+                python3 -B -m pytest -q "auto_tests/tests/$pattern" ;;
+            esac
+          done
+      - name: Publish next full lifecycle acceptance gate, never certify install
+        if: always()
+        shell: bash
+        env:
+          CONTRACTS_RESULT: ${{ steps.offline.outcome }}
+        run: |
+          mkdir -p evidence
+          python3 - <<'PY'
+          import json, os, subprocess
+          from pathlib import Path
+          backend = os.environ['GASLUX_BACKEND']
+          goal_path = Path('evidence/goal-progress.json')
+          goal = json.loads(goal_path.read_text()) if goal_path.is_file() else None
+          assert goal is None or goal['release_eligible'] is False
+          source = json.loads(Path('docs/autonomy/goal.json').read_text())
+          registry = json.loads(Path('docs/autonomy/evidence.json').read_text())
+          details = next(b for b in source['backends'] if b['id'] == backend)
+          reviewed = {
+              (r['backend'], r['platform'], r['gate']) for r in registry['records']
+          }
+          next_gate = next((
+              {'platform': platform, 'gate': gate}
+              for platform in source['platforms']
+              if platform in details['platforms']
+              for gate in source['gates']
+              if (backend, platform, gate) not in reviewed
+          ), None)
+          report = {
+              'backend': backend,
+              'dev_commit': subprocess.check_output(
+                  ['git', 'rev-parse', 'HEAD'], text=True).strip(),
+              'offline_contracts': os.environ.get('CONTRACTS_RESULT', 'unknown'),
+              'goal_next_gate': next_gate,
+              'safety_class': 'READ_ONLY_RESEARCH_ONLY',
+              'real_installation_proven': False,
+              'dual_boot_proven': False,
+              'windows_return_proven': False,
+              'uninstall_proven': False,
+              'rollback_proven': False,
+              'release_eligible': False
+          }
+          Path(f'evidence/lifecycle-{backend}.json').write_text(
+              json.dumps(report, indent=2, sort_keys=True) + '\n')
+          print(json.dumps(report, sort_keys=True))
+          PY
+      - name: Save research evidence, never guest images
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-${{ matrix.backend }}-lifecycle-research
+          path: evidence/lifecycle-${{ matrix.backend }}.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  compact_vm_admission:
+    if: vars.GASLUX_AUTONOMY_PAUSED != 'true' && github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          persist-credentials: false
+      - name: Measure available runner and validate compact sparse target (no QEMU writer)
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_compact_ovmf_target.py -v
+          python3 -B auto_tests/tools/compact_ovmf_target.py --workspace "$RUNNER_TEMP" --report evidence/lifecycle-compact-capacity.json
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          obj = json.loads(Path('evidence/lifecycle-compact-capacity.json').read_text())
+          assert obj['lab_writer_admitted'] is False
+          assert obj['mint_guest_installed'] is False
+          assert obj['dual_boot_verified'] is False
+          assert obj['windows_recovery_verified'] is False
+          print('Real host capacity measured, but full Windows/Mint proof remains blocked')
+          PY
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: gaslux-lifecycle-compact-capacity
+          path: evidence/lifecycle-compact-capacity.json
+          retention-days: 14
+          if-no-files-found: warn
+
+  windows_vm_and_safety_readiness:
+    if: >-
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout pinned trusted main only, no credential persistence
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Report physical lab capacity, Windows-media blocker and five gated PRs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import shutil
+          import subprocess
+
+          root = Path(os.environ['RUNNER_TEMP'])
+          if not root.is_absolute() or root.is_symlink() or not root.is_dir():
+              raise SystemExit('Unsafe VM preflight workspace')
+          free = shutil.disk_usage(root).free
+          required = 80 * 1024**3
+          guarded = [(395, 'zorin'), (400, 'bazzite'), (411, 'cachyos'),
+                     (412, 'popos'), (413, 'q4os')]
+          queue = []
+          for number, role in guarded:
+              reply = subprocess.run(
+                  ['gh', 'api', f'repos/LMhdez/gaslux/pulls/{number}'],
+                  text=True, capture_output=True, timeout=25, check=False,
+              )
+              if reply.returncode:
+                  raise RuntimeError('Cannot verify protected PR inventory')
+              pr = json.loads(reply.stdout)
+              head = pr.get('head', {})
+              base = pr.get('base', {})
+              sha = head.get('sha', '')
+              if (pr.get('number') != number or base.get('ref') != 'dev'
+                  or head.get('repo', {}).get('full_name') != 'LMhdez/gaslux'
+                  or not isinstance(sha, str)
+                  or re.fullmatch(r'[0-9a-f]{40}', sha) is None):
+                  raise RuntimeError('Untrusted lifecycle PR metadata')
+              queue.append({'number': number, 'role': role, 'head': sha,
+                            'draft': pr.get('draft') is True,
+                            'state': pr.get('state'),
+                            'safety_attestation_verified': False,
+                            'merge_authorized': False})
+          data = {
+              'schema_version': 1, 'kind': 'READ_ONLY_LAB_AND_SAFETY_QUEUE',
+              'runner_available_bytes': free,
+              'planned_peak_bytes': required,
+              'storage_capacity_pass': free >= required,
+              'kvm_accessible': os.access('/dev/kvm', os.R_OK | os.W_OK),
+              'qemu_available': shutil.which('qemu-system-x86_64') is not None,
+              'windows_media_authorized': False,
+              'windows_media_sha256_verified': False,
+              'windows_guest_installed': False,
+              'virtual_disk_writer_authorized': False,
+              'dual_boot_verified': False,
+              'release_eligible': False,
+              'status': ('BLOCKED_STORAGE' if free < required
+                         else 'BLOCKED_WINDOWS_MEDIA_AUTHENTICITY'),
+              'review_queue': queue,
+          }
+          report = Path('evidence/windows-vm-and-safety-readiness.json')
+          report.parent.mkdir(parents=True, exist_ok=True)
+          report.write_text(json.dumps(data, indent=2, sort_keys=True) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('## Windows VM and independent Safety readiness\n\n')
+              summary.write('Storage: ' + str(round(free / 1024**3, 2))
+                            + ' GiB free; 80 GiB planned.\n\n')
+              summary.write('Status: ' + data['status']
+                            + '; no ISO, guest write or PR merge.\n\n')
+              summary.write('Protected lifecycle PRs: 395, 400, 411, 412, 413.\n')
+          print(json.dumps({'status': data['status'],
+                            'capacity_pass': data['storage_capacity_pass'],
+                            'media_verified': False, 'merge_authorized': False,
+                            'prs_monitored': len(queue)}))
+          PY
+      - name: Retain only non-sensitive JSON; never upload Windows media or guest disks
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-windows-vm-and-safety-readiness
+          path: evidence/windows-vm-and-safety-readiness.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  official_mint_live_guest:
+    if: >-
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      github.repository == 'LMhdez/gaslux' &&
+      ((github.event_name == 'schedule' && github.event.schedule == '31 3 * * *') ||
+       (github.event_name == 'workflow_dispatch' && inputs.mint_live_boot == true))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 50
+    env:
+      MINT_SHA: a081ab202cfda17f6924128dbd2de8b63518ac0531bcfe3f1a1b88097c459bd4
+      MINT_BYTES: '3091660800'
+      MINT_SOURCE: https://pub.linuxmint.io/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso
+      GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR: /tmp/gaslux-mint223/evidence/guest
+    steps:
+      - name: Trusted dev live-boot harness, no saved authentication
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          persist-credentials: false
+      - name: Validate official Mint release identity and scratch capacity
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json, os, shutil
+          from pathlib import Path
+          rows = json.loads(Path('release-config.json').read_text())['distributions']
+          mint = [row for row in rows if row['id'] == 'mint']
+          assert len(mint) == 1
+          m = mint[0]
+          assert m['name'] == 'Linux Mint 22.3 Cinnamon'
+          assert m['isoInstaller'] == os.environ['MINT_SOURCE']
+          assert m['isoInstallerSha256'] == os.environ['MINT_SHA']
+          assert m['isoInstallerSizeBytes'] == int(os.environ['MINT_BYTES'])
+          assert shutil.disk_usage('/tmp').free > 6 * 1024**3
+          PY
+      - name: Install QEMU/OVMF and download SHA-pinned official ISO
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends             aria2 qemu-system-x86 ovmf grub-common grub-efi-amd64-bin mtools dosfstools gdisk util-linux
+          mkdir -p /tmp/gaslux-mint223/evidence
+          aria2c --file-allocation=none --split=4 --max-connection-per-server=4             --max-tries=4 --retry-wait=10 --connect-timeout=30 --timeout=90             --check-integrity=true --checksum="sha-256=$MINT_SHA"             --dir=/tmp/gaslux-mint223 --out=mint.iso "$MINT_SOURCE"
+          test "$(stat -c %s /tmp/gaslux-mint223/mint.iso)" = "$MINT_BYTES"
+          printf '%s  %s\n' "$MINT_SHA" /tmp/gaslux-mint223/mint.iso | sha256sum -c -
+      - name: Prove real Linux Mint Casper guest kernel and serial login (not installation)
+        shell: bash
+        run: |
+          set -euo pipefail
+          bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
+          bash auto_tests/tools/gaslux_candidate_live_boot.sh mint /tmp/gaslux-mint223/mint.iso "$MINT_SHA"
+          test -s "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR/serial.log"
+          grep -Eiq 'Linux version|Freeing unused kernel|systemd\[1\]' "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR/serial.log"
+          grep -Eiq '(^|[^A-Za-z])login:|login: $' "$GASLUX_CANDIDATE_BOOT_EVIDENCE_DIR/serial.log"
+          printf '%s\n'             'REAL_LIVE_GUEST_BOOT_PROVEN: Mint kernel and userspace serial login'             'NOT_PROVEN: installed Linux, Windows return, dual boot, update, uninstall or rollback'             > /tmp/gaslux-mint223/evidence/result.txt
+      - name: Publish serial evidence only (never ISO, QCOW2 or VM snapshots)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-weekly-official-mint-live-boot-evidence
+          path: /tmp/gaslux-mint223/evidence/
+          if-no-files-found: warn
+          retention-days: 14
+, section, re.M)
+          assert "vars.GASLUX_WINDOWS_MEDIA_ENABLED == 'true'" in media
+          assert "github.event.schedule == '31 3 * * *'" in media
+          assert "inputs.windows_media_preflight == true" in media
+          assert 'environment: gaslux-windows-media' in media
+          assert 'secrets.' not in readiness
+          assert 'environment:' not in readiness
+          assert 'pull-requests: read' in readiness
+          assert 'GH_TOKEN:' not in media
+          assert 'path: evidence/windows-media-preflight.json' in media
+          assert 'path: evidence/windows-vm-and-safety-readiness.json' in readiness
+          assert text.count("    - cron:") == 2
+          print('Both lab preflights isolated; no new schedule or write authority')
+          PY
       - name: Verify private media transport contracts (no credentials or network)
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_windows_media_preflight.py -v
       - name: Validate real current-dev research entrypoints before enabling scheduler
