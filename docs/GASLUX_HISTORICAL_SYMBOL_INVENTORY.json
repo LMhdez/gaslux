@@ -8500,6 +8500,924 @@
           "test": false
         }
       ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_boot_maintenance.py",
+      "blob": "bbde6f2bb6480162f7d28132fa2c0025b6147039",
+      "symbol_count": 12,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_campaign_dispatch.py",
+      "blob": "fd3af773b816cf9aba034821048cd18731754626",
+      "symbol_count": 28,
+      "matches": [
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_all_22_scenarios_keep_their_56_required_cells.run",
+          "line": 69,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_two_clones_execute_different_scenarios_at_the_same_time.run",
+          "line": 110,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_preparation_is_retried_twice_before_another_clone_takes_over.run",
+          "line": 129,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_no_compatible_replacement_keeps_a_failed_campaign.run",
+          "line": 167,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_clones_without_matching_storage_setup_do_not_claim_storage_jobs.run",
+          "line": 199,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_real_validation_failure_is_not_handed_to_another_clone.run",
+          "line": 229,
+          "test": false
+        },
+        {
+          "name": "prepare",
+          "kind": "def",
+          "qualified": "test_campaign_keeps_one_build_hash_and_one_controller_per_run.prepare",
+          "line": 360,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_campaign_keeps_one_build_hash_and_one_controller_per_run.run",
+          "line": 364,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_campaign_evidence.py",
+      "blob": "3f540185dbdc3454ca5f87a957e9d240a80ca55f",
+      "symbol_count": 8,
+      "matches": [
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_campaign_rejects_false_success_and_records_the_reason.run",
+          "line": 72,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_failed_attempt_evidence_cannot_complete_the_retry.run",
+          "line": 109,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_campaign_lanes.py",
+      "blob": "5ebe0d9bd3c4ece0e5d228045ae19df36a74cf5c",
+      "symbol_count": 17,
+      "matches": [
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_independent_42_cells_and_retry_budgets.run",
+          "line": 55,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "spawned_probe_worker.run",
+          "line": 134,
+          "test": false
+        },
+        {
+          "name": "wait",
+          "kind": "def",
+          "qualified": "test_refusal_never_acknowledges_a_mutating_stage.wait",
+          "line": 261,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_campaign_terminal.py",
+      "blob": "f9c4c13be2c748fe9e636c5a163205c195dbc414",
+      "symbol_count": 4,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_candidate_handoff.py",
+      "blob": "5b3866d75632f220a8e2d270c51bafa98c33c246",
+      "symbol_count": 12,
+      "matches": [
+        {
+          "name": "check",
+          "kind": "def",
+          "qualified": "check",
+          "line": 83,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_candidate_target_audit.py",
+      "blob": "6ecc604f7bc0bdef29a834446fd3dea15f702ab1",
+      "symbol_count": 9,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_compact_ovmf_target.py",
+      "blob": "9ff7ba7dbb43c7dc3feb9eb4902e9567312aee1f",
+      "symbol_count": 14,
+      "matches": [
+        {
+          "name": "fake_run",
+          "kind": "def",
+          "qualified": "CompactOvmfTargetTests.test_qcow2_no_backing_and_no_writer_on_success.fake_run",
+          "line": 129,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_core.py",
+      "blob": "0881134a9476fce45796a56890826db49635ba2b",
+      "symbol_count": 433,
+      "matches": [
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_vnc_text_typing_uses_vncdotool_literal_minus.FakeClient.__init__",
+          "line": 150,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_vnc_text_typing_pretranslates_for_french_windows.FakeClient.__init__",
+          "line": 168,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_local_filepool_sync_uploads_changed_artifacts_atomically.FakeSSH.__init__",
+          "line": 340,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_local_filepool_sync_uploads_changed_artifacts_atomically.FakeSSH.run",
+          "line": 344,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_local_filepool_sync_reuses_matching_remote_artifacts.FakeSSH.__init__",
+          "line": 419,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_local_filepool_sync_reuses_matching_remote_artifacts.FakeSSH.run",
+          "line": 422,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_reset_restores_selected_vms_in_parallel.FakeProxmox.__init__",
+          "line": 650,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_reset_restores_selected_vms_in_parallel.FakeProxmox.__enter__",
+          "line": 653,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_reset_restores_selected_vms_in_parallel.FakeProxmox.__exit__",
+          "line": 656,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_launch_interactive_uses_elevated_scheduled_task.FakeSshContext.__enter__",
+          "line": 745,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_launch_interactive_uses_elevated_scheduled_task.FakeSshContext.__exit__",
+          "line": 748,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_process_confirmation_preserves_unattended_protocol_paths.FakeSshContext.__enter__",
+          "line": 788,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_process_confirmation_preserves_unattended_protocol_paths.FakeSshContext.__exit__",
+          "line": 791,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_launch_interactive_confirms_process_when_launcher_output_is_empty.FakeSshContext.__enter__",
+          "line": 877,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_launch_interactive_confirms_process_when_launcher_output_is_empty.FakeSshContext.__exit__",
+          "line": 880,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_launch_interactive_rejects_an_offscreen_main_window.FakeSshContext.__enter__",
+          "line": 924,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_launch_interactive_rejects_an_offscreen_main_window.FakeSshContext.__exit__",
+          "line": 927,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_automation_launch_passes_the_windows_address_to_the_dev_ssh_option.FakeSshContext.__enter__",
+          "line": 977,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_automation_launch_passes_the_windows_address_to_the_dev_ssh_option.FakeSshContext.__exit__",
+          "line": 980,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_published_automation_launch_uses_the_embedded_filepool_channel.FakeSshContext.__enter__",
+          "line": 1024,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_published_automation_launch_uses_the_embedded_filepool_channel.FakeSshContext.__exit__",
+          "line": 1027,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_unattended_coordination_reconnects_only_after_transport_failure.ReconnectingSsh.__init__",
+          "line": 1149,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_unattended_coordination_reconnects_only_after_transport_failure.ReconnectingSsh.run",
+          "line": 1153,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_unattended_coordination_does_not_retry_remote_command_failure.FailedCommandSsh.__init__",
+          "line": 1181,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_unattended_coordination_does_not_retry_remote_command_failure.FailedCommandSsh.run",
+          "line": 1184,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_unattended_coordination_retries_a_failed_reconnection.RecoveringSsh.__init__",
+          "line": 1209,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_unattended_coordination_retries_a_failed_reconnection.RecoveringSsh.run",
+          "line": 1213,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_linux_remote_check_reconnects_after_transport_failure.ReconnectingSsh.__init__",
+          "line": 1249,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_linux_remote_check_reconnects_after_transport_failure.ReconnectingSsh.run",
+          "line": 1253,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_linux_remote_check_does_not_retry_a_remote_failure.FailedCommandSsh.__init__",
+          "line": 1286,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_linux_remote_check_does_not_retry_a_remote_failure.FailedCommandSsh.run",
+          "line": 1290,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_power_transition_retries_only_an_unopened_ssh_channel.run",
+          "line": 1321,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_power_transition_timeout_is_unacknowledged_not_retried.run",
+          "line": 1356,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_windows_script_reconnects_after_transport_failure.ReconnectingSsh.__init__",
+          "line": 1395,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_linux_script_reconnects_after_transport_failure.ReconnectingSsh.__init__",
+          "line": 1442,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_unattended_wizard_captures_and_acknowledges_every_stage.FakeSsh.__enter__",
+          "line": 1510,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_unattended_wizard_captures_and_acknowledges_every_stage.FakeSsh.__exit__",
+          "line": 1513,
+          "test": false
+        },
+        {
+          "name": "drive",
+          "kind": "def",
+          "qualified": "test_verified_install_uninstall_drives_product_ui_then_proves_exact_rollback.drive",
+          "line": 1747,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_windows_boot_identity_retries_once_after_a_transport_failure.BootIdentitySsh.__init__",
+          "line": 1852,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_windows_boot_identity_retries_once_after_a_transport_failure.BootIdentitySsh.run",
+          "line": 1859,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_unattended_warning_reconnects_without_accepting_an_unproven_dialog.run",
+          "line": 2131,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_automation_prepares_snapshot_clock_before_deployment.FakeSshContext.__enter__",
+          "line": 2434,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_automation_prepares_snapshot_clock_before_deployment.FakeSshContext.__exit__",
+          "line": 2437,
+          "test": false
+        },
+        {
+          "name": "_request",
+          "kind": "def",
+          "qualified": "test_automation_refuses_low_configured_storage_headroom.FakeProxmox._request",
+          "line": 2549,
+          "test": false
+        },
+        {
+          "name": "_request",
+          "kind": "def",
+          "qualified": "test_automation_reports_configured_storage_headroom.FakeProxmox._request",
+          "line": 2568,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_boot_guardian_fault_is_repaired_during_a_real_shutdown_cycle.FakeSSH.run",
+          "line": 2710,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_boot_guardian_fault_is_repaired_during_a_real_shutdown_cycle.FakeSSH.__exit__",
+          "line": 2715,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "test_boot_guardian_fault_is_repaired_during_a_real_shutdown_cycle.FakeSSH.close",
+          "line": 2718,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_boot_guardian_fault_is_repaired_during_a_real_shutdown_cycle.FakeProxmox.__enter__",
+          "line": 2722,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_boot_guardian_fault_is_repaired_during_a_real_shutdown_cycle.FakeProxmox.__exit__",
+          "line": 2726,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_automation_logs_vm500_reset_before_ui.FakeProxmox.__init__",
+          "line": 2869,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_automation_logs_vm500_reset_before_ui.FakeProxmox.__enter__",
+          "line": 2872,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_automation_logs_vm500_reset_before_ui.FakeProxmox.__exit__",
+          "line": 2875,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_automation_logs_vm502_reset_for_uefi.FakeProxmox.__init__",
+          "line": 3008,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_automation_logs_vm502_reset_for_uefi.FakeProxmox.__enter__",
+          "line": 3011,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_automation_logs_vm502_reset_for_uefi.FakeProxmox.__exit__",
+          "line": 3014,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_automation_logs_vm501_reset_for_uefi.FakeProxmox.__init__",
+          "line": 3071,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_automation_logs_vm501_reset_for_uefi.FakeProxmox.__enter__",
+          "line": 3074,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_automation_logs_vm501_reset_for_uefi.FakeProxmox.__exit__",
+          "line": 3077,
+          "test": false
+        },
+        {
+          "name": "prepare",
+          "kind": "def",
+          "qualified": "test_preparation_failure_collects_diagnostics_and_preserves_other_vm_runs.prepare",
+          "line": 3229,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_serial_capture_skips_unconfigured_hardware_before_opening_a_proxy.FakeProxmox.__enter__",
+          "line": 3395,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_serial_capture_skips_unconfigured_hardware_before_opening_a_proxy.FakeProxmox.__exit__",
+          "line": 3398,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_linux_checks_restore_update_timers.FakeSSH.run",
+          "line": 4544,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_package_checks_wait_for_an_activating_update.LocalSSH.run",
+          "line": 4619,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_linux_post_install_checks_continue_after_one_failure.FakeSSH.__init__",
+          "line": 4663,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_linux_post_install_checks_continue_after_one_failure.FakeSSH.run",
+          "line": 4666,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_linux_post_install_check_requires_selected_distribution_identity.FakeSSH.__init__",
+          "line": 4781,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_linux_post_install_check_requires_selected_distribution_identity.FakeSSH.run",
+          "line": 4784,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_post_install_grub_selection_uses_local_theme_detection_and_keyboard.FakeVnc.__init__",
+          "line": 4832,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_wait_for_ssh_retries_a_still_visible_grub_menu.FakeSSH.__init__",
+          "line": 4939,
+          "test": false
+        },
+        {
+          "name": "__enter__",
+          "kind": "def",
+          "qualified": "test_wait_for_ssh_retries_a_still_visible_grub_menu.FakeSSH.__enter__",
+          "line": 4942,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_wait_for_ssh_retries_a_still_visible_grub_menu.FakeSSH.run",
+          "line": 4946,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_wait_for_ssh_retries_a_still_visible_grub_menu.FakeSSH.__exit__",
+          "line": 4951,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "test_wait_for_ssh_retries_a_still_visible_grub_menu.FakeSSH.close",
+          "line": 4954,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_linux_windows_reboot_password_is_sent_only_on_stdin.FakeSSH.run",
+          "line": 4997,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_final_windows_reboot_uses_a_distinct_result_name.FakeSSH.__init__",
+          "line": 5021,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_final_windows_reboot_uses_a_distinct_result_name.FakeSSH.run",
+          "line": 5024,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_windows_to_linux_reboot_transport_failure_stops_the_flow.BrokenSSH.run",
+          "line": 5110,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_windows_to_linux_reboot_rejection_stops_the_flow.RejectingSSH.run",
+          "line": 5133,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_post_install_flow_proves_windows_before_first_linux_boot.FakeSSH.__exit__",
+          "line": 5165,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "test_post_install_flow_proves_windows_before_first_linux_boot.FakeSSH.close",
+          "line": 5168,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_post_install_flow_can_verify_linux_first_but_still_tests_both_systems.FakeSSH.__exit__",
+          "line": 5294,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "test_post_install_flow_can_verify_linux_first_but_still_tests_both_systems.FakeSSH.close",
+          "line": 5297,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_windows_filesystem_repair_waits_for_reboot_then_resumes.FakeSSH.__init__",
+          "line": 5367,
+          "test": false
+        },
+        {
+          "name": "__exit__",
+          "kind": "def",
+          "qualified": "test_windows_filesystem_repair_waits_for_reboot_then_resumes.FakeSSH.__exit__",
+          "line": 5370,
+          "test": false
+        },
+        {
+          "name": "close",
+          "kind": "def",
+          "qualified": "test_windows_filesystem_repair_waits_for_reboot_then_resumes.FakeSSH.close",
+          "line": 5373,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_first_boot_verification_failure_is_terminal_and_preserves_exact_reason.FakeSSH.run",
+          "line": 5434,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_first_boot_verification_success_records_one_clean_result.FakeSSH.run",
+          "line": 5467,
+          "test": false
+        },
+        {
+          "name": "inspect",
+          "kind": "def",
+          "qualified": "test_windows_login_proves_success_or_captures_bounded_failure.inspect",
+          "line": 5941,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_linux_result_dialog_dismissal_requires_process_exit_and_acknowledgement.FakeSsh.run",
+          "line": 6048,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_cross_os_artifacts_are_removed_after_their_checks.FakeSSH.run",
+          "line": 6212,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_cross_os_artifact_cleanup_failure_is_reported.FakeSSH.run",
+          "line": 6246,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_windows_script_cleanup_does_not_mask_the_primary_failure.FailingSSH.__init__",
+          "line": 6267,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_windows_script_cleanup_does_not_mask_the_primary_failure.FailingSSH.run",
+          "line": 6273,
+          "test": false
+        },
+        {
+          "name": "__init__",
+          "kind": "def",
+          "qualified": "test_windows_script_cleans_the_script_when_config_upload_fails.ConfigUploadFailureSSH.__init__",
+          "line": 6308,
+          "test": false
+        },
+        {
+          "name": "run",
+          "kind": "def",
+          "qualified": "test_windows_script_cleans_the_script_when_config_upload_fails.ConfigUploadFailureSSH.run",
+          "line": 6317,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_core_source_provenance.py",
+      "blob": "188c8583daeade0a387ed820e8e256dc4395670d",
+      "symbol_count": 13,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_debian_squashfs_backend.py",
+      "blob": "761790452284074165826105f0cc31a0f2ca5587",
+      "symbol_count": 8,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_deployment_audit.py",
+      "blob": "6adcf21027715c0e917d4872f071d9bc7ed78128",
+      "symbol_count": 24,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_disabled_sharing_evidence.py",
+      "blob": "73797512b0d94554abcc7dad85ddd5ce2c4024c7",
+      "symbol_count": 1,
+      "matches": []
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_disk_identity_gate.py",
+      "blob": "dd2fd467291db0731915498cf1c6aab03a95160e",
+      "symbol_count": 21,
+      "matches": [
+        {
+          "name": "header",
+          "kind": "def",
+          "qualified": "make_image.header",
+          "line": 37,
+          "test": false
+        },
+        {
+          "name": "forbidden",
+          "kind": "def",
+          "qualified": "test_fd_reader_never_reopens_a_path.forbidden",
+          "line": 133,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_disk_identity_snapshot_semantics.py",
+      "blob": "45746d851da0709a9063679665109f2d3cf9f6c7",
+      "symbol_count": 14,
+      "matches": [
+        {
+          "name": "header",
+          "kind": "def",
+          "qualified": "test_four_kib_sectors_from_actual_fd_gpt_reader.header",
+          "line": 190,
+          "test": false
+        }
+      ]
+    },
+    {
+      "ref": "d89f1547c50787e4640164e34bfd1863134e2908",
+      "path": "auto_tests/tests/test_distribution_capabilities.py",
+      "blob": "cc21a37cd1319fbd9cbcae8216f2d7238ffbfc97",
+      "symbol_count": 9,
+      "matches": []
     }
   ],
   "limitations": [
