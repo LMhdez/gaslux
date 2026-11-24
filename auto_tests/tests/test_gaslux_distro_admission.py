@@ -141,6 +141,77 @@ class AdmissionTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 gate.candidate_append({"commits": count}, "zorin", HEAD, "allowed.py")
 
+    def workflow_fixture(self, role):
+        workflow_ids = (420402269, 420417743,
+                        420371034 if role == "cachyos" else 420471368)
+        runs = [{"workflow_id": workflow, "id": 100 + i, "run_attempt": 2,
+                 "head_sha": HEAD, "event": "pull_request",
+                 "repository": {"id": gate.REPOSITORY_ID},
+                 "head_repository": {"id": gate.REPOSITORY_ID},
+                 "status": "completed", "conclusion": "success"}
+                for i, workflow in enumerate(workflow_ids)]
+        jobs = {row["id"]: [{"run_id": row["id"], "run_attempt": 2,
+                            "head_sha": HEAD, "status": "completed",
+                            "conclusion": "success", "name": name}
+                           for name in sorted(gate.WORKFLOW_JOBS[row["workflow_id"]])]
+                for row in runs}
+        return runs, jobs
+
+    def workflow_api(self, runs, jobs, method, route):
+        self.assertEqual(method, "GET")
+        if route == f"/actions/runs?head_sha={HEAD}&event=pull_request&per_page=100":
+            return {"total_count": len(runs), "workflow_runs": runs}
+        for run_id, rows in jobs.items():
+            if route == f"/actions/runs/{run_id}/attempts/2/jobs?per_page=100":
+                return {"total_count": len(rows), "jobs": rows}
+        self.fail(f"Unexpected workflow API route: {route}")
+
+    def test_workflow_provenance_exact_run_and_attempt(self):
+        for role in gate.QUEUE.values():
+            runs, jobs = self.workflow_fixture(role)
+            with patch.object(gate, "api",
+                              side_effect=lambda m, r: self.workflow_api(runs, jobs, m, r)):
+                self.assertTrue(gate.ci_workflow_provenance(HEAD, role))
+
+    def test_workflow_provenance_rejects_spoof_and_wrong_attempt(self):
+        for variant in ("lookalike", "foreign", "fork", "stale", "wrong_event",
+                        "failed", "missing", "wrong_attempt", "skipped_job",
+                        "wrong_job_head", "wrong_job_name", "wrong_job_run",
+                        "duplicate_job"):
+            with self.subTest(variant=variant):
+                runs, jobs = self.workflow_fixture("zorin")
+                row = runs[0]
+                job = jobs[row["id"]][0]
+                if variant == "lookalike":
+                    row["workflow_id"] = 987654321
+                elif variant == "foreign":
+                    row["repository"] = {"id": 10}
+                elif variant == "fork":
+                    row["head_repository"] = {"id": 10}
+                elif variant == "stale":
+                    row["head_sha"] = BASE
+                elif variant == "wrong_event":
+                    row["event"] = "workflow_dispatch"
+                elif variant == "failed":
+                    row["conclusion"] = "failure"
+                elif variant == "missing":
+                    runs.pop()
+                elif variant == "wrong_attempt":
+                    job["run_attempt"] = 1
+                elif variant == "skipped_job":
+                    job["conclusion"] = "skipped"
+                elif variant == "wrong_job_head":
+                    job["head_sha"] = BASE
+                elif variant == "wrong_job_name":
+                    job["name"] = "unrelated"
+                elif variant == "wrong_job_run":
+                    job["run_id"] = 999
+                elif variant == "duplicate_job":
+                    jobs[row["id"]].append(dict(job))
+                with patch.object(gate, "api",
+                                  side_effect=lambda m, r: self.workflow_api(runs, jobs, m, r)):
+                    self.assertFalse(gate.ci_workflow_provenance(HEAD, "zorin"))
+
     def test_full_read_only_admission_for_repaired_history(self):
         generated = "c" * 40
         drift = "d" * 40
@@ -173,6 +244,7 @@ class AdmissionTests(unittest.TestCase):
                    "conclusion": "success", "app": {"slug": "github-actions"}}
                   for name in gate.COMMON_CHECKS | {"read-only-contracts"}]
 
+        workflow_runs, workflow_jobs = self.workflow_fixture("zorin")
         for scenario in ("valid", "self_repair_review", "no_review",
                          "stale_base", "head_drift", "offscope_intermediate",
                          "owner_approved", "owner_wrong_role", "owner_self_review",
@@ -226,6 +298,8 @@ class AdmissionTests(unittest.TestCase):
                                     "content": gate.base64.b64encode(raw).decode()}
                     if route == f"/commits/{HEAD}":
                         return {"author": {"id": 9}}
+                    if route.startswith("/actions/runs"):
+                        return self.workflow_api(workflow_runs, workflow_jobs, method, route)
                     if route == f"/commits/{HEAD}/check-runs?per_page=100":
                         return {"total_count": len(checks), "check_runs": checks}
                     if route == "/pulls/395/reviews?per_page=100":
@@ -248,6 +322,7 @@ class AdmissionTests(unittest.TestCase):
                     self.assertFalse(row["safety_review_verified"])
                 else:
                     self.assertTrue(row["exact_scope_verified"])
+                    self.assertTrue(row["ci_workflow_provenance_verified"])
                     self.assertTrue(row["ci_verified"])
                     self.assertEqual(row["current_base_verified"], scenario not in ("stale_base", "owner_stale_base"))
                     self.assertEqual(row["safety_review_verified"],
