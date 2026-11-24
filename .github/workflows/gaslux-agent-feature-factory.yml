@@ -174,6 +174,8 @@ jobs:
           assert model and model.get('digest') == '56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
           PY
       - name: Generate and adversarially check model-authored backend product code
+        env:
+          GASLUX_FACTORY_RUFF_ENFORCE: 'true'
         shell: bash
         run: |
           set -euo pipefail
@@ -185,7 +187,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -m pip install 'pytest==9.0.2' 'jsonschema==4.25.1' 'cryptography==44.0.3'
+          python3 -m pip install 'pytest==9.0.2' 'jsonschema==4.25.1' 'cryptography==44.0.3' 'ruff==0.17.6'
           python3 - <<'PY'
           import json
           from pathlib import Path
@@ -195,6 +197,11 @@ jobs:
           raw = target.read_bytes()
           target.write_bytes(raw.rstrip(b'\n') + b'\n\n' + addition)
           PY
+          # Ruff analyzes bytes only; model-authored code is never imported
+          # by the style gate. Only the trusted source+function is checked.
+          target_file=$(python3 -c 'import json; print(json.load(open("evidence/feature-factory/report.json"))["target"])')
+          python3 -m ruff check --config trusted/auto_tests/pyproject.toml "source/$target_file"
+          python3 -m ruff format --check --config trusted/auto_tests/pyproject.toml "source/$target_file"
           python3 -B -m compileall -q source/assets/live
           case "$ROLE" in
             mint|cachyos) suite=test_distribution_capabilities.py ;;
@@ -335,7 +342,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
-          GASLUX_PUBLISH_APP_BOT_LOGIN: ${{ vars.GASLUX_PUBLISH_APP_BOT_LOGIN }}
+          # Default only to the observed PR #407 GitHub App actor;
+          # live PR identity/repo/branch checks remain fail-closed.
+          GASLUX_PUBLISH_APP_BOT_LOGIN: ${{ vars.GASLUX_PUBLISH_APP_BOT_LOGIN || 'gaslux-autonomous-publisher[bot]' }}
         shell: bash
         run: |
           set -euo pipefail

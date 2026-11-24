@@ -267,6 +267,173 @@ class FeatureFactoryTests(unittest.TestCase):
             self.assertEqual(result["base"], "a" * 40)
             self.assertEqual(len(result["next_gates"]), 6)
 
+    def role_pr(self, role: str, *, suffix="a" * 12,
+                author="github-actions[bot]", repo=None, base="dev"):
+        return {
+            "state": "open", "draft": True,
+            "head": {
+                "ref": f"bot/gaslux-feature-{role}-{suffix}",
+                "repo": {"full_name": repo or factory.REPO},
+            },
+            "base": {"ref": base, "repo": {"full_name": factory.REPO}},
+            "user": {"login": author, "type": "Bot"},
+        }
+
+    def test_existing_role_prs_dedupe_across_dev_sha_changes(self):
+        drafts = [
+            self.role_pr("zorin", suffix="5c34b16651f1"),
+            self.role_pr("cachyos", suffix="5c34b16651f1"),
+            self.role_pr("popos", suffix="d89f1547c507",
+                         author="gaslux-autonomous-publisher[bot]"),
+            self.role_pr("q4os", suffix="5c34b16651f1"),
+            self.role_pr("bazzite", suffix="5c34b16651f1"),
+        ]
+        done = subprocess.CompletedProcess([], 0, json.dumps(drafts), "")
+        with patch.object(factory.subprocess, "run", return_value=done) as run:
+            claims = factory.open_role_drafts()
+        self.assertEqual(
+            claims, {"zorin", "cachyos", "popos", "q4os", "bazzite"}
+        )
+        run.assert_called_once()
+        self.assertIn("pulls?state=open&per_page=100", run.call_args.args[0][-1])
+
+    def test_role_dedup_ignores_foreign_forks_but_denies_unknown_actor(self):
+        rows = [
+            self.role_pr("zorin", repo="outsider/gaslux"),
+            self.role_pr("popos", base="main"),
+        ]
+        with patch.object(factory.subprocess, "run", return_value=(
+            subprocess.CompletedProcess([], 0, json.dumps(rows), "")
+        )):
+            self.assertEqual(factory.open_role_drafts(), set())
+        rows.append(self.role_pr("cachyos", author="untrusted-app[bot]"))
+        with patch.object(factory.subprocess, "run", return_value=(
+            subprocess.CompletedProcess([], 0, json.dumps(rows), "")
+        )):
+            with self.assertRaisesRegex(RuntimeError, "Unknown"):
+                factory.open_role_drafts()
+        rows[-1]["user"]["type"] = "User"
+        with patch.object(factory.subprocess, "run", return_value=(
+            subprocess.CompletedProcess([], 0, json.dumps(rows), "")
+        )):
+            with self.assertRaisesRegex(RuntimeError, "Unknown"):
+                factory.open_role_drafts()
+
+    def test_role_dedup_fails_closed_on_api_error_or_unbounded_pr_list(self):
+        bad = [
+            subprocess.CompletedProcess([], 1, "", "API rejected"),
+            subprocess.CompletedProcess(
+                [], 0, json.dumps([self.role_pr("zorin")] * 100), ""
+            ),
+            subprocess.CompletedProcess([], 0, '{"bad":"shape"}', ""),
+        ]
+        with patch.object(factory.subprocess, "run") as run:
+            for result in bad:
+                with self.subTest(result=result.stdout[:24]):
+                    run.return_value = result
+                    with self.assertRaises((RuntimeError, ValueError)):
+                        factory.open_role_drafts()
+
+    def test_live_plan_blocks_duplicate_roles_even_when_dev_moved(self):
+        platforms = [
+            "windows10-bios-mbr", "windows10-uefi-gpt",
+            "windows11-uefi-gpt",
+        ]
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            docs = root / "docs/autonomy"
+            docs.mkdir(parents=True)
+            goal = {
+                "schema_version": 1, "platforms": platforms,
+                "gates": list(factory.GATES),
+                "automatic_safe_gates": list(factory.GATES[:2]),
+                "protected_gates": list(factory.GATES[2:]),
+                "backends": [
+                    {
+                        "id": role, "priority": i, "issue_numbers": [],
+                        "platforms": platforms[1:] if role == "bazzite"
+                                     else platforms,
+                    }
+                    for i, role in enumerate(factory.TASKS)
+                ],
+            }
+            (docs / "goal.json").write_text(json.dumps(goal))
+            (docs / "evidence.json").write_text(
+                json.dumps({"schema_version": 1, "records": []})
+            )
+            for role, (source, _, _) in factory.TASKS.items():
+                target = root / source
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text(
+                    "def assess_mint_lifecycle(evidence: dict) -> dict:\n"
+                    if role == "mint" else "# product source\n"
+                )
+            # Mint and CachyOS intentionally share one module: the loop
+            # above replaces the same fixture path for the CachyOS role.
+            mint_target = root / factory.TASKS["mint"][0]
+            mint_target.write_text(
+                mint_target.read_text() +
+                "def assess_mint_lifecycle(evidence: dict) -> dict:\n"
+            )
+            old_sha_drafts = [
+                self.role_pr(role, suffix="5c34b16651f1")
+                for role in ("zorin", "cachyos", "popos", "q4os", "bazzite")
+            ]
+            with patch.object(factory, "git", return_value="d" * 40), \
+                 patch.object(factory.subprocess, "run", return_value=(
+                     subprocess.CompletedProcess(
+                         [], 0, json.dumps(old_sha_drafts), ""
+                     )
+                 )) as run:
+                result = factory.plan(root)
+            self.assertEqual(result["status"], "blocked")
+            self.assertEqual(result["base"], "d" * 40)
+            self.assertEqual(result["required_gate_slots"], 136)
+            self.assertEqual(result["scope_review_slots"], 34)
+            self.assertEqual(result["protected_vm_slots"], 102)
+            self.assertEqual(result["independently_verified_slots"], 0)
+            run.assert_called_once()
+
+    def test_factory_style_enforcement_retries_before_artifact_written(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            src = root / factory.TASKS["popos"][0]
+            src.parent.mkdir(parents=True)
+            src.write_text("# previous product\n")
+            artifact = root / "evidence"
+            with patch.dict(
+                "os.environ", {"GASLUX_FACTORY_RUFF_ENFORCE": "true"}
+            ), patch.object(
+                factory, "git", return_value="a" * 40
+            ), patch.object(
+                factory, "call_model", return_value=valid("popos")
+            ) as model:
+                with self.assertRaisesRegex(RuntimeError, "Ruff E501"):
+                    factory.generate(root, artifact, "popos", "a" * 40)
+            self.assertEqual(model.call_count, 2)
+            self.assertFalse((artifact / "addition.py").exists())
+            self.assertFalse((artifact / "report.json").exists())
+
+    def test_factory_pinned_ruff_precedes_publication_and_safety(self):
+        workflow = (
+            SCRIPT.parents[2] /
+            ".github/workflows/gaslux-agent-feature-factory.yml"
+        ).read_text()
+        model, rest = workflow.split("  safety:\n", 1)
+        self.assertIn("GASLUX_FACTORY_RUFF_ENFORCE: 'true'", model)
+        self.assertIn("'ruff==0.17.6'", model)
+        self.assertIn(
+            "python3 -m ruff check --config trusted/auto_tests/pyproject.toml",
+            model,
+        )
+        self.assertIn(
+            "python3 -m ruff format --check --config trusted/auto_tests/pyproject.toml",
+            model,
+        )
+        self.assertNotIn("issues: write", model)
+        self.assertNotIn("GASLUX_PUBLISH_APP_PRIVATE_KEY", model)
+        self.assertIn("  publish_draft:", rest)
+
     def test_no_remote_writer_or_insecure_backend_authority(self):
         for role in factory.TASKS:
             src = valid(role)

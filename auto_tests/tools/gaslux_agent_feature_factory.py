@@ -250,16 +250,74 @@ def discover_goal_backlog(root: Path) -> dict:
     }
 
 
+# Legacy Actions and the observed scoped GitHub App are the only
+# identities that can claim a role in the Factory queue. Unrecognized actors
+# fail closed rather than masking or duplicating a real review.
+TRUSTED_FEATURE_PR_BOTS = frozenset({
+    "github-actions[bot]", "gaslux-autonomous-publisher[bot]",
+})
+FEATURE_PR_BRANCH = re.compile(
+    r"bot/gaslux-feature-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}\Z"
+)
+
+
+def open_role_drafts() -> set[str]:
+    """Deduplicate all still-open same-repo role Drafts across dev SHAs."""
+    response = subprocess.run(
+        ["gh", "api", f"repos/{REPO}/pulls?state=open&per_page=100"],
+        capture_output=True, text=True, timeout=20, check=False,
+    )
+    if response.returncode != 0:
+        raise RuntimeError("Cannot authenticate full open Factory PR inventory")
+    rows = json.loads(response.stdout)
+    if type(rows) is not list or len(rows) >= 100:
+        raise RuntimeError("Open PR inventory incomplete or unbounded")
+    claimed = set()
+    for pr in rows:
+        if type(pr) is not dict:
+            raise ValueError("Malformed Factory PR entry")
+        head = pr.get("head")
+        base = pr.get("base")
+        author = pr.get("user")
+        if type(head) is not dict or type(base) is not dict:
+            raise ValueError("Malformed Factory PR refs")
+        branch = head.get("ref")
+        match = FEATURE_PR_BRANCH.fullmatch(branch) if type(branch) is str else None
+        if match is None or base.get("ref") != "dev":
+            continue
+        if (pr.get("state") != "open" or
+            type(head.get("repo")) is not dict or
+            head["repo"].get("full_name") != REPO or
+            type(base.get("repo")) is not dict or
+            base["repo"].get("full_name") != REPO):
+            # Ignore unrelated forks and untrusted metadata: they cannot
+            # claim a role or suppress legitimate work.
+            continue
+        if (type(author) is not dict or
+            author.get("type") != "Bot" or
+            author.get("login") not in TRUSTED_FEATURE_PR_BOTS):
+            raise RuntimeError("Unknown same-repository feature PR actor")
+        claimed.add(match.group(1))
+    return claimed
+
+
 def plan(root: Path) -> dict:
     base = git(root, "rev-parse", "HEAD")
     if not SHA.fullmatch(base):
         raise ValueError("Invalid pinned dev checkout")
     start = int(os.environ.get("GASLUX_ROLE_OFFSET", "0")) % len(TASKS)
     roles = list(TASKS)
+    existing_drafts: set[str] | None = None
     for offset in range(len(roles)):
         role = roles[(start + offset) % len(roles)]
         target = root / TASKS[role][0]
         if not target.is_file() or f"def assess_{role}_lifecycle(" in target.read_text():
+            continue
+        if existing_drafts is None:
+            # Call once only when code is missing. The branch's dev-SHA
+            # suffix is not an adequate idempotency key across cycles.
+            existing_drafts = open_role_drafts()
+        if role in existing_drafts:
             continue
         branch = origin_branch(role, base)
         check = subprocess.run(
@@ -613,6 +671,11 @@ def generate(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str
         "installationAuthorized=False, releaseEligible=False.\n"
         f"The eight required gate keys are: {list(GATES)!r}. Only an actual boolean True "
         "can satisfy each key, absent/false/non-boolean never satisfies.\n"
+        "Ruff formatting is mandatory: no source line may exceed 100 columns. "
+        "Write the gates tuple with one quoted gate per line and trailing commas; "
+        "use double quotes, two blank lines before the function in the full module, "
+        "and a multi-line return dict with one key per line. "
+        "A long single-line gates tuple or return dict causes immediate rejection.\n"
         "Produce exactly ONE top-level Python function, and no other statements "
         "outside it. The addition string MUST begin with the exact signature above.\n"
         "Inside the function, define a tuple named gates containing the eight exact "
@@ -643,6 +706,13 @@ def generate(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str
             addition = call_model(task)
             validate_addition(role, addition, execute=True, scope=scope)
             before, after = expected_source(root, role, addition, scope=scope)
+            # The trusted model job sets the flag; local unit tests can
+            # exercise the older pure AST contract without a Ruff binary.
+            if os.environ.get("GASLUX_FACTORY_RUFF_ENFORCE") == "true":
+                if any(len(line) > 100 for line in after.decode().splitlines()):
+                    raise ValueError(
+                        "Generated candidate exceeds Ruff E501 (100 columns)"
+                    )
             evidence_dir.mkdir(parents=True, exist_ok=True)
             data = addition.rstrip().encode() + b"\n"
             (evidence_dir / "addition.py").write_bytes(data)
@@ -675,6 +745,8 @@ def generate(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str
                     f"\nPrior attempt rejected: {last_category}. "
                     "Correct the rejected construct; never use a standalone for/while "
                     "statement. A side-effect-free list comprehension is allowed. "
+                    "Keep all lines at most 100 columns, use canonical Ruff "
+                    "formatting for tuples and dicts, and keep gate names exact. "
                     "Return only the exact scoped Python function in JSON addition.\n"
                 )
     raise RuntimeError(

@@ -353,8 +353,15 @@ class TaskTriageTests(unittest.TestCase):
         workflow = (SCRIPT.parents[2] /
                     ".github/workflows/gaslux-agent-feature-factory.yml").read_text()
         _, triage_job = workflow.split("  triage_missing_gates:\n", 1)
-        self.assertIn("GASLUX_PUBLISH_APP_BOT_LOGIN: ${{ vars.GASLUX_PUBLISH_APP_BOT_LOGIN }}",
-                      triage_job)
+        # The fallback is the exact GitHub App actor observed on PR #407,
+        # never a wildcard Bot or a value copied from untrusted dev.
+        expected_actor_setting = (
+            "GASLUX_PUBLISH_APP_BOT_LOGIN: "
+            "${{ vars.GASLUX_PUBLISH_APP_BOT_LOGIN || "
+            "'gaslux-autonomous-publisher[bot]' }}"
+        )
+        self.assertIn(expected_actor_setting, triage_job)
+        self.assertEqual(triage_job.count(expected_actor_setting), 1)
         self.assertNotIn("GASLUX_PUBLISH_APP_PRIVATE_KEY", triage_job)
 
     def test_workflow_temporary_write_token_only_in_trusted_triage_job(self):
