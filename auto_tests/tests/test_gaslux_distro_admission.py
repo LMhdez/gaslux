@@ -87,6 +87,7 @@ class AdmissionTests(unittest.TestCase):
                 patch.object(gate, "one_path_commit") as scope,
                 patch.object(gate, "source_at", side_effect=[before, original, final]),
                 patch.object(gate, "validate_addition") as validator,
+                patch.object(gate, "require_fixed_lifecycle"),
                 patch.object(gate, "api", return_value={"author": {"id": 9}}),
             ):
                 if final == formatted:
@@ -96,6 +97,32 @@ class AdmissionTests(unittest.TestCase):
                 else:
                     with self.assertRaises(ValueError):
                         gate.candidate_append(pr, "zorin", HEAD, path)
+
+    def test_fixed_semantics_for_all_queued_roles(self):
+        for role in gate.QUEUE.values():
+            for local in ("missing", "missingGates"):
+                with self.subTest(role=role, local=local):
+                    source = (
+                        f"def assess_{role}_lifecycle(evidence: dict) -> dict:\n"
+                        f"    gates = {gate.LIFECYCLE_GATES!r}\n"
+                        f"    {local} = sorted([name for name in gates if evidence.get(name) is not True])\n"
+                        f"    return {{'backend': {role!r}, 'missingGates': {local}, "
+                        "'installationAuthorized': False, 'releaseEligible': False}\n"
+                    )
+                    gate.require_fixed_lifecycle(role, source)
+                    for changed in (
+                        source.replace("'installationAuthorized': False", "'installationAuthorized': True"),
+                        source.replace("'releaseEligible': False", "'releaseEligible': bool(evidence)"),
+                        source.replace("is not True", "!= True"),
+                        source.replace("'windows-return', ", ""),
+                        source.replace("evidence.get(name)", "evidence.get('install')"),
+                        source.replace(f"'missingGates': {local}", "'missingGates': []"),
+                        source.replace("'releaseEligible': False", "'releaseEligible': False, 'releaseEligible': True"),
+                        source.replace("    return", "    if evidence:\n        return {}\n    return"),
+                    ):
+                        self.assertNotEqual(changed, source)
+                        with self.assertRaises(ValueError):
+                            gate.require_fixed_lifecycle(role, changed)
 
     def test_intermediate_offscope_commit_rejected(self):
         good = {"status": "ahead", "ahead_by": 1, "behind_by": 0, "total_commits": 1,
