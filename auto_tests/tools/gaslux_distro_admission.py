@@ -166,7 +166,54 @@ def review_ok(reviews, reviewer_id, author_id, head, dev):
                for row in own)
 
 
-def inspect(number, role, reviewer_id):
+def parse_owner_ids(raw):
+    """Strict, administrator-provided configuration; no default identities."""
+    if not isinstance(raw, str) or not raw or len(raw) > 1024:
+        return {}
+
+    def unique_pairs(pairs):
+        out = {}
+        for key, value in pairs:
+            if key in out:
+                raise ValueError("Duplicate owner role")
+            out[key] = value
+        return out
+
+    try:
+        data = json.loads(raw, object_pairs_hook=unique_pairs)
+        if (type(data) is not dict
+                or not set(data) <= set(QUEUE.values())
+                or any(type(value) is not int or not 1 <= value < 10**19
+                       for value in data.values())):
+            return {}
+        return data
+    except (ValueError, TypeError, RecursionError):
+        return {}
+
+
+def owner_review_ok(reviews, owner_id, safety_id, author_id, repair_id, role, head, dev):
+    # A shared account cannot attest two roles. Unknown Safety identity also
+    # blocks this gate; no inferred role from PR text or model output.
+    if (role not in QUEUE.values() or not valid_sha(head) or not valid_sha(dev)
+            or any(type(value) is not int or value <= 0
+                   for value in (owner_id, safety_id, author_id))
+            or owner_id in (safety_id, author_id, repair_id)
+            or safety_id in (author_id, repair_id)):
+        return False
+    rows = complete_page(reviews)
+    if any(row.get("state") == "CHANGES_REQUESTED" for row in rows):
+        return False
+    own = [row for row in rows if row.get("user", {}).get("id") == owner_id
+           and row.get("state") != "COMMENTED"]
+    marker = f"GASLUX-BACKEND-OWNER-V1 role={role} head={head} base={dev}"
+    return bool(own) and all(
+        row.get("state") == "APPROVED" and row.get("commit_id") == head
+        and marker in str(row.get("body", "")).splitlines()
+        for row in own
+    )
+
+
+def inspect(number, role, reviewer_id, owner_id=None):
     out = {"pr": number, "role": role, "head": None, "base": None,
            "exact_scope_verified": False, "current_base_verified": False,
            "ci_verified": False, "safety_review_verified": False,
@@ -204,15 +251,20 @@ def inspect(number, role, reviewer_id):
             reviewer_id != repair_actor
             and review_ok(reviews, reviewer_id, pr["user"]["id"], sha, dev)
         )
+        out["backend_owner_verified"] = (
+            out["current_base_verified"] and owner_review_ok(
+                reviews, owner_id, reviewer_id, pr["user"]["id"], repair_actor, role, sha, dev)
+        )
         comments = complete_page(api("GET", f"/issues/{number}/comments?per_page=100"))
         if any(marker in str(row.get("body", "")).upper()
                for row in comments for marker in ("SAFETY_DENIED", "BLOCKED_SAFETY", "DO_NOT_MERGE")):
             out["safety_review_verified"] = False
+            out["backend_owner_verified"] = False
         if (api("GET", "/git/ref/heads/dev")["object"]["sha"] != dev
                 or api("GET", f"/pulls/{number}")["head"]["sha"] != sha):
             raise ValueError("Candidate changed during inspection")
         out["status"] = "blocked"
-        out["reason"] = "Backend-owner and full-VM evidence not authenticated; merge disabled"
+        out["reason"] = "Full-VM acceptance and merge authority unavailable; merge disabled"
     except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError, SyntaxError):
         for key in out:
             if key.endswith("_verified"):
@@ -225,9 +277,12 @@ def inspect(number, role, reviewer_id):
 def main():
     raw = os.getenv("GASLUX_SAFETY_REVIEWER_ID", "")
     reviewer = int(raw) if re.fullmatch(r"[1-9][0-9]{0,18}", raw) else None
-    report = {"schema": "gaslux-distro-admission-v1", "read_only": True,
+    owners = parse_owner_ids(os.getenv("GASLUX_BACKEND_OWNER_IDS", ""))
+    report = {"schema": "gaslux-distro-admission-v2", "read_only": True,
               "reviewer_configured": reviewer is not None,
-              "candidates": [inspect(n, role, reviewer) for n, role in QUEUE.items()]}
+              "owner_roles_configured": sorted(owners),
+              "candidates": [inspect(n, role, reviewer, owners.get(role))
+                             for n, role in QUEUE.items()]}
     print(json.dumps(report, indent=2, sort_keys=True))
 
 
