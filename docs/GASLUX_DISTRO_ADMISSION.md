@@ -28,3 +28,19 @@ This is an admission observation stage, not a grant of merge authority.
 The existing keyboard Integrator and all existing Safety contracts remain
 unchanged. A separate independently reviewed change must authenticate the
 remaining gates and enforce branch protection before any distro merge.
+
+## Ruff-repair history (2026-11-24)
+
+The five current candidates (#395/#400/#411/#412/#413) contain two commits:
+original bot append plus a maintainer formatting repair. The original check
+mistook the repair's immediate parent for the original dev base, and rejected
+Ruff's additional blank line. The read-only admission now checks bounded
+one- or two-commit linear ancestry, compares each commit's file scope,
+verifies the branch suffix against the original base, validates both appends
+with the unchanged AST validator (never executes), and requires AST identity
+for the formatting repair. The repaired commit's authenticated author cannot
+be the Safety reviewer. More than two commits, off-scope intermediates,
+changed semantics, unknown repair identity and noncanonical append fail closed.
+Historical original bases remain stale; exact-current-base, exact-HEAD CI,
+independent Safety, owner/VM evidence and no-merge/no-release invariants remain.
+No candidate is approved by this change. Independent review and CI required.
