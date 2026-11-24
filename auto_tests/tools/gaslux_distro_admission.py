@@ -146,6 +146,60 @@ def checks_ok(response, head, role):
     return required <= names
 
 
+# Immutable repository/workflow IDs observed on the five candidate CI runs.
+# Names alone are not a provenance boundary; do not accept a lookalike workflow.
+REPOSITORY_ID = 1460159259
+WORKFLOW_JOBS = {
+    420402269: {"Windows recovery evidence rules (fixtures only)"},
+    420417743: {"evidence-python", "evidence-powershell"},
+    420471368: {"read-only-contracts"},
+    420371034: {"python-contracts", "windows-contracts"},
+}
+
+
+def ci_workflow_provenance(head, role):
+    if not valid_sha(head) or role not in QUEUE.values():
+        return False
+    required = {420402269, 420417743,
+                420371034 if role == "cachyos" else 420471368}
+    data = api("GET", f"/actions/runs?head_sha={head}&event=pull_request&per_page=100")
+    rows = complete_page(data["workflow_runs"])
+    if type(data.get("total_count")) is not int or data["total_count"] != len(rows):
+        return False
+    found = set()
+    for run in rows:
+        workflow = run.get("workflow_id")
+        if workflow not in required:
+            continue
+        run_id, attempt = run.get("id"), run.get("run_attempt")
+        if (type(run_id) is not int or run_id <= 0
+                or type(attempt) is not int or attempt <= 0
+                or run.get("head_sha") != head
+                or run.get("event") != "pull_request"
+                or run.get("repository", {}).get("id") != REPOSITORY_ID
+                or run.get("head_repository", {}).get("id") != REPOSITORY_ID
+                or run.get("status") != "completed" or run.get("conclusion") != "success"):
+            return False
+        jobs = api("GET", f"/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
+        items = complete_page(jobs["jobs"])
+        if type(jobs.get("total_count")) is not int or jobs["total_count"] != len(items):
+            return False
+        names = set()
+        for job in items:
+            if (job.get("run_id") != run_id or job.get("run_attempt") != attempt
+                    or job.get("head_sha") != head or job.get("status") != "completed"
+                    or job.get("conclusion") != "success"):
+                return False
+            name = job.get("name")
+            if not isinstance(name, str) or name in names:
+                return False
+            names.add(name)
+        if not WORKFLOW_JOBS[workflow] <= names:
+            return False
+        found.add(workflow)
+    return found == required
+
+
 def review_ok(reviews, reviewer_id, author_id, head, dev):
     if (type(reviewer_id) is not int or reviewer_id <= 0
             or type(author_id) is not int or reviewer_id == author_id):
@@ -216,7 +270,8 @@ def owner_review_ok(reviews, owner_id, safety_id, author_id, repair_id, role, he
 def inspect(number, role, reviewer_id, owner_id=None):
     out = {"pr": number, "role": role, "head": None, "base": None,
            "exact_scope_verified": False, "current_base_verified": False,
-           "ci_verified": False, "safety_review_verified": False,
+           "ci_verified": False, "ci_workflow_provenance_verified": False,
+           "safety_review_verified": False,
            "backend_owner_verified": False, "full_vm_acceptance_verified": False,
            "merge_authorized": False, "release_eligible": False}
     try:
@@ -244,8 +299,11 @@ def inspect(number, role, reviewer_id, owner_id=None):
         original, repair_actor = candidate_append(pr, role, sha, path)
         out["current_base_verified"] = original == dev
         out["exact_scope_verified"] = True
-        out["ci_verified"] = checks_ok(
-            api("GET", f"/commits/{sha}/check-runs?per_page=100"), sha, role)
+        out["ci_workflow_provenance_verified"] = ci_workflow_provenance(sha, role)
+        out["ci_verified"] = (
+            out["ci_workflow_provenance_verified"] and checks_ok(
+                api("GET", f"/commits/{sha}/check-runs?per_page=100"), sha, role)
+        )
         reviews = api("GET", f"/pulls/{number}/reviews?per_page=100")
         out["safety_review_verified"] = (
             reviewer_id != repair_actor
