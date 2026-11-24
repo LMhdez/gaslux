@@ -578,8 +578,15 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
     if scope == SCOPE2B_ID:
         # The source and acceptance test are unchanged on a forward-only
         # rebase; also reject an unrelated change to the pinned release.
-        release = json.loads((root / "release-config.json").read_text(encoding="utf-8"))
-        mint = [x for x in release.get("distributions", [])
+        # Validate CURRENT live-dev metadata, not the old artifact checkout.
+        live_release = subprocess.check_output(
+            ["git", "-C", str(root), "show", f"{live}:release-config.json"],
+            text=True, timeout=20,
+        )
+        release = json.loads(live_release)
+        if type(release) is not dict or type(release.get("distributions")) is not list:
+            raise ValueError("Unexpected live dev release descriptor")
+        mint = [x for x in release["distributions"]
                 if type(x) is dict and x.get("id") == "mint"]
         if (len(mint) != 1 or any(type(mint[0].get(k)) is not type(v) or
                                   mint[0].get(k) != v for k, v in SCOPE2B_PINS.items())):
