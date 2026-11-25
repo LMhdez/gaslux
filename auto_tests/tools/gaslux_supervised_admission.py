@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import ast
 import json
 import os
 from pathlib import Path
@@ -14,6 +15,11 @@ import tempfile
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gaslux_agent_feature_factory as factory
 import gaslux_distro_admission as admission
+import gaslux_dynamic_development as dynamic
+
+DYNAMIC_SCOPE = "dynamic-test-demanded-api-v1"
+PRODUCT_SCOPES = (factory.SUPERVISED_MEDIA_SCOPE, DYNAMIC_SCOPE)
+DYNAMIC_BRANCH = re.compile(r"bot/gaslux-dynamic-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}-[0-9a-f]{12}")
 
 BRANCH = re.compile(r"bot/gaslux-(test|pins)-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}")
 
@@ -26,10 +32,14 @@ def discover():
         head, base = pr["head"], pr["base"]
         branch = head.get("ref")
         match = BRANCH.fullmatch(branch) if isinstance(branch, str) else None
-        if not match or (head.get("repo") or {}).get("full_name") != admission.REPO:
+        dynamic_match = DYNAMIC_BRANCH.fullmatch(branch) if isinstance(branch, str) else None
+        if not (match or dynamic_match) or (head.get("repo") or {}).get("full_name") != admission.REPO:
             continue
-        kind, role = match.groups()
-        scope = factory.SUPERVISED_TEST_SCOPE if kind == "test" else factory.SUPERVISED_MEDIA_SCOPE
+        if dynamic_match:
+            role, scope = dynamic_match.group(1), DYNAMIC_SCOPE
+        else:
+            kind, role = match.groups()
+            scope = factory.SUPERVISED_TEST_SCOPE if kind == "test" else factory.SUPERVISED_MEDIA_SCOPE
         number = pr.get("number")
         if (type(number) is not int or not 1 <= number <= 1000000 or number in result
                 or (base.get("repo") or {}).get("full_name") != admission.REPO
@@ -41,7 +51,39 @@ def discover():
     return result
 
 
+def dynamic_scope(pr, role, head):
+    """Recover the task from immutable source/test bytes, not PR prose."""
+    if pr.get("commits") != 1:
+        raise ValueError("Dynamic proposal is not a single append")
+    parent = admission.single_parent(head)
+    source, suite, _ = factory.TASKS[role]
+    admission.one_path_commit(parent, head, source)
+    before, after = admission.source_at(source, parent), admission.source_at(source, head)
+    prefix = before.rstrip(b"\n") + b"\n\n\n"
+    if not after.startswith(prefix):
+        raise ValueError("Dynamic source prefix changed")
+    generated = after[len(prefix):].decode("utf-8")
+    nodes = ast.parse(generated).body
+    if len(nodes) != 1 or not isinstance(nodes[0], ast.FunctionDef):
+        raise ValueError("Dynamic append is not one function")
+    symbol = nodes[0].name
+    key = factory.sha256(f"{source}:{symbol}".encode())
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        for name in (source, "auto_tests/tests/" + suite):
+            p = root / name
+            p.parent.mkdir(parents=True, exist_ok=True)
+            p.write_bytes(admission.source_at(name, parent))
+        task = dynamic.select_task(root, key)
+        if (task["role"] != role or pr["head"]["ref"] != dynamic.branch_for(task, parent)
+                or dynamic.candidate_bytes(before, symbol, generated) != after):
+            raise ValueError("Dynamic task/branch or exact bytes mismatch")
+    return parent
+
+
 def canonical_scope(pr, role, scope, head):
+    if scope == DYNAMIC_SCOPE:
+        return dynamic_scope(pr, role, head)
     if pr.get("commits") != 1:
         raise ValueError("Supervised proposal is not a single append")
     parent = admission.single_parent(head)
@@ -179,7 +221,7 @@ def inspect(number, role, scope, head, reviewer=None, owner=None, *, allow_ready
            "merge_authorized": False,
            "release_eligible": False, "next_action": "VERIFY_SUPERVISED_SCOPE"}
     try:
-        if not admission.valid_sha(head) or role not in factory.TASKS or scope not in factory.SUPERVISED_SCOPES:
+        if not admission.valid_sha(head) or role not in factory.TASKS or scope not in (*factory.SUPERVISED_SCOPES, DYNAMIC_SCOPE):
             raise ValueError("Unknown supervised scope")
         pr = admission.api("GET", f"/pulls/{number}")
         base = admission.api("GET", "/git/ref/heads/dev")["object"]["sha"]
@@ -212,7 +254,7 @@ def inspect(number, role, scope, head, reviewer=None, owner=None, *, allow_ready
             row["safety_review_verified"] = admission.review_ok(reviews, reviewer, author, head, base)
             row["backend_owner_verified"] = admission.owner_review_ok(
                 reviews, owner, reviewer, author, None, role, head, base, supervised=True)
-            if (scope == factory.SUPERVISED_MEDIA_SCOPE
+            if (scope in PRODUCT_SCOPES
                     and row["safety_review_verified"] and row["backend_owner_verified"]):
                 row["full_vm_acceptance_verified"] = vm_acceptance_verified(
                     reviews, role, head, base, author, reviewer, owner)
@@ -226,7 +268,7 @@ def inspect(number, role, scope, head, reviewer=None, owner=None, *, allow_ready
             "INDEPENDENT_SAFETY_REVIEW" if not row["safety_review_verified"] else
             "BACKEND_OWNER_REVIEW" if not row["backend_owner_verified"] else
             ("PRODUCT_INTEGRATION_ELIGIBLE" if row["full_vm_acceptance_verified"] else
-             "COLLECT_VM_EVIDENCE") if scope == factory.SUPERVISED_MEDIA_SCOPE else
+             "COLLECT_VM_EVIDENCE") if scope in PRODUCT_SCOPES else
             "TEST_ONLY_INTEGRATION_ELIGIBLE"
         )
     except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError, SyntaxError):
@@ -277,7 +319,7 @@ def eligible_test(row):
 
 def eligible_product(row):
     return (
-        row.get("scope") == factory.SUPERVISED_MEDIA_SCOPE
+        row.get("scope") in PRODUCT_SCOPES
         and row.get("next_action") == "PRODUCT_INTEGRATION_ELIGIBLE"
         and all(row.get(key) is True for key in (
             "exact_scope_verified", "current_base_verified",
@@ -371,10 +413,10 @@ def integrate_one(*, product=False):
             or os.getenv("GASLUX_AUTONOMY_PAUSED", "").lower() == "true"):
         raise ValueError("Untrusted integration context")
     reviewer, owners = configured_reviewers()
-    expected_scope = factory.SUPERVISED_MEDIA_SCOPE if product else factory.SUPERVISED_TEST_SCOPE
+    expected_scopes = PRODUCT_SCOPES if product else (factory.SUPERVISED_TEST_SCOPE,)
     eligible = eligible_product if product else eligible_test
     for number, (role, scope, head) in sorted(discover().items()):
-        if scope != expected_scope:
+        if scope not in expected_scopes:
             continue
         row = inspect(number, role, scope, head, reviewer, owners.get(role), allow_ready=True)
         if not eligible(row):
