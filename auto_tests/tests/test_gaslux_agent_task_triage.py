@@ -488,19 +488,19 @@ class ImplementationDiscoveryTests(unittest.TestCase):
             path = root / triage.TASKS["zorin"][0]
             path.parent.mkdir(parents=True)
             path.write_text(
-                'def new_capability():\\n    """Pending native implementation."""\\n'
-                '    raise NotImplementedError("missing")\\n'
-                'def conditional(x):\\n    if x:\\n        raise NotImplementedError\\n'
-                'def noop():\\n    pass\\n'
-                'def _private():\\n    raise NotImplementedError\\n'
-                'raise RuntimeError("must never execute source")\\n')
+                'def new_capability():\n    """Pending native implementation."""\n'
+                '    raise NotImplementedError("missing")\n'
+                'def conditional(x):\n    if x:\n        raise NotImplementedError\n'
+                'def noop():\n    pass\n'
+                'def _private():\n    raise NotImplementedError\n'
+                'raise RuntimeError("must never execute source")\n')
             rows = triage.discover_missing_implementations(root)
             self.assertEqual([(r["role"], r["symbol"]) for r in rows],
                              [("zorin", "new_capability")])
             self.assertFalse(rows[0]["code_authorized"])
             self.assertFalse(rows[0]["release_eligible"])
             key = rows[0]["key"]
-            path.write_text("# unrelated revision\\n" + path.read_text())
+            path.write_text("# unrelated revision\n" + path.read_text())
             self.assertEqual(triage.discover_missing_implementations(root)[0]["key"], key)
 
     def test_rejects_symlink_source(self):
@@ -509,7 +509,7 @@ class ImplementationDiscoveryTests(unittest.TestCase):
             path = root / triage.TASKS["zorin"][0]
             path.parent.mkdir(parents=True)
             outside = root / "untrusted.py"
-            outside.write_text("def missing():\\n    raise NotImplementedError\\n")
+            outside.write_text("def missing():\n    raise NotImplementedError\n")
             path.symlink_to(outside)
             with self.assertRaises(ValueError):
                 triage.discover_missing_implementations(root)
