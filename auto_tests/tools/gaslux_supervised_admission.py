@@ -363,6 +363,69 @@ query {
 """
 
 
+def strict_ruleset_protected(base):
+    """Accept only an active exact-dev repository ruleset with visible no-bypass policy.
+
+    Effective rule listing alone does not expose bypass actors. Never infer
+    that a missing bypass_actors field means an empty list, and never acquire
+    administrative credentials to make this check succeed.
+    """
+    try:
+        if not admission.valid_sha(base):
+            return False
+        if admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != base:
+            return False
+        rows = admission.complete_page(admission.api(
+            "GET", "/rules/branches/dev?per_page=100"))
+        groups = {}
+        for row in rows:
+            if (row.get("ruleset_source_type") != "Repository"
+                    or row.get("ruleset_source") != admission.REPO):
+                continue
+            rid = row.get("ruleset_id")
+            if type(rid) is not int or rid <= 0:
+                return False
+            groups.setdefault(rid, []).append(row)
+        if len(groups) > 16:
+            return False
+        for rid, active in sorted(groups.items()):
+            kinds = {row.get("type") for row in active}
+            if not {"deletion", "non_fast_forward", "pull_request",
+                    "required_status_checks"} <= kinds:
+                continue
+            detail = admission.api("GET", f"/rulesets/{rid}?includes_parents=false")
+            if (detail.get("id") != rid or detail.get("source_type") != "Repository"
+                    or detail.get("source") != admission.REPO
+                    or detail.get("target") != "branch" or detail.get("enforcement") != "active"
+                    or detail.get("bypass_actors") != []
+                    or detail.get("conditions") != {
+                        "ref_name": {"include": ["refs/heads/dev"], "exclude": []}}):
+                continue
+            declared = admission.complete_page(detail["rules"])
+            by_type = {row["type"]: row for row in declared}
+            active_by_type = {row["type"]: row for row in active}
+            if (len(by_type) != len(declared) or len(active_by_type) != len(active)
+                    or set(by_type) != set(active_by_type)
+                    or any(row.get("parameters", {}) != active_by_type[kind].get("parameters", {})
+                           for kind, row in by_type.items())):
+                continue
+            params = by_type["required_status_checks"]["parameters"]
+            checks = params["required_status_checks"]
+            if (params.get("strict_required_status_checks_policy") is not True
+                    or params.get("do_not_enforce_on_create") is True
+                    or not isinstance(checks, list) or not 0 < len(checks) < 100
+                    or not all(isinstance(x, dict) and isinstance(x.get("context"), str)
+                               and x["context"].strip() for x in checks)
+                    or not admission.COMMON_CHECKS <= {x["context"] for x in checks}):
+                continue
+            # Recheck the exact base, not an inferred merge base. The GitHub
+            # server enforces the strict rule at merge time.
+            return admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] == base
+        return False
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
+        return False
+
+
 def strict_dev_protected(base):
     """Read effective server policy with the same token used to merge.
 
@@ -384,7 +447,13 @@ def strict_dev_protected(base):
             return False
         repo = data["data"]["repository"]
         ref = repo["ref"]
+        if (repo["nameWithOwner"] != admission.REPO
+                or ref["name"] != "dev" or ref["prefix"] != "refs/heads/"
+                or ref["target"]["oid"] != base):
+            return False
         rule, effective = ref["branchProtectionRule"], ref["refUpdateRule"]
+        if rule is None:
+            return strict_ruleset_protected(base)
         checks = rule["requiredStatusCheckContexts"]
         enforced = effective["requiredStatusCheckContexts"]
         return (
