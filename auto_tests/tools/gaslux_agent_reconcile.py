@@ -217,10 +217,13 @@ def historical_inventory(*, slot=None):
 
 
 def historical_close_candidate(row):
-    """Proven integrated ancestry, no remaining PR diff or identical tree, no discussion."""
-    if (row.get("status") != "ANCESTRY_PRESENT_REVIEW_CLOSURE"
-            or row.get("target") not in ("dev", "main")
-            or row.get("draft") is not True or row.get("unique_head_commits") != 0):
+    """Proven integrated ancestry or identical complete tree; no unresolved discussion."""
+    unique = row.get("unique_head_commits")
+    ancestry = row.get("status") == "ANCESTRY_PRESENT_REVIEW_CLOSURE" and unique == 0
+    squash = (row.get("status") == "UNIQUE_COMMITS_REQUIRE_RECONCILIATION"
+              and type(unique) is int and unique > 0)
+    if (not (ancestry or squash) or row.get("target") not in ("dev", "main")
+            or row.get("draft") is not True):
         return False
     n, head, base, target = row["pr"], row["head"], row["base"], row["target"]
     if type(n) is not int or not 1 <= n <= 1000000 or not all(
@@ -238,15 +241,24 @@ def historical_close_candidate(row):
             or api("GET", f"/git/ref/heads/{target}")["object"]["sha"] != base):
         return False
     relation = api("GET", f"/compare/{head}...{base}")
-    if (relation.get("status") not in ("ahead", "identical")
-            or relation.get("behind_by") != 0
-            or relation.get("merge_base_commit", {}).get("sha") != head):
+    if ancestry:
+        if (relation.get("status") not in ("ahead", "identical")
+                or relation.get("behind_by") != 0
+                or relation.get("merge_base_commit", {}).get("sha") != head):
+            return False
+    elif (relation.get("status") not in ("behind", "diverged")
+          or relation.get("behind_by") != unique
+          or not admission.valid_sha(relation.get("merge_base_commit", {}).get("sha"))):
         return False
     a = api("GET", f"/git/commits/{head}")["tree"]["sha"]
     b = api("GET", f"/git/commits/{base}")["tree"]["sha"]
     if not admission.valid_sha(a) or not admission.valid_sha(b):
         return False
     if a != b:
+        # With distinct history, exact complete tree equality is mandatory.
+        # Squash-equivalent commits are not proof that differing trees are redundant.
+        if squash:
+            return False
         # Later legitimate dev changes need not reproduce the entire old tree.
         # Require GitHub to report zero remaining PR files as well as ancestry.
         if type(pr.get("changed_files")) is not int or pr["changed_files"] != 0:
@@ -275,7 +287,10 @@ def close_integrated_history(*, execute=False):
             continue
         n, head, base, target = row["pr"], row["head"], row["base"], row["target"]
         receipt = {"pr": n, "head": head, "base": base, "target": target,
-                   "merge_authorized": False, "refs_deleted": False}
+                   "merge_authorized": False, "refs_deleted": False,
+                   "equivalence": ("identical_full_tree_distinct_history" if
+                                   row["status"] == "UNIQUE_COMMITS_REQUIRE_RECONCILIATION"
+                                   else "integrated_ancestry")}
         if not execute:
             return {"status": "eligible_exact_history", **receipt}
         if not historical_close_candidate(row):
