@@ -982,6 +982,66 @@ class SupervisedRegressionTests(unittest.TestCase):
                 else:
                     self.assertIsNone(result)
 
+    def test_product_media_scope_uses_exact_pins_and_static_bytes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            product, suite = self.fixture(root, "zorin")
+            name, pins = factory.supervised_media_pins("zorin")
+            config = root / "release-config.json"
+            config.write_text(json.dumps({"distributions": [pins]}))
+            scope = factory.SUPERVISED_MEDIA_SCOPE
+            self.assertTrue(factory.supervised_media_gap(root, "zorin"))
+            self.assertFalse(factory.supervised_media_gap(root, "bazzite"))
+            evidence = root / "evidence"
+            with patch.object(factory, "git", return_value=self.BASE):
+                factory.generate_supervised_test(root, evidence, "zorin", self.BASE, scope=scope)
+                report = factory.verify(root, evidence, "zorin", self.BASE, execute=True, scope=scope)
+                self.assertEqual(report["target"], factory.TASKS["zorin"][0])
+                self.assertEqual(report["release_descriptor_sha256"], factory.sha256(config.read_bytes()))
+                self.assertEqual(report["regression_suite_sha256"], factory.sha256(suite.read_bytes()))
+                with patch.object(factory, "supervised_media_acceptance") as execute:
+                    factory.verify(root, evidence, "zorin", self.BASE, execute=False, scope=scope)
+                    execute.assert_not_called()
+                original = (evidence / "addition.py").read_text()
+                (evidence / "addition.py").write_text(original.replace('"installationAuthorized": False', '"installationAuthorized": True'))
+                with self.assertRaises(ValueError):
+                    factory.verify(root, evidence, "zorin", self.BASE, execute=False, scope=scope)
+                (evidence / "addition.py").write_text(original)
+                config.write_text(json.dumps({"distributions": [{**pins, "isoInstallerSizeBytes": float(pins["isoInstallerSizeBytes"])}]}))
+                self.assertFalse(factory.supervised_media_gap(root, "zorin"))
+                with self.assertRaises(ValueError):
+                    factory.verify(root, evidence, "zorin", self.BASE, execute=False, scope=scope)
+                config.write_text(json.dumps({"distributions": [pins]}))
+                product.write_text(product.read_text() + "\n" + original)
+                self.assertFalse(factory.supervised_media_gap(root, "zorin"))
+
+    def test_product_scope_detects_existing_function_on_other_open_branch(self):
+        import sys
+        sys.path.insert(0, str(SCRIPT.parent))
+        import gaslux_distro_admission as admission
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root, "zorin")
+            name, pins = factory.supervised_media_pins("zorin")
+            (root / "release-config.json").write_text(json.dumps({"distributions": [pins]}))
+            path = factory.TASKS["zorin"][0]
+            rows = [{"number": 123, "head": {"ref": "other-proposal", "sha": "c" * 40,
+                                             "repo": {"full_name": factory.REPO}}}]
+            def api(method, route):
+                self.assertEqual(method, "GET")
+                if route == "/git/ref/heads/dev":
+                    return {"object": {"sha": self.BASE}}
+                if route == "/pulls?state=open&base=dev&per_page=100":
+                    return rows
+                if route == "/pulls/123/files?per_page=100":
+                    return [{"filename": path, "status": "modified"}]
+                self.fail(route)
+            with patch.object(factory, "git", return_value=self.BASE), \
+                 patch.object(admission, "api", side_effect=api), \
+                 patch.object(admission, "source_at", return_value=f"def {name}(".encode()):
+                self.assertIsNone(factory.supervised_scope_plan(
+                    root, self.BASE, factory.SUPERVISED_MEDIA_SCOPE))
+
     def test_all_canonical_regression_templates_parse(self):
         import ast
         for role in factory.TASKS:
