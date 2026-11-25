@@ -70,7 +70,7 @@ def canonical_scope(pr, role, scope, head):
 
 VM_PLATFORMS = ("windows10-bios-mbr", "windows10-uefi-gpt", "windows11-uefi-gpt")
 VM_MARKER = re.compile(
-    r"GASLUX-VM-V1 role=([a-z]+) platform=([a-z0-9-]+) "
+    r"GASLUX-VM-V1 role=([a-z0-9]+) platform=([a-z0-9-]+) "
     r"head=([0-9a-f]{40}) base=([0-9a-f]{40}) "
     r"run=([1-9][0-9]{0,18}) artifact=([1-9][0-9]{0,18}) "
     r"sha256=([0-9a-f]{64})"
@@ -436,7 +436,7 @@ def integrate_one(*, product=False):
 
 
 def independent_safety_review():
-    """Separate credential and exact canonical test review; never approve product writers."""
+    """Separate credential and exact canonical review; never approve product writers."""
     if (os.getenv("GITHUB_REPOSITORY") != admission.REPO
             or os.getenv("GITHUB_REF") != "refs/heads/main"
             or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
@@ -487,7 +487,7 @@ def independent_safety_review():
         result = admission.api("POST", f"/pulls/{number}/reviews", {
             "commit_id": head, "event": "APPROVE",
             "body": (f"GASLUX-SAFETY-V1 head={head} base={base}\n"
-                     "Automated independent exact-byte canonical test review: "
+                     "Automated independent exact-byte canonical scope review: "
                      "scope, current parent, trusted CI provenance and required checks verified. "
                      "No product writer, installation or release authority.")})
         if (result.get("user", {}).get("id") != reviewer
