@@ -120,10 +120,27 @@ def isolated_config(work, context):
     import gaslux_opencode_trial as trial
     import gaslux_opencode_iterative as iterative
     config = trial.prepare(work, context=context)
+    # Only the authorized skill is needed in this bounded agent. Other
+    # portable skills remain available in the separate historical trial.
+    for folder in (work / ".opencode" / "skills").iterdir():
+        if folder.name != trial.SKILL:
+            shutil.rmtree(folder)
     permissions = {"*": "deny", "skill": {"*": "deny", trial.SKILL: "allow"}}
     permissions.update({tool: "allow" for tool in iterative.REQUIRED})
     config["permission"] = permissions
-    config["agent"]["gaslux-lab"].update({"steps": 12, "permission": permissions})
+    config["agent"]["gaslux-lab"].update({
+        "steps": 12, "permission": permissions,
+        "prompt": (
+            "You are a bounded Gaslux lifecycle test agent. Use only the five "
+            "authorized tools, one call at a time. Load gaslux-history-reuse "
+            "first; its repository research steps are already supplied as data "
+            "in inspect_task. Then inspect, read, test RED, edit with current SHA, "
+            "test PASS. Do not run shell or access other paths. Stop after PASS."
+        ),
+    })
+    config["provider"]["ollama"]["models"]["qwen3.5:9b"]["options"] = {
+        "reasoningEffort": "none",
+    }
     config["skills"] = {"paths": ["/scratch/.opencode/skills"], "urls": []}
     config["provider"]["ollama"]["options"]["baseURL"] = "http://127.0.0.1:11435/v1"
     config["mcp"] = {"gaslux_workspace": {
@@ -173,7 +190,7 @@ def run(binary, root, role, context, prompt, report, *, product=None, timeout=TI
         broker_endpoint.chmod(0o600)
         listener.listen(1)
         listener.settimeout(1)
-        with proxy.ModelServer(model_endpoint, proxy.Handler) as model:
+        with proxy.ModelServer(model_endpoint, proxy.Handler, compact_tools=True) as model:
             model_endpoint.chmod(0o600)
             model.timeout = 0.25
             model.deadline = time.monotonic() + timeout
@@ -243,6 +260,9 @@ def run(binary, root, role, context, prompt, report, *, product=None, timeout=TI
                 threads[0].join(5)
                 threads[1].join(proxy.TIMEOUT + 5)
                 report["proxy"] = {k: getattr(model, k) for k in ("calls", "forwarded", "completed", "denied")}
+                report["proxy_diagnostics"] = {"denial_categories": dict(model.denial_categories),
+                                               "inference_seconds": list(model.inference_seconds),
+                                               "profile": "compact-sequential-tools-v1"}
                 report["broker_exit_clean"] = outcome == [True]
                 report["broker_journal_files"] = min(len(list(state.glob("event-*.json"))), broker.MAX_CALLS + 3)
                 if any(thread.is_alive() for thread in threads):
