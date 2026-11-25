@@ -1300,6 +1300,16 @@ jobs:
           set -euo pipefail
           python3 -B trusted/auto_tests/tools/gaslux_agent_task_triage.py --repo source --with-admission-repair --with-implementation-discovery
 
+      - name: Route independently rejected candidates to backend repair
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+        run: |
+          set -euo pipefail
+          python3 -B trusted/auto_tests/tools/gaslux_agent_task_triage.py --repo source --supervised-feedback
       - name: Route one unique historical PR without modifying its branch or review
         env:
           GH_TOKEN: ${{ github.token }}
