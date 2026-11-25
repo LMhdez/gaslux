@@ -315,11 +315,15 @@ jobs:
           mkdir -p evidence
           python3 -I auto_tests/tools/gaslux_agent_reconcile.py --execute > evidence/duplicate-reconciliation.json
           cat evidence/duplicate-reconciliation.json
+          python3 -I auto_tests/tools/gaslux_agent_reconcile.py --close-integrated-history > evidence/historical-closure.json
+          cat evidence/historical-closure.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: gaslux-duplicate-reconciliation
-          path: evidence/duplicate-reconciliation.json
+          path: |
+            evidence/duplicate-reconciliation.json
+            evidence/historical-closure.json
           if-no-files-found: warn
           retention-days: 14
 
