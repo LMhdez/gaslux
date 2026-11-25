@@ -119,12 +119,12 @@ def vm_acceptance_verified(reviews, role, head, base, author, safety, owner):
             receipts[platform] = (int(run), int(artifact), digest)
         if set(receipts) != set(platforms) or len({v[1] for v in receipts.values()}) != len(platforms):
             return False
-        # This is a distinct, separately reviewed full installed-guest
-        # workflow. Existing lifecycle/read-only workflows cannot substitute.
+        # Extend the existing Lifecycle workflow, but only a separately
+        # reviewed installed-guest job can satisfy the acceptance contract.
         definition = admission.api("GET", f"/actions/workflows/{workflow}")
         path = definition.get("path")
         if (definition.get("id") != workflow or definition.get("state") != "active"
-                or path != ".github/workflows/gaslux-full-vm-acceptance.yml"):
+                or path != ".github/workflows/gaslux-agent-lifecycle-research.yml"):
             return False
         # Refuse a candidate with a different lab workflow than trusted main.
         trusted = admission.api("GET", "/git/ref/heads/main")["object"]["sha"]
