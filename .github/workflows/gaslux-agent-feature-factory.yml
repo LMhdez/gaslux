@@ -203,7 +203,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py plan --repo source --enable-stale-repair > /tmp/gaslux-feature-plan.json
+          python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py plan --repo source --enable-stale-repair --enable-supervised-tests > /tmp/gaslux-feature-plan.json
           cat /tmp/gaslux-feature-plan.json
           python3 - <<'PY'
           import json, os
@@ -280,7 +280,7 @@ jobs:
           python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
           python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_phase2b.py -v
       - name: Install hash-pinned unprivileged local inference engine
-        if: needs.select.outputs.repair_pr == ''
+        if: needs.select.outputs.repair_pr == '' && needs.select.outputs.scope != 'supervised-lifecycle-tests-v1'
         shell: bash
         run: |
           set -euo pipefail
@@ -326,7 +326,9 @@ jobs:
           target = Path('source') / info['target']
           addition = Path('evidence/feature-factory/addition.py').read_bytes()
           raw = target.read_bytes()
-          sep = b'\n\n\n' if info.get('producer') == 'trusted-fixed-lifecycle-repair-v1' else b'\n\n'
+          sep = (b'\n\n\n' if info.get('producer') in (
+              'trusted-fixed-lifecycle-repair-v1', 'trusted-supervisor-regression-v1')
+              else b'\n\n')
           target.write_bytes(raw.rstrip(b'\n') + sep + addition)
           PY
           # Ruff analyzes bytes only; model-authored code is never imported
