@@ -155,6 +155,11 @@ def classify_failure(stderr):
         if b"unknown option" in raw:
             return "BWRAP_OPTION_UNSUPPORTED"
         return "BWRAP_SETUP_FAILED"
+    for category in ("SKILL_RIPGREP_MISSING", "SKILL_RIPGREP_INVALID",
+                     "SKILL_LOCAL_FILE_INVALID", "SKILL_DISCOVERY_INVALID",
+                     "SKILL_NATIVE_RIPGREP_INVALID", "SKILL_PREFLIGHT_PROCESS_FAILED"):
+        if category.lower().encode() in raw:
+            return category
     if b"host namespace visible" in raw:
         return "HOST_NAMESPACE_EXPOSED"
     if b"host file exposed" in raw or b"journal creation exposed" in raw:
