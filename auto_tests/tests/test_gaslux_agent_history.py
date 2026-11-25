@@ -179,7 +179,8 @@ class HistoryTests(unittest.TestCase):
         for role in history.ROLES:
             selected = history.task_context(role)["reuse_inventory"]["historical_findings"]
             shared = {f["id"] for f in selected if f["role"] == "shared"}
-            self.assertEqual(shared, {"D-337-01", "SAFETY2-346-01", "F-361-01", "F-361-02"})
+            self.assertTrue({"D-337-01", "SAFETY2-346-01", "F-361-01", "F-361-02"}.issubset(shared))
+            self.assertLessEqual(len(shared), 6)
             self.assertTrue(all(f["role"] in (role, "shared") for f in selected))
             self.assertTrue(all("summary" not in f for f in selected))
             self.assertLessEqual(len(selected), 12)

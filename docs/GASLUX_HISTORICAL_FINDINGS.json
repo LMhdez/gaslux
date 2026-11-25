@@ -324,6 +324,118 @@
       "merge_authorized": false,
       "writer_authorized": false,
       "release_eligible": false
+    },
+    {
+      "role": "shared",
+      "id": "F-391-01",
+      "pr": 391,
+      "review_sha": "3f4dce762d88d1e4e3bb0bdfb5759b35d17ae43d",
+      "comment": 7105801147,
+      "status": "resolved_offline_at_review",
+      "summary": "AST validator allowed nested callback and evidence mutation; corrected read-only contract independently revalidated at exact HEAD.",
+      "fix_pr": 391,
+      "fix_sha": "0d8fe8b4dd93256fa6860d89213b10da0d478e6b",
+      "fix_comment": 7125786815,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "shared",
+      "id": "CAT-414-TRIAGE-ACTOR",
+      "pr": 414,
+      "review_sha": "4208de4b9770f70e03c976964f9a993d9af2e5f9",
+      "comment": 7142029288,
+      "status": "resolved_offline_at_review",
+      "summary": "Unknown same-repository bot actor caused triage failure when configured login was empty; exact observed actor fallback, scoped Safety review and blocked-path runtime validation. Catalog ID assigned.",
+      "fix_pr": 414,
+      "fix_sha": "4208de4b9770f70e03c976964f9a993d9af2e5f9",
+      "fix_comment": 7142757903,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "popos",
+      "id": "P-324-01",
+      "pr": 324,
+      "review_sha": "ed299115923289f6188004a3a51a1d38df35e772",
+      "comment": 7079104266,
+      "status": "resolved_offline_at_review",
+      "summary": "Same-inode/same-size mutation between digest, interpretation and export; frozen evidence snapshots with byte equality and exclusive outputs independently checked.",
+      "fix_pr": 324,
+      "fix_sha": "868a54c3124741eafbd4fdf7945815c52289a130",
+      "fix_comment": 7079104266,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "popos",
+      "id": "POP-GPT-FD-01",
+      "pr": 329,
+      "review_sha": "61c46bc438ccec14f46ce917c36deceda92c9b28",
+      "comment": 7080463871,
+      "status": "remediation_reported_reaudit_required",
+      "summary": "Workspace-to-FD-to-GPT origin remediation; synthetic six-GPT checkpoint contracts green, independent differential review requested.",
+      "fix_pr": 329,
+      "fix_sha": "61c46bc438ccec14f46ce917c36deceda92c9b28",
+      "fix_comment": 7080463871,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "popos",
+      "id": "POP-DISTINST-ELF-SOURCE-BINDING-01",
+      "pr": 353,
+      "review_sha": "0896c44472bb0ea8028ae8cbd773ec4a5b43705f",
+      "comment": 7081262461,
+      "status": "producer_blocker",
+      "summary": "Pinned installer ELF not authenticated to candidate source/build; prewrite plan unavailable, no distinst execution.",
+      "fix_pr": null,
+      "fix_sha": null,
+      "fix_comment": null,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "q4os",
+      "id": "Q4OS-ISO-SIGNED-PROVENANCE-01",
+      "pr": 351,
+      "review_sha": "be3bda9eda2598cff8943af48580112e5922cd7e",
+      "comment": 7081160990,
+      "status": "producer_blocker",
+      "summary": "Official checksum and ISO readback verified per producer, independent ISO signature chain not verified; unsigned experimental catalog cannot authorize native installation.",
+      "fix_pr": null,
+      "fix_sha": null,
+      "fix_comment": null,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "q4os",
+      "id": "Q4OS-RUNLAB-BOUNDARY-01",
+      "pr": 338,
+      "review_sha": "72018d795ce9aeec5f2918a888c12bec542fd2c9",
+      "comment": 7080518502,
+      "status": "remediation_reported_reaudit_required",
+      "summary": "Real paused QEMU diagnostic reuses measured FD/peer primitives without issuing operational session; independent review requested, no guest boot.",
+      "fix_pr": 338,
+      "fix_sha": "72018d795ce9aeec5f2918a888c12bec542fd2c9",
+      "fix_comment": 7080518502,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
     }
   ],
   "runs": [
@@ -487,6 +599,76 @@
       "conclusion": "success",
       "verification": "run_metadata",
       "formal_gate_verified": false
+    },
+    {
+      "run": 45208069249,
+      "sha": "d4506e1733ddffd1a51f0b57890ff7e5af2c2a4f",
+      "conclusion": "failure",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45208741143,
+      "sha": "0d8fe8b4dd93256fa6860d89213b10da0d478e6b",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45466635591,
+      "sha": "73e7766d1ec9ca088ae415f76869a0fe9adc6369",
+      "conclusion": "failure",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45469562769,
+      "sha": "4208de4b9770f70e03c976964f9a993d9af2e5f9",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45475783100,
+      "sha": "d408ffa603272007d9cb0c2c896ed1789f775a80",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45031503009,
+      "sha": "61c46bc438ccec14f46ce917c36deceda92c9b28",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45037892624,
+      "sha": "0896c44472bb0ea8028ae8cbd773ec4a5b43705f",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45037043703,
+      "sha": "be3bda9eda2598cff8943af48580112e5922cd7e",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45032386103,
+      "sha": "72018d795ce9aeec5f2918a888c12bec542fd2c9",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45032436274,
+      "sha": "72018d795ce9aeec5f2918a888c12bec542fd2c9",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
     }
   ],
   "failure_correction_pairs": [
@@ -577,6 +759,22 @@
       "green": 45031774164,
       "scope": "offline denial regressions only; BCD process attribution remains blocked, NOT a functional repair of genuine VM",
       "source": "comment 7080421852"
+    },
+    {
+      "role": "shared",
+      "pr": 391,
+      "red": 45208069249,
+      "green": 45208741143,
+      "scope": "AST rejection-before-execution regression; producer GREEN 16/16 and subsequent technical review",
+      "source": "comments 7105801147, 7106112681, 7125786815"
+    },
+    {
+      "role": "shared",
+      "pr": 414,
+      "red": 45466635591,
+      "green": 45475783100,
+      "scope": "triage actor configuration; blocked runtime path only, not real new Qwen publication",
+      "source": "comments 7142029288, 7142757903, 7142888835"
     }
   ],
   "limitations": "Selected findings and producer blockers; review status at recorded SHA only, not live closure or formal authenticated approval. Run metadata independently queried; causal statements from cited comments, not all logs rerun. Expanded selected catalog: shared findings apply to all six roles; CAT identifiers assigned for source reports lacking a formal finding ID. Technical historical closure is not live approval. Expected-RED harness can succeed while detecting a defect."

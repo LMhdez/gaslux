@@ -49,3 +49,19 @@ O catálogo contém agora 20 registos (12 anteriores + 8 novos), 23 runs e 11 re
 RED/GREEN: #337 [RED](https://github.com/LMhdez/gaslux/actions/runs/45033893644) → [GREEN](https://github.com/LMhdez/gaslux/actions/runs/45035718212); #346 [expected RED](https://github.com/LMhdez/gaslux/actions/runs/45037813419) → [GREEN](https://github.com/LMhdez/gaslux/actions/runs/45056131189). O primeiro workflow #346 concluiu SUCCESS porque a oracle esperava demonstrar o defeito; não é prova de correção. #361 [RED](https://github.com/LMhdez/gaslux/actions/runs/45046490577) → [GREEN](https://github.com/LMhdez/gaslux/actions/runs/45049176083). CachyOS #335 [falha VM](https://github.com/LMhdez/gaslux/actions/runs/44900941635) → [regressões offline](https://github.com/LMhdez/gaslux/actions/runs/45031774164): não é reparação da falha de BCD. Todos os metadados dos runs adicionais foram reconsultados; não reexecutámos os ensaios nem arquivámos ZIPs nesta intervenção.
 
 O catálogo continua parcial, não contém aprovação atual, e não modifica formal evidence.json. A CI anterior #45502620847 foi confirmada: 97 testes de contratos, 242 blobs Python, 784 declarações históricas e 3338 atuais, quatro pares AST, 16/16 casos diferenciais apenas shutdown. Os jobs de produção foram SKIPPED. Novo HEAD requer CI e revisão.
+
+## Segundo lote — 25-11-2026 UTC
+
+27 registos, 33 runs, 13 relações. Âmbitos históricos, não autorizações atuais. CAT-* é um ID atribuído pelo catálogo. O limite do seletor permanece 12; a lista completa está no JSON.
+
+| Âmbito | Finding | Fonte | Estado histórico |
+|---|---|---|---|
+| shared | F-391-01: AST validator allowed nested callback and evidence mutation; corrected read-only contract independently revalidated at exact HEAD. | [#391](https://github.com/LMhdez/gaslux/pull/391#issuecomment-7105801147) | resolved_offline_at_review |
+| shared | CAT-414-TRIAGE-ACTOR: Unknown same-repository bot actor caused triage failure when configured login was empty; exact observed actor fallback, scoped Safety review and blocked-path runtime validation. Catalog ID assigned. | [#414](https://github.com/LMhdez/gaslux/pull/414#issuecomment-7142029288) | resolved_offline_at_review |
+| popos | P-324-01: Same-inode/same-size mutation between digest, interpretation and export; frozen evidence snapshots with byte equality and exclusive outputs independently checked. | [#324](https://github.com/LMhdez/gaslux/pull/324#issuecomment-7079104266) | resolved_offline_at_review |
+| popos | POP-GPT-FD-01: Workspace-to-FD-to-GPT origin remediation; synthetic six-GPT checkpoint contracts green, independent differential review requested. | [#329](https://github.com/LMhdez/gaslux/pull/329#issuecomment-7080463871) | remediation_reported_reaudit_required |
+| popos | POP-DISTINST-ELF-SOURCE-BINDING-01: Pinned installer ELF not authenticated to candidate source/build; prewrite plan unavailable, no distinst execution. | [#353](https://github.com/LMhdez/gaslux/pull/353#issuecomment-7081262461) | producer_blocker |
+| q4os | Q4OS-ISO-SIGNED-PROVENANCE-01: Official checksum and ISO readback verified per producer, independent ISO signature chain not verified; unsigned experimental catalog cannot authorize native installation. | [#351](https://github.com/LMhdez/gaslux/pull/351#issuecomment-7081160990) | producer_blocker |
+| q4os | Q4OS-RUNLAB-BOUNDARY-01: Real paused QEMU diagnostic reuses measured FD/peer primitives without issuing operational session; independent review requested, no guest boot. | [#338](https://github.com/LMhdez/gaslux/pull/338#issuecomment-7080518502) | remediation_reported_reaudit_required |
+
+Metadados de 10 runs adicionais conferidos no GitHub. Pareceres de conta partilhada não constituem aprovação formal independente. O catálogo permanece parcial, sem entrada em evidence.json. Não reexecutámos os ensaios históricos nesta extensão.
