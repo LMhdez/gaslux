@@ -17,6 +17,8 @@ on:
       - auto_tests/tests/test_gaslux_agent_integrate.py
       - auto_tests/tools/gaslux_distro_admission.py
       - auto_tests/tests/test_gaslux_distro_admission.py
+      - auto_tests/tools/gaslux_agent_reconcile.py
+      - auto_tests/tests/test_gaslux_agent_reconcile.py
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-integrator.yml
@@ -24,6 +26,8 @@ on:
       - auto_tests/tests/test_gaslux_agent_integrate.py
       - auto_tests/tools/gaslux_distro_admission.py
       - auto_tests/tests/test_gaslux_distro_admission.py
+      - auto_tests/tools/gaslux_agent_reconcile.py
+      - auto_tests/tests/test_gaslux_agent_reconcile.py
 
 permissions:
   contents: read
@@ -46,6 +50,8 @@ jobs:
 
       - name: Distro admission negative cases
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_distro_admission.py -v
+      - name: Duplicate reconciliation negative cases
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_reconcile.py -v
 
   select:
     if: >-
@@ -234,4 +240,43 @@ jobs:
           name: gaslux-distro-admission
           path: evidence/distro-admission.json
           if-no-files-found: error
+          retention-days: 14
+
+  reconcile_duplicates:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       github.event_name == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      pull-requests: write
+      checks: read
+      actions: read
+      issues: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate duplicate reconciliation before metadata write
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_reconcile.py -v
+      - name: Close at most one independently compared redundant Draft
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 -I auto_tests/tools/gaslux_agent_reconcile.py --execute > evidence/duplicate-reconciliation.json
+          cat evidence/duplicate-reconciliation.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: gaslux-duplicate-reconciliation
+          path: evidence/duplicate-reconciliation.json
+          if-no-files-found: warn
           retention-days: 14
