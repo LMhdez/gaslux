@@ -173,6 +173,10 @@ jobs:
       github.head_ref == 'feat/supervisor-autonomous-regression-scope'
     runs-on: ubuntu-24.04
     timeout-minutes: 12
+    strategy:
+      fail-fast: false
+      matrix:
+        scope: [supervised-lifecycle-tests-v1, supervised-media-pins-v1]
     permissions:
       contents: read
       pull-requests: read
@@ -190,6 +194,7 @@ jobs:
         id: probe
         env:
           GH_TOKEN: ${{ github.token }}
+          PROBE_SCOPE: ${{ matrix.scope }}
         shell: bash
         run: |
           set -euo pipefail
@@ -201,7 +206,7 @@ jobs:
           import gaslux_agent_feature_factory as factory
           root = Path("source").resolve()
           base = factory.git(root, "rev-parse", "HEAD")
-          plan = factory.supervised_test_plan(root, base)
+          plan = factory.supervised_scope_plan(root, base, os.environ['PROBE_SCOPE'])
           row = {"plan": plan, "publication_attempted": False, "merge_attempted": False}
           (Path("evidence/supervisor-probe") / "plan.json").write_text(json.dumps(row))
           print(json.dumps(row))
@@ -222,12 +227,12 @@ jobs:
           evidence = Path("evidence/supervisor-probe")
           plan = json.loads((evidence / "plan.json").read_text())["plan"]
           role, base = plan["role"], plan["base"]
-          factory.generate_supervised_test(root, evidence, role, base)
-          report = factory.verify(root, evidence, role, base, execute=False,
-                                  scope=factory.SUPERVISED_TEST_SCOPE)
+          factory.generate_supervised_test(root, evidence, role, base, scope=plan['scope'])
+          report = factory.verify(root, evidence, role, base, execute=True,
+                                  scope=plan['scope'])
           before, after = factory.expected_source(
               root, role, (evidence / "addition.py").read_text(),
-              scope=factory.SUPERVISED_TEST_SCOPE)
+              scope=plan['scope'])
           (root / report["target"]).write_bytes(after)
           print(json.dumps(report, sort_keys=True))
           PY
@@ -235,13 +240,22 @@ jobs:
           target_file=$(python3 -c 'import json; print(json.load(open("evidence/supervisor-probe/report.json"))["target"])')
           python3 -m ruff check --config trusted/auto_tests/pyproject.toml "source/$target_file"
           python3 -m ruff format --check --config trusted/auto_tests/pyproject.toml "source/$target_file"
-          (cd source && python3 -B -m pytest -q "$target_file")
+          role=$(python3 -c 'import json; print(json.load(open("evidence/supervisor-probe/report.json"))["role"])')
+          case "$role" in
+            mint|cachyos) suite=test_distribution_capabilities.py ;;
+            zorin) suite=test_candidate_handoff.py ;;
+            popos) suite=test_popos_native_preflight.py ;;
+            q4os) suite=test_q4os_native_preflight.py ;;
+            bazzite) suite=test_bazzite_atomic_preflight.py ;;
+            *) exit 1 ;;
+          esac
+          (cd source && python3 -B -m pytest -q "auto_tests/tests/$suite")
           echo '{"product_regression_passed":true,"publication_attempted":false}' > evidence/supervisor-probe/result.json
       - name: Retain probe evidence
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
-          name: gaslux-supervisor-scope-probe
+          name: gaslux-supervisor-scope-probe-${{ matrix.scope }}
           path: evidence/supervisor-probe/
           if-no-files-found: error
           retention-days: 14
@@ -364,10 +378,7 @@ jobs:
           python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
           python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_phase2b.py -v
       - name: Install hash-pinned unprivileged local inference engine
-        if: >-
-          needs.select.outputs.repair_pr == '' &&
-          needs.select.outputs.scope != 'supervised-lifecycle-tests-v1' &&
-          needs.select.outputs.scope != 'supervised-media-pins-v1'
+        if: needs.select.outputs.repair_pr == '' && needs.select.outputs.scope != 'supervised-lifecycle-tests-v1' && needs.select.outputs.scope != 'supervised-media-pins-v1'
         shell: bash
         run: |
           set -euo pipefail
