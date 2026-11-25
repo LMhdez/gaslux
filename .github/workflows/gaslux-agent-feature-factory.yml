@@ -87,11 +87,19 @@ jobs:
           import gaslux_agent_feature_factory as factory
           root = Path("source").resolve()
           base = factory.git(root, "rev-parse", "HEAD")
-          plan = factory.repair_plan(root, base)
+          diagnostics = []
+          eligible_plan = factory.repair_plan(root, base, diagnostics=diagnostics)
+          # A historical successor is a real publication blocker. The read-only
+          # probe may build/test the canonical bytes but cannot publish them.
+          build_only = next((d["build_only_plan"] for d in diagnostics
+                             if d["reason"] == "SUCCESSOR_PR_HISTORY_EXISTS"), None)
+          plan = eligible_plan or build_only
           evidence = Path("evidence/repair-probe")
-          row = {"status": "eligible" if plan else "blocked", "base": base,
+          row = {"status": "eligible" if eligible_plan else
+                           "build_only_history_blocked" if build_only else "blocked",
+                 "base": base, "publication_eligible": bool(eligible_plan),
                  "publication_attempted": False, "merge_attempted": False,
-                 "plan": plan}
+                 "diagnostics": diagnostics, "plan": plan}
           (evidence / "plan.json").write_text(json.dumps(row, sort_keys=True) + "\n")
           print(json.dumps(row, sort_keys=True))
           with open(os.environ["GITHUB_OUTPUT"], "a") as out:
@@ -142,7 +150,8 @@ jobs:
           from pathlib import Path
           evidence = Path("evidence/repair-probe")
           row = json.loads((evidence / "plan.json").read_text())
-          row.update(status="repair_prepublication_pass", product_tests_passed=True)
+          row.update(status=("repair_prepublication_pass" if row["publication_eligible"]
+                             else "repair_build_only_pass_history_blocked"), product_tests_passed=True)
           (evidence / "result.json").write_text(json.dumps(row, sort_keys=True) + "\n")
           PY
       - name: Retain read-only repair receipts
