@@ -287,9 +287,26 @@ def integrate_one():
         reviewed_tree = admission.api("GET", f"/git/commits/{head}")["tree"]["sha"]
         if not admission.valid_sha(merged_tree) or merged_tree != reviewed_tree:
             raise RuntimeError("Merged tree differs from reviewed tree; investigate")
+        closed = admission.api("GET", f"/pulls/{number}")
+        if (closed.get("state") != "closed" or closed.get("merged") is not True
+                or closed.get("merge_commit_sha") != result["sha"]
+                or closed.get("head", {}).get("sha") != head
+                or closed.get("base", {}).get("ref") != "dev"):
+            raise RuntimeError("Post-merge PR closure not verified; investigate")
+        live = admission.api("GET", "/git/ref/heads/dev")["object"]["sha"]
+        if not admission.valid_sha(live):
+            raise RuntimeError("Post-merge dev ref invalid")
+        if live != result["sha"]:
+            relation = admission.api("GET", f"/compare/{result['sha']}...{live}")
+            if (relation.get("status") != "ahead"
+                    or relation.get("behind_by") != 0
+                    or relation.get("merge_base_commit", {}).get("sha") != result["sha"]):
+                raise RuntimeError("Merged commit not proven in live dev")
         return {"status": "merged", "pr": number, "head": head,
-                "reviewed_base": base, "merge_sha": result["sha"],
-                "strict_base_protection_verified": True, "reviewed_tree_verified": True}
+                "reviewed_base": base, "merge_sha": result["sha"], "live_dev": live,
+                "strict_base_protection_verified": True, "reviewed_tree_verified": True,
+                "pr_closure_verified": True, "dev_ancestry_verified": True,
+                "scope": scope, "role": role, "release_eligible": False}
     return {"status": "idle"}
 
 
