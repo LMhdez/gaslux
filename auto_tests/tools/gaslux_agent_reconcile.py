@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import sys
+import time
 
 # Trusted script directory only, including when invoked with python -I.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -152,11 +153,77 @@ def reconcile(*, execute=False):
     return {"status": "duplicate_closed", **picked, "merge_authorized": False}
 
 
+def historical_inventory(*, slot=None):
+    """Inspect a rotating bounded batch of historical PRs, never mutate."""
+    api = admission.api
+    refs = {name: api("GET", f"/git/ref/heads/{name}")["object"]["sha"]
+            for name in ("main", "dev")}
+    if not all(admission.valid_sha(sha) for sha in refs.values()):
+        raise ValueError("Invalid target refs")
+    prs = {}
+    for page in range(1, 6):
+        rows = api("GET", f"/pulls?state=open&sort=created&direction=asc&per_page=100&page={page}")
+        if not isinstance(rows, list) or len(rows) > 100:
+            raise ValueError("Invalid historical inventory page")
+        for pr in rows:
+            n = pr["number"]
+            if type(n) is not int or n <= 0 or n in prs or pr.get("state") != "open":
+                raise ValueError("Malformed or changing historical inventory")
+            prs[n] = pr
+        if len(rows) < 100:
+            break
+    else:
+        raise ValueError("Historical inventory exceeds bounded pagination")
+    batch_size = 10
+    ordered = sorted(prs)
+    batches = max(1, (len(ordered) + batch_size - 1) // batch_size)
+    index = (int(time.time()) // 900 if slot is None else slot) % batches
+    findings = []
+    for n in ordered[index * batch_size:(index + 1) * batch_size]:
+        pr = prs[n]
+        head, base = pr["head"], pr["base"]
+        target, sha = base.get("ref"), head.get("sha")
+        result = {"pr": n, "head": sha, "target": target, "draft": pr.get("draft"),
+                  "status": "UNSUPPORTED_OR_FOREIGN", "close_authorized": False}
+        if (target in refs and admission.valid_sha(sha)
+                and (head.get("repo") or {}).get("full_name") == admission.REPO
+                and (base.get("repo") or {}).get("full_name") == admission.REPO):
+            pinned = refs[target]
+            result["base"] = pinned
+            diff = api("GET", f"/compare/{sha}...{pinned}")
+            behind, ahead = diff.get("behind_by"), diff.get("ahead_by")
+            ancestor = diff.get("merge_base_commit", {}).get("sha")
+            if (diff.get("base_commit", {}).get("sha") != sha
+                    or not admission.valid_sha(ancestor)
+                    or type(behind) is not int or type(ahead) is not int
+                    or min(behind, ahead) < 0):
+                raise ValueError("Unverified historical compare")
+            result["unique_head_commits"] = behind
+            if (diff.get("status") in ("ahead", "identical") and behind == 0
+                    and ancestor == sha):
+                result["status"] = "ANCESTRY_PRESENT_REVIEW_CLOSURE"
+            elif behind > 0:
+                result["status"] = "UNIQUE_COMMITS_REQUIRE_RECONCILIATION"
+            else:
+                result["status"] = "UNVERIFIED_RELATION"
+        findings.append(result)
+    if any(api("GET", f"/git/ref/heads/{name}")["object"]["sha"] != sha
+           for name, sha in refs.items()):
+        raise ValueError("Target drift during historical inventory")
+    return {"schema": "gaslux-historical-reconciliation-v1", "read_only": True,
+            "merge_authorized": False, "close_authorized": False,
+            "total_open": len(ordered), "batch": index, "batches": batches,
+            "refs": refs, "findings": findings}
+
+
 def main():
     cli = argparse.ArgumentParser()
-    cli.add_argument("--execute", action="store_true")
+    modes = cli.add_mutually_exclusive_group()
+    modes.add_argument("--execute", action="store_true")
+    modes.add_argument("--historical-inventory", action="store_true")
     args = cli.parse_args()
-    print(json.dumps(reconcile(execute=args.execute), sort_keys=True))
+    report = historical_inventory() if args.historical_inventory else reconcile(execute=args.execute)
+    print(json.dumps(report, sort_keys=True))
 
 
 if __name__ == "__main__":
