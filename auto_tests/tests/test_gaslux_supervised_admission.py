@@ -162,7 +162,8 @@ class SupervisedIntegrationTests(unittest.TestCase):
                "GITHUB_EVENT_NAME": "schedule", "GASLUX_AUTONOMY_PAUSED": ""}
         for scenario in ("valid", "already_ready", "denied", "drift", "blocked",
                          "base_drift", "media", "paused", "untrusted", "no_policy",
-                         "policy_drift", "server_base_race", "wrong_parent", "wrong_tree"):
+                         "policy_drift", "server_base_race", "wrong_parent", "wrong_tree",
+                         "unclosed", "missing_dev_ancestry", "advanced_dev"):
             row = self.receipt()
             second = dict(row)
             if scenario == "denied":
@@ -180,10 +181,20 @@ class SupervisedIntegrationTests(unittest.TestCase):
                     return {"merged": True, "sha": "d" * 40}
                 self.assertEqual(method, "GET")
                 if route == "/pulls/500":
+                    if writes:
+                        return {"state": "open" if scenario == "unclosed" else "closed",
+                                "merged": True, "merge_commit_sha": "d" * 40,
+                                "head": {"sha": HEAD}, "base": {"ref": "dev"}}
                     return {"draft": not ready, "mergeable_state": "blocked" if scenario == "blocked" else "clean",
                             "head": {"sha": HEAD}, "base": {"sha": BASE}}
                 if route == "/git/ref/heads/dev":
+                    if writes:
+                        return {"object": {"sha": "c" * 40 if scenario in ("missing_dev_ancestry", "advanced_dev") else "d" * 40}}
                     return {"object": {"sha": "c" * 40 if scenario == "base_drift" else BASE}}
+                if route.startswith("/compare/"):
+                    return {"status": "ahead" if scenario == "advanced_dev" else "diverged",
+                            "behind_by": 0 if scenario == "advanced_dev" else 1,
+                            "merge_base_commit": {"sha": "d" * 40}}
                 if route.startswith("/git/commits/"):
                     return {"tree": {"sha": "e" * 40 if route.endswith(HEAD)
                                     or scenario != "wrong_tree" else "f" * 40}}
@@ -213,21 +224,23 @@ class SupervisedIntegrationTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         gate.integrate_one()
                     mark.assert_not_called()
-                elif scenario in ("server_base_race", "wrong_parent", "wrong_tree"):
+                elif scenario in ("server_base_race", "wrong_parent", "wrong_tree", "unclosed", "missing_dev_ancestry"):
                     with self.assertRaises(RuntimeError):
                         gate.integrate_one()
                     self.assertEqual(len(writes), 1, "Never retry or roll back a merge")
                 else:
                     result = gate.integrate_one()
-                    if scenario in ("valid", "already_ready"):
+                    if scenario in ("valid", "already_ready", "advanced_dev"):
                         self.assertEqual(result["status"], "merged")
+                        self.assertTrue(result["pr_closure_verified"])
+                        self.assertTrue(result["dev_ancestry_verified"])
                         self.assertEqual(writes, [("/pulls/500/merge", {"sha": HEAD, "merge_method": "squash"})])
                     else:
                         self.assertNotEqual(result["status"], "merged")
                     if scenario in ("already_ready", "denied", "media", "no_policy"):
                         mark.assert_not_called()
-            if scenario not in ("valid", "already_ready", "server_base_race",
-                                "wrong_parent", "wrong_tree"):
+            if scenario not in ("valid", "already_ready", "advanced_dev", "server_base_race",
+                                "wrong_parent", "wrong_tree", "unclosed", "missing_dev_ancestry"):
                 self.assertEqual(writes, [], scenario)
 
 
