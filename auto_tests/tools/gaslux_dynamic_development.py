@@ -322,7 +322,16 @@ def main():
             or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true"
             or (args.mode != "publish" and (os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN")))):
         raise ValueError("DYNAMIC_TRUSTED_TOKENLESS_WORKER_REQUIRED")
-    if args.mode == "develop":
+    if args.key.startswith("multi-"):
+        import gaslux_multifile_development as multi
+        if args.mode == "publish":
+            if args.replay is None:
+                raise ValueError("MULTIFILE_REPLAY_REQUIRED")
+            result = multi.publish(args.repo, args.base, args.key, args.evidence, args.replay)
+        else:
+            result = multi.run(args.repo, args.base, args.key, args.dependencies,
+                               args.evidence, replay=args.mode == "replay")
+    elif args.mode == "develop":
         result = evaluate(args.repo, args.base, args.key, args.dependencies, args.evidence)
     elif args.mode == "replay":
         _, _, result = verify_artifact(args.repo, args.base, args.key, args.evidence,
