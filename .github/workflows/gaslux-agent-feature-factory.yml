@@ -1015,4 +1015,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -B trusted/auto_tests/tools/gaslux_agent_task_triage.py --repo source --with-admission-repair
+          python3 -B trusted/auto_tests/tools/gaslux_agent_task_triage.py --repo source --with-admission-repair --with-implementation-discovery
