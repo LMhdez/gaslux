@@ -427,21 +427,37 @@ def sync_admission_repair(*, dry_run=False):
 
 
 def discover_missing_implementations(root):
-    """Find concrete unimplemented public backend functions, without imports."""
+    """Discover explicit stubs and missing APIs demanded by existing tests."""
     root = root.resolve(strict=True)
     result = []
+    seen = set()
+    def read_python(path):
+        if path.resolve(strict=True) != path or path.stat().st_size > 262144:
+            raise ValueError("Untrusted or oversized Python source")
+        return path.read_bytes()
     for role, (source, test, _) in TASKS.items():
         path = root / source
         if not path.is_file():
             continue
-        if path.resolve(strict=True) != path or path.stat().st_size > 262144:
-            raise ValueError("Untrusted or oversized backend source")
-        raw = path.read_bytes()
+        raw = read_python(path)
         tree = ast.parse(raw, filename=source)
+        suite = "auto_tests/tests/" + test
+        def record(symbol, line, reason, witness):
+            if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", symbol):
+                return
+            identity = hashlib.sha256(f"{source}:{symbol}".encode()).hexdigest()
+            if identity in seen:
+                return
+            seen.add(identity)
+            result.append({"key": identity, "role": role, "source": source,
+                           "test": suite, "symbol": symbol, "line": line,
+                           "witness": witness, "source_sha256": hashlib.sha256(raw).hexdigest(),
+                           "reason": reason, "code_authorized": False,
+                           "installation_authorized": False, "release_eligible": False})
+            if len(result) > 64:
+                raise ValueError("Unbounded implementation gap inventory")
         for node in tree.body:
             if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
-                continue
-            if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", node.name):
                 continue
             body = list(node.body)
             if (body and isinstance(body[0], ast.Expr)
@@ -453,17 +469,45 @@ def discover_missing_implementations(root):
             exc = body[0].exc
             if isinstance(exc, ast.Call):
                 exc = exc.func
-            if not isinstance(exc, ast.Name) or exc.id != "NotImplementedError":
+            if isinstance(exc, ast.Name) and exc.id == "NotImplementedError":
+                record(node.name, node.lineno, "EXPLICIT_NOT_IMPLEMENTED", source)
+        # Only direct top-level test imports and actual call sites, not comments,
+        # speculative model output or attributes of arbitrary objects. Skip
+        # modules with dynamic/conditional exports rather than guess absence.
+        test_path = root / suite
+        if not test_path.is_file():
+            continue
+        exported = set()
+        dynamic = False
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                exported.add(node.name)
+                dynamic |= node.name == "__getattr__"
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    dynamic |= alias.name == "*"
+                    exported.add(alias.asname or alias.name.split(".")[0])
+            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        exported.add(target.id)
+                    else:
+                        dynamic = True
+            elif isinstance(node, (ast.If, ast.Try, ast.With, ast.For, ast.While, ast.Match)):
+                dynamic = True
+        if dynamic:
+            continue
+        test_tree = ast.parse(read_python(test_path), filename=suite)
+        called = {node.func.id for node in ast.walk(test_tree)
+                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+        module = Path(source).stem
+        for node in test_tree.body:
+            if not isinstance(node, ast.ImportFrom) or node.level or node.module != module:
                 continue
-            identity = hashlib.sha256(f"{role}:{source}:{node.name}".encode()).hexdigest()
-            result.append({"key": identity, "role": role, "source": source,
-                           "test": "auto_tests/tests/" + test, "symbol": node.name,
-                           "line": node.lineno, "source_sha256": hashlib.sha256(raw).hexdigest(),
-                           "reason": "EXPLICIT_NOT_IMPLEMENTED",
-                           "code_authorized": False, "installation_authorized": False,
-                           "release_eligible": False})
-            if len(result) > 64:
-                raise ValueError("Unbounded implementation gap inventory")
+            for alias in node.names:
+                if alias.name not in exported and (alias.asname or alias.name) in called:
+                    record(alias.name, node.lineno, "TEST_REQUIRES_MISSING_API", suite)
     return result
 
 
@@ -511,7 +555,8 @@ def sync_implementation_gap(root, *, dry_run=False):
         payload = {"title": title, "body": (
             marker + "\n\n"
             f"Concrete source gap, assigned backend: {row['role']}.\n"
-            f"Exact dev: {base}; source: {row['source']}:{row['line']}; "
+            f"Exact dev: {base}; source: {row['source']}; "
+            f"Witness: {row['witness']}:{row['line']} ({row['reason']}); "
             f"symbol: {row['symbol']}; source SHA256: {row['source_sha256']}.\n"
             f"Regression suite: {row['test']}.\n"
             "Investigate callers and native semantics; reproduce the missing behavior, "
