@@ -1,0 +1,163 @@
+#!/usr/bin/env python3
+"""Bounded duplicate Draft reconciliation; never merge or delete refs."""
+from __future__ import annotations
+
+import argparse
+import ast
+import json
+import os
+from pathlib import Path
+import sys
+
+# Trusted script directory only, including when invoked with python -I.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import gaslux_distro_admission as admission
+from gaslux_agent_feature_factory import TASKS
+
+HOLD = ("SAFETY_DENIED", "BLOCKED_SAFETY", "DO_NOT_MERGE",
+        "DO_NOT_CLOSE", "DO NOT CLOSE", "SAFETY HOLD", "SECURITY HOLD")
+
+
+def unobstructed(number):
+    comments = admission.complete_page(admission.api(
+        "GET", f"/issues/{number}/comments?per_page=100"))
+    return not any(marker in str(item.get("body", "")).upper()
+                   for item in comments for marker in HOLD)
+
+
+def equivalent(old, new, role, base):
+    """Verify both histories independently and compare actual bytes/semantics."""
+    path, test, _ = TASKS[role]
+    old_pr = admission.api("GET", f"/pulls/{old['pr']}")
+    new_pr = admission.api("GET", f"/pulls/{new['pr']}")
+    if (old_pr["head"]["sha"] != old["head"] or new_pr["head"]["sha"] != new["head"]
+            or not all(p.get("state") == "open" and p.get("draft") is True
+                       and admission.publisher_ok(p.get("user") or {})
+                       for p in (old_pr, new_pr))):
+        return False
+    original, _ = admission.candidate_append(old_pr, role, old["head"], path)
+    current, _ = admission.candidate_append(new_pr, role, new["head"], path)
+    if current != base or original == base:
+        return False
+    diff = admission.api("GET", f"/compare/{original}...{base}")
+    if (diff.get("status") != "ahead"
+            or diff.get("merge_base_commit", {}).get("sha") != original):
+        return False
+    before = admission.source_at(path, original)
+    if before != admission.source_at(path, base):
+        return False
+    test_path = "auto_tests/tests/" + test
+    if admission.source_at(test_path, original) != admission.source_at(test_path, base):
+        return False
+    def normalized(head):
+        raw = admission.source_at(path, head)
+        formatted = raw.startswith(before.rstrip(b"\n") + b"\n\n\n")
+        addition = admission.exact_append(before, raw, role, formatted=formatted)
+        admission.require_fixed_lifecycle(role, addition)
+        tree = ast.parse(addition)
+        # The existing fixed contract admits exactly these two local names.
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Name) and node.id == "missingGates":
+                node.id = "missing"
+        return ast.dump(tree, include_attributes=False)
+    return (normalized(old["head"]) == normalized(new["head"])
+            and unobstructed(old["pr"]) and unobstructed(new["pr"]))
+
+
+def plan():
+    base = admission.api("GET", "/git/ref/heads/dev")["object"]["sha"]
+    if not admission.valid_sha(base):
+        raise ValueError("Invalid live base")
+    candidates = admission.discover_candidates()
+    by_role = {}
+    for number, (role, head) in candidates.items():
+        by_role.setdefault(role, []).append((number, head))
+    for role, items in by_role.items():
+        if len(items) != 2:
+            continue
+        # Count all matching same-repo proposals, including non-bot/non-Draft,
+        # rather than ignoring a third candidate during deduplication.
+        inventory = admission.complete_page(admission.api(
+            "GET", "/pulls?state=open&base=dev&per_page=100"))
+        observed = set()
+        for pr in inventory:
+            head = pr["head"]
+            match = admission.BRANCH.fullmatch(head.get("ref", ""))
+            if (match and match[1] == role
+                    and (head.get("repo") or {}).get("full_name") == admission.REPO):
+                observed.add(pr["number"])
+        if observed != {number for number, _ in items}:
+            continue
+        rows = [admission.inspect(number, role, None, expected_head=head)
+                for number, head in items]
+        if not all(row["base"] == base and row["technical_objection"] is False
+                   and row["exact_scope_verified"] is True
+                   and row["ci_verified"] is True
+                   and row["ci_workflow_provenance_verified"] is True
+                   and row["merge_authorized"] is False
+                   and row["release_eligible"] is False for row in rows):
+            continue
+        stale = [r for r in rows if r["current_base_verified"] is False]
+        live = [r for r in rows if r["current_base_verified"] is True]
+        if len(stale) != 1 or len(live) != 1:
+            continue
+        old, new = stale[0], live[0]
+        if not equivalent(old, new, role, base):
+            continue
+        if admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != base:
+            return None
+        return {"old": old["pr"], "old_head": old["head"], "keep": new["pr"],
+                "keep_head": new["head"], "role": role, "base": base}
+    return None
+
+
+def reconcile(*, execute=False):
+    if execute and (os.getenv("GITHUB_REPOSITORY") != admission.REPO
+                    or os.getenv("GITHUB_REF") != "refs/heads/main"
+                    or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
+                    or os.getenv("GASLUX_AUTONOMY_PAUSED", "").lower().strip() == "true"):
+        raise RuntimeError("Untrusted or paused duplicate reconciliation")
+    picked = plan()
+    if not picked:
+        return {"status": "idle", "merge_authorized": False}
+    if not execute:
+        return {"status": "eligible_duplicate", **picked, "merge_authorized": False}
+    old, keep = picked["old"], picked["keep"]
+    marker = (f"<!-- GASLUX-DUPLICATE-V1:{old}:{picked['old_head']}:"
+              f"{keep}:{picked['keep_head']}:{picked['base']} -->")
+    comments = admission.complete_page(admission.api(
+        "GET", f"/issues/{old}/comments?per_page=100"))
+    if not any((c.get("user") or {}).get("id") == 41898282
+               and str(c.get("body", "")).splitlines()[:1] == [marker]
+               for c in comments):
+        admission.api("POST", f"/issues/{old}/comments", {
+            "body": marker + "\n\n"
+            f"Exact-scope redundant Draft superseded by current-base #{keep}. "
+            "Both exact HEADs and normal CI were checked. The source prefix, "
+            "regression suite and fixed helper semantics match. Preserve all "
+            "commits, branch and evidence. No approval transfer, merge or release."
+        })
+    if plan() != picked:
+        return {"status": "drift_before_close", **picked, "merge_authorized": False}
+    # GitHub has no atomic expected-head condition on the close endpoint.
+    # Only a reversible PR metadata change is permitted; never delete a ref.
+    result = admission.api("PATCH", f"/pulls/{old}", {"state": "closed"})
+    retained = admission.api("GET", f"/pulls/{keep}")
+    if (result.get("state") != "closed" or result.get("merged") is not False
+            or result["head"]["sha"] != picked["old_head"]
+            or retained.get("state") != "open"
+            or retained["head"]["sha"] != picked["keep_head"]
+            or admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != picked["base"]):
+        raise RuntimeError("Concurrent metadata drift: reconcile closure manually; no ref deleted")
+    return {"status": "duplicate_closed", **picked, "merge_authorized": False}
+
+
+def main():
+    cli = argparse.ArgumentParser()
+    cli.add_argument("--execute", action="store_true")
+    args = cli.parse_args()
+    print(json.dumps(reconcile(execute=args.execute), sort_keys=True))
+
+
+if __name__ == "__main__":
+    main()
