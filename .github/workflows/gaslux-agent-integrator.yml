@@ -19,6 +19,8 @@ on:
       - auto_tests/tests/test_gaslux_distro_admission.py
       - auto_tests/tools/gaslux_agent_reconcile.py
       - auto_tests/tests/test_gaslux_agent_reconcile.py
+      - auto_tests/tools/gaslux_supervised_admission.py
+      - auto_tests/tests/test_gaslux_supervised_admission.py
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-integrator.yml
@@ -28,6 +30,8 @@ on:
       - auto_tests/tests/test_gaslux_distro_admission.py
       - auto_tests/tools/gaslux_agent_reconcile.py
       - auto_tests/tests/test_gaslux_agent_reconcile.py
+      - auto_tests/tools/gaslux_supervised_admission.py
+      - auto_tests/tests/test_gaslux_supervised_admission.py
 
 permissions:
   contents: read
@@ -52,6 +56,9 @@ jobs:
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_distro_admission.py -v
       - name: Duplicate reconciliation negative cases
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_reconcile.py -v
+
+      - name: Supervised scope negative cases
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_supervised_admission.py -v
 
   select:
     if: >-
@@ -235,10 +242,36 @@ jobs:
                       out.write(f"| #{row['pr']} | {row['role']} | {result} | {row['next_action']} |\n")
               out.write('\nTechnical triage is not an independent approval or merge authorization.\n')
           PY
+      - name: Inspect new supervised test and product scopes, no candidate execution
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_supervised_admission.py -v
+          python3 -I auto_tests/tools/gaslux_supervised_admission.py > evidence/supervised-admission.json
+          cat evidence/supervised-admission.json
+          python3 - <<'PY'
+          import json, os
+          from pathlib import Path
+          report = json.loads(Path('evidence/supervised-admission.json').read_text())
+          assert report['merge_authorized'] is False
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
+              out.write('\n## Supervised Drafts — next action\n')
+              if report['inventory_verified'] is not True:
+                  out.write('Inventory blocked; reconcile before processing.\n')
+              for row in report['candidates']:
+                  assert row['merge_authorized'] is False
+                  out.write(f"- #{row['pr']} {row['role']} / {row['scope']}: {row['next_action']}\n")
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gaslux-distro-admission
-          path: evidence/distro-admission.json
+          path: |
+            evidence/distro-admission.json
+            evidence/supervised-admission.json
           if-no-files-found: error
           retention-days: 14
 
