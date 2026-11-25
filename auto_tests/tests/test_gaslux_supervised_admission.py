@@ -510,9 +510,40 @@ class DynamicAdmissionTests(unittest.TestCase):
              patch.object(gate, "configured_reviewers", return_value=(123, {role: 456})), \
              patch.object(gate.subprocess, "run", return_value=type("Response", (), {"stdout": '{"id": 123}'})()), \
              patch.object(gate, "discover", return_value={500: (role, gate.DYNAMIC_SCOPE, HEAD)}), \
-             patch.object(gate, "inspect") as inspect:
+             patch.object(gate, "inspect", return_value={"technical_objection": True}) as inspect:
             self.assertEqual(gate.independent_safety_review()["status"], "idle")
-            inspect.assert_not_called()
+            inspect.assert_called_once()
+
+
+    def test_dynamic_assessment_never_approves_and_revalidates(self):
+        role = "zorin"
+        row = {"technical_objection": False, "safety_review_verified": False,
+               "base": BASE, **{k: True for k in ("exact_scope_verified",
+                   "current_base_verified", "ci_workflow_provenance_verified", "ci_verified")}}
+        for scenario in ("valid", "hold", "drift", "duplicate", "self_review"):
+            writes = []
+            initial = dict(row, technical_objection=scenario == "hold")
+            def api(method, route, body=None):
+                if method == "POST":
+                    writes.append(body)
+                    return {"id": 10, "user": {"id": 123}, "commit_id": HEAD,
+                            "state": "COMMENTED"}
+                if route == "/pulls/500":
+                    return {"user": {"id": 123 if scenario == "self_review" else 41898282}}
+                if route.endswith("/reviews?per_page=100"):
+                    return [{"user": {"id": 123}, "state": "COMMENTED",
+                             "body": f"GASLUX-DYNAMIC-SAFETY-V1 head={HEAD} base={BASE}"}] if scenario == "duplicate" else []
+                self.fail(route)
+            with patch.object(gate, "discover", return_value={500: (role, gate.DYNAMIC_SCOPE, HEAD)}), \
+                 patch.object(gate, "inspect", side_effect=[initial, {} if scenario == "drift" else initial]), \
+                 patch.object(gate, "dynamic_safety_findings", return_value={"base": BASE, "semantic_approval": False}), \
+                 patch.object(A, "api", side_effect=api):
+                result = gate.independent_dynamic_assessment(123, {role: 456})
+                self.assertEqual(result["status"] == "dynamic_assessed", scenario == "valid")
+            self.assertEqual(len(writes), int(scenario == "valid"))
+            if writes:
+                self.assertEqual(writes[0]["event"], "COMMENT")
+                self.assertEqual(writes[0]["commit_id"], HEAD)
 
 
 if __name__ == "__main__":
