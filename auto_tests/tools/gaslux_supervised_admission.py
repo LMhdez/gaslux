@@ -454,7 +454,7 @@ def independent_safety_review():
     if type(actor.get("id")) is not int or actor["id"] != reviewer:
         raise ValueError("Safety credential identity mismatch")
     for number, (role, scope, head) in sorted(discover().items()):
-        if scope != factory.SUPERVISED_TEST_SCOPE:
+        if scope not in factory.SUPERVISED_SCOPES:
             continue
         row = inspect(number, role, scope, head, reviewer, owners.get(role), allow_ready=True)
         if (row.get("next_action") != "INDEPENDENT_SAFETY_REVIEW"
@@ -473,6 +473,11 @@ def independent_safety_review():
             "GET", f"/pulls/{number}/reviews?per_page=100"))
         if any(item.get("user", {}).get("id") == reviewer
                and item.get("state") != "COMMENTED" for item in reviews):
+            continue
+        if scope == factory.SUPERVISED_MEDIA_SCOPE and (
+                not row.get("backend_owner_verified")
+                or not vm_acceptance_verified(reviews, role, head, base,
+                                              pr["user"]["id"], reviewer, owners.get(role))):
             continue
         if inspect(number, role, scope, head, reviewer, owners.get(role),
                    allow_ready=True) != row:
@@ -493,14 +498,72 @@ def independent_safety_review():
     return {"status": "idle"}
 
 
+def independent_owner_review():
+    """One separately authenticated backend owner; only canonical scopes."""
+    if (os.getenv("GITHUB_REPOSITORY") != admission.REPO
+            or os.getenv("GITHUB_REF") != "refs/heads/main"
+            or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
+            or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true"):
+        raise ValueError("Untrusted backend review context")
+    safety, owners = configured_reviewers()
+    if safety is None or not os.getenv("GH_TOKEN"):
+        return {"status": "owner_identity_or_credential_required"}
+    actor = json.loads(subprocess.run(
+        ["gh", "api", "user"], check=True, timeout=30, capture_output=True).stdout)
+    owner = actor.get("id")
+    if (type(owner) is not int or owner <= 0 or owner == safety
+            or owner in admission.BOTS.values() or owner not in owners.values()):
+        raise ValueError("Independent backend owner credential mismatch")
+    for number, (role, scope, head) in sorted(discover().items()):
+        if owners.get(role) != owner or scope not in factory.SUPERVISED_SCOPES:
+            continue
+        row = inspect(number, role, scope, head, safety, owner, allow_ready=True)
+        if (row.get("backend_owner_verified") or row.get("technical_objection") is not False
+                or not all(row.get(k) is True for k in (
+                    "exact_scope_verified", "current_base_verified",
+                    "ci_workflow_provenance_verified", "ci_verified"))):
+            continue
+        base = row["base"]
+        pr = admission.api("GET", f"/pulls/{number}")
+        author = pr["user"]["id"]
+        if (author == owner or author == safety or pr["head"]["sha"] != head
+                or pr["base"]["sha"] != base or pr.get("state") != "open"):
+            raise ValueError("Backend candidate drift")
+        reviews = admission.complete_page(admission.api(
+            "GET", f"/pulls/{number}/reviews?per_page=100"))
+        if any(item.get("user", {}).get("id") == owner
+               and item.get("state") != "COMMENTED" for item in reviews):
+            continue
+        if scope == factory.SUPERVISED_MEDIA_SCOPE and not vm_acceptance_verified(
+                reviews, role, head, base, author, safety, owner):
+            continue
+        if inspect(number, role, scope, head, safety, owner, allow_ready=True) != row:
+            return {"status": "owner_review_drift", "pr": number}
+        if admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != base:
+            return {"status": "owner_review_drift", "pr": number}
+        receipt = admission.api("POST", f"/pulls/{number}/reviews", {
+            "commit_id": head, "event": "APPROVE",
+            "body": (f"GASLUX-BACKEND-OWNER-V1 role={role} head={head} base={base}\n"
+                     "Automated canonical backend scope and independent required CI review. "
+                     "No installation or release authority.")})
+        if (receipt.get("user", {}).get("id") != owner
+                or receipt.get("commit_id") != head or receipt.get("state") != "APPROVED"):
+            raise RuntimeError("GitHub did not confirm backend review")
+        return {"status": "owner_reviewed", "pr": number, "role": role, "head": head,
+                "base": base, "owner": owner, "review_id": receipt.get("id")}
+    return {"status": "idle"}
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--integrate-test", action="store_true")
     modes.add_argument("--integrate-product", action="store_true")
     modes.add_argument("--independent-safety", action="store_true")
+    modes.add_argument("--independent-owner", action="store_true")
     args = parser.parse_args()
-    result = (independent_safety_review() if args.independent_safety else
+    result = (independent_owner_review() if args.independent_owner else
+              independent_safety_review() if args.independent_safety else
               integrate_one(product=True) if args.integrate_product else
               integrate_one() if args.integrate_test else inventory())
     print(json.dumps(result, indent=2, sort_keys=True))
