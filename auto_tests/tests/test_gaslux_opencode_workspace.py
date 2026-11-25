@@ -9,6 +9,7 @@ import unittest
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import gaslux_opencode_workspace as b
 import gaslux_opencode_iterative as i
+import gaslux_opencode_parent_boundary as parent
 
 
 def correct(role="mint"):
@@ -166,6 +167,20 @@ class WorkspaceTests(unittest.TestCase):
             {"type": "text", "part": {"type": "text", "text": "done"}},
             {"type": "step_finish", "part": {"type": "step-finish"}},
         ])), (["inspect_task"], [i.trial.SKILL]))
+
+    def test_fixed_runtime_failure_categories(self):
+        self.assertEqual(i.fixed_failure(ValueError("MCP_RED_EDIT_PASS_INCOMPLETE")),
+                         "MCP_RED_EDIT_PASS_INCOMPLETE")
+        self.assertEqual(i.fixed_failure(ValueError("MODEL_CONTEXT_NOT_APPLIED")),
+                         "MODEL_CONTEXT_NOT_APPLIED")
+        self.assertEqual(i.fixed_failure(ValueError("SECRET_SENTINEL")), "ValueError")
+        self.assertEqual(parent.classify_failure(b"bwrap: setting up uid map: Permission denied"),
+                         "BWRAP_NAMESPACE_DENIED")
+        self.assertEqual(parent.classify_failure(b"bwrap: Unknown option --disable-userns"),
+                         "BWRAP_OPTION_UNSUPPORTED")
+        self.assertEqual(parent.classify_failure(b"RuntimeError: host file exposed"),
+                         "HOST_FILE_EXPOSED")
+        self.assertEqual(parent.classify_failure(b"SECRET_SENTINEL"), "PARENT_CLIENT_FAILED")
 
     def test_verified_journal_and_independent_final_recheck(self):
         with tempfile.TemporaryDirectory() as tmp:

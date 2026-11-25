@@ -163,11 +163,26 @@ jobs:
             https://github.com/ollama/ollama/releases/download/v0.40.17/install.sh -o /tmp/ollama-install.sh
           echo 'eb510679f45de4a914d99953cd3deaada5dc73f9d585014df99d704449dd7dcc  /tmp/ollama-install.sh' | sha256sum -c -
           OLLAMA_VERSION=0.40.17 timeout 420 sh /tmp/ollama-install.sh
-          (ollama serve > /tmp/ollama.log 2>&1 &)
+          # The installer may start a systemd service with its own environment.
+          # Never silently reuse that server: OpenAI-compatible context settings
+          # are not the server's num_ctx.
+          if systemctl is-active --quiet ollama.service; then
+            sudo systemctl stop ollama.service
+          fi
+          if curl -fsS --max-time 2 http://127.0.0.1:11434/api/version >/dev/null 2>&1; then
+            echo "Unexpected existing Ollama listener"; exit 1
+          fi
+          OLLAMA_CONTEXT_LENGTH=16384 ollama serve > /tmp/ollama.log 2>&1 &
+          server_pid=$!
+          ready=false
           for i in $(seq 1 50); do
-            if curl -fsS http://127.0.0.1:11434/api/version >/dev/null; then break; fi
+            kill -0 "$server_pid"
+            if curl -fsS --max-time 2 http://127.0.0.1:11434/api/version >/dev/null; then
+              ready=true; break
+            fi
             sleep 2
           done
+          test "$ready" = true
           timeout 720 ollama pull qwen3.5:9b
           python3 - <<'PY'
           import json, urllib.request
@@ -200,9 +215,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ ! -x /usr/bin/bwrap ]; then
+          if [ ! -x /usr/bin/bwrap ] || [ ! -f /usr/share/apparmor/extra-profiles/bwrap-userns-restrict ]; then
             sudo timeout 180 apt-get update
-            sudo timeout 180 apt-get install -y --no-install-recommends bubblewrap
+            sudo timeout 180 apt-get install -y --no-install-recommends bubblewrap apparmor-profiles
+          fi
+          # Ubuntu Noble's restrictive, bwrap-specific profile. Do not disable
+          # AppArmor, change sysctl, replace a loaded profile or fall back.
+          profile=/usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+          if [ "$(cat /sys/module/apparmor/parameters/enabled)" = Y ]; then
+            test -f "$profile"
+            dpkg-query -S "$profile" | grep -q '^apparmor-profiles:'
+            loaded=$(sudo cat /sys/kernel/security/apparmor/profiles)
+            if ! printf '%s\n' "$loaded" | grep -Eq '^(bwrap-userns-restrict|bwrap|/usr/bin/bwrap) \('; then
+              sudo apparmor_parser -a "$profile"
+            fi
           fi
           mkdir -p evidence/opencode-iterative
           python3 -B auto_tests/tools/gaslux_opencode_parent_boundary.py \

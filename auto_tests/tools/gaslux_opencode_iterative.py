@@ -20,6 +20,23 @@ PROOF_KEYS = ("outside_read_denied", "outside_write_denied",
               "tcp_connect_denied", "workspace_read_write")
 SENTINEL = b"outside-lab-unchanged\n"
 MAX_TIMEOUT = 1200
+JOURNAL_FAILURES = frozenset({
+    "JOURNAL_COUNT", "JOURNAL_ORDER", "SANDBOX_PROOF", "SEED",
+    "NATIVE_EVENT_JOURNAL_MISMATCH", "READ_BINDING", "TEST_BINDING",
+    "EDIT_BINDING", "EDIT_BYTES", "UNKNOWN_ACTION", "RED_EDIT_PASS_REQUIRED",
+    "INDEPENDENT_RECHECK", "OUTSIDE_MUTATED", "MCP_RED_EDIT_PASS_INCOMPLETE",
+    "MODEL_CONTEXT_NOT_APPLIED",
+})
+
+
+def fixed_failure(error):
+    if isinstance(error, trial.TrialFailure):
+        return error.category
+    if type(error) is ValueError and len(error.args) == 1 and type(error.args[0]) is str:
+        if error.args[0] in JOURNAL_FAILURES:
+            return error.args[0]
+    return type(error).__name__
+
 
 
 def task_for(role):
@@ -191,6 +208,13 @@ def run(binary, role, context):
                 raise trial.TrialFailure("CLI_NONZERO")
             events, skills = native_events(raw)
             report["native_skills"], report["native_operations"] = skills, events
+            snapshot = trial.model_snapshot()
+            report["ollama_loaded_model"] = snapshot
+            # Requested configuration alone is not an effective context witness.
+            if not snapshot or snapshot.get("context_length", 0) < context:
+                raise ValueError("MODEL_CONTEXT_NOT_APPLIED")
+            if "replace_candidate" not in events:
+                raise ValueError("MCP_RED_EDIT_PASS_INCOMPLETE")
             if broker.read_bounded(outside, 64) != SENTINEL:
                 raise ValueError("OUTSIDE_MUTATED")
             report.update(verify_journal(state, events, role))
@@ -198,7 +222,7 @@ def run(binary, role, context):
             report["accepted"] = True
     except (ValueError, TypeError, KeyError, SyntaxError, OSError, RuntimeError) as error:
         # Only fixed class/category, never raw model output, paths or stderr.
-        report["failure"] = error.category if isinstance(error, trial.TrialFailure) else type(error).__name__
+        report["failure"] = fixed_failure(error)
     report["elapsed_seconds"] = round(time.monotonic() - start, 2)
     return report
 

@@ -127,7 +127,7 @@ print("PARENT_BOUNDARY_PROBE_PASS")
 '''
 
 
-def sandbox_argv(scratch, endpoint, data):
+def sandbox_base():
     # No host root, checkout, home, /run, /sys, control or state mount.
     # Explicit namespace flags, not best-effort isolation. Never relax
     # AppArmor/userns settings or fall back to a non-isolated process.
@@ -139,8 +139,47 @@ def sandbox_argv(scratch, endpoint, data):
     for location in ("/usr", "/bin", "/lib", "/lib64", "/etc/ld.so.cache"):
         if Path(location).exists():
             args.extend(("--ro-bind", location, location))
-    return args + ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp",
-                   "--dir", "/ipc", "--bind", str(scratch), "/scratch",
+    return args + ["--proc", "/proc", "--dev", "/dev", "--tmpfs", "/tmp"]
+
+
+class BoundaryFailure(ValueError):
+    """Fixed diagnostic, never disclose raw stderr or host paths."""
+
+
+def classify_failure(stderr):
+    raw = stderr.lower()
+    if b"bwrap:" in raw:
+        if any(x in raw for x in (b"permission denied", b"operation not permitted",
+                                  b"no permissions", b"new namespace")):
+            return "BWRAP_NAMESPACE_DENIED"
+        if b"unknown option" in raw:
+            return "BWRAP_OPTION_UNSUPPORTED"
+        return "BWRAP_SETUP_FAILED"
+    if b"host namespace visible" in raw:
+        return "HOST_NAMESPACE_EXPOSED"
+    if b"host file exposed" in raw or b"journal creation exposed" in raw:
+        return "HOST_FILE_EXPOSED"
+    if b"host tcp listener exposed" in raw:
+        return "HOST_TCP_EXPOSED"
+    if b"missing red" in raw or b"missing green" in raw:
+        return "BROKER_RED_GREEN_FAILED"
+    if b"rpc response mismatch" in raw or b"bad broker response" in raw:
+        return "BROKER_PROTOCOL_FAILED"
+    return "PARENT_CLIENT_FAILED"
+
+
+def namespace_preflight():
+    # Fail before starting the external broker or waiting on accept().
+    result = subprocess.run(sandbox_base() + ["/usr/bin/true"],
+                            env={"PATH": "/usr/bin:/bin"}, stdin=subprocess.DEVNULL,
+                            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                            timeout=15, check=False)
+    if result.returncode != 0 or result.stdout:
+        raise BoundaryFailure(classify_failure(result.stderr))
+
+
+def sandbox_argv(scratch, endpoint, data):
+    return sandbox_base() + ["--dir", "/ipc", "--bind", str(scratch), "/scratch",
                    "--ro-bind", str(endpoint), "/ipc/broker.sock",
                    "--setenv", "HOME", "/scratch", "--setenv", "PATH", "/usr/bin:/bin",
                    "--chdir", "/scratch", "/usr/bin/python3", "-I", "-B", "-c",
@@ -150,6 +189,7 @@ def sandbox_argv(scratch, endpoint, data):
 def run():
     if os.geteuid() == 0:
         raise ValueError("UNPRIVILEGED_RUNNER_REQUIRED")
+    namespace_preflight()
     with tempfile.TemporaryDirectory(prefix="gaslux-parent-") as tmp:
         root = Path(tmp)
         state, control, scratch = (root / n for n in ("state", "control", "scratch"))
@@ -204,12 +244,15 @@ def run():
             try:
                 result = subprocess.run(argv, env={"PATH": "/usr/bin:/bin"},
                                         stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                        stderr=subprocess.DEVNULL, timeout=TIMEOUT, check=False)
+                                        stderr=subprocess.PIPE, timeout=TIMEOUT, check=False)
             finally:
                 worker.join(timeout=TIMEOUT + 26)
-            if worker.is_alive() or outcome != [True] or result.returncode != 0 \
-                    or result.stdout != b"PARENT_BOUNDARY_PROBE_PASS\n":
-                raise ValueError("PARENT_BOUNDARY_ADMISSION_FAILED")
+            if result.returncode != 0:
+                raise BoundaryFailure(classify_failure(result.stderr))
+            if worker.is_alive() or outcome != [True]:
+                raise BoundaryFailure("EXTERNAL_BROKER_EXIT_FAILED")
+            if result.stdout != b"PARENT_BOUNDARY_PROBE_PASS\n":
+                raise BoundaryFailure("PARENT_CLIENT_WITNESS_MISSING")
             try:
                 peer, _ = tcp.accept()
             except BlockingIOError:
@@ -239,6 +282,8 @@ def main():
     try:
         report.update(run())
         report["accepted"] = True
+    except BoundaryFailure as error:
+        report["failure"] = str(error)
     except (ValueError, OSError, RuntimeError, subprocess.TimeoutExpired) as error:
         report["failure"] = type(error).__name__
     broker.write_new(args.report, (json.dumps(report, sort_keys=True, indent=2) + "\n").encode())
