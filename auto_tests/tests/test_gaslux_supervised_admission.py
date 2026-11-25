@@ -115,6 +115,64 @@ class SupervisedIntegrationTests(unittest.TestCase):
                       {"next_action": "INDEPENDENT_SAFETY_REVIEW"}):
             self.assertFalse(gate.eligible_test({**row, **delta}))
 
+    def test_ruleset_protection_requires_visible_non_bypassable_active_policy(self):
+        for scenario in ("valid", "no_rules", "hidden_bypass", "bypass", "wrong_target",
+                         "wrong_source", "inactive", "loose", "missing_check", "no_delete",
+                         "no_force_block", "no_pr", "different_rules", "base_drift", "denied"):
+            rules = [
+                {"type": "deletion"}, {"type": "non_fast_forward"},
+                {"type": "pull_request", "parameters": {}},
+                {"type": "required_status_checks", "parameters": {
+                    "strict_required_status_checks_policy": scenario != "loose",
+                    "do_not_enforce_on_create": False,
+                    "required_status_checks": [
+                        {"context": name} for name in sorted(A.COMMON_CHECKS)
+                        if scenario != "missing_check" or name != "evidence-python"]}},
+            ]
+            missing = {"no_delete": "deletion", "no_force_block": "non_fast_forward",
+                       "no_pr": "pull_request"}.get(scenario)
+            rules = [r for r in rules if r["type"] != missing]
+            active = [{**r, "ruleset_id": 42, "ruleset_source_type": "Repository",
+                       "ruleset_source": A.REPO} for r in rules]
+            if scenario == "no_rules":
+                active = []
+            detail = {"id": 42, "source_type": "Repository", "source": A.REPO,
+                      "target": "branch", "enforcement": "active", "bypass_actors": [],
+                      "conditions": {"ref_name": {"include": ["refs/heads/dev"], "exclude": []}},
+                      "rules": rules}
+            if scenario == "hidden_bypass":
+                detail.pop("bypass_actors")
+            if scenario == "bypass":
+                detail["bypass_actors"] = [{"actor_type": "Integration"}]
+            if scenario == "wrong_target":
+                detail["conditions"]["ref_name"]["include"] = ["refs/heads/main"]
+            if scenario == "wrong_source":
+                detail["source"] = "other/repo"
+            if scenario == "inactive":
+                detail["enforcement"] = "evaluate"
+            if scenario == "different_rules":
+                detail["rules"] = rules[:-1]
+            ref_reads = 0
+
+            def api(method, route):
+                nonlocal ref_reads
+                self.assertEqual(method, "GET")
+                if route == "/git/ref/heads/dev":
+                    ref_reads += 1
+                    return {"object": {"sha": "c" * 40 if scenario == "base_drift"
+                                       and ref_reads > 1 else BASE}}
+                if route == "/rules/branches/dev?per_page=100":
+                    return active
+                if route == "/rulesets/42?includes_parents=false":
+                    if scenario == "denied":
+                        raise RuntimeError("403")
+                    return detail
+                self.fail(route)
+
+            with patch.object(A, "api", side_effect=api):
+                self.assertEqual(gate.strict_ruleset_protected(BASE),
+                                 scenario == "valid", scenario)
+
     def test_strict_dev_policy_fail_closed(self):
         for scenario in ("valid", "no_rule", "loose", "no_checks", "admin_bypass",
                          "force_push", "delete", "pr_bypass", "force_bypass",
@@ -152,8 +210,15 @@ class SupervisedIntegrationTests(unittest.TestCase):
                 response["errors"] = [{"message": "denied"}]
             with patch.object(gate.subprocess, "run", return_value=gate.subprocess.CompletedProcess(
                     [], 0, json.dumps(response).encode(), b""),
-                    side_effect=OSError("unreadable") if scenario == "unreadable" else None) as query:
+                    side_effect=OSError("unreadable") if scenario == "unreadable" else None) as query, \
+                 patch.object(gate, "strict_ruleset_protected", return_value=False) as ruleset:
                 self.assertEqual(gate.strict_dev_protected(BASE), scenario == "valid", scenario)
+                if scenario == "no_rule":
+                    ruleset.assert_called_once_with(BASE)
+                    ruleset.return_value = True
+                    self.assertTrue(gate.strict_dev_protected(BASE))
+                else:
+                    ruleset.assert_not_called()
                 self.assertEqual(query.call_args.args[0][:3], ["gh", "api", "graphql"])
                 self.assertIn("query {", query.call_args.args[0][-1])
 
