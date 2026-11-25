@@ -217,7 +217,7 @@ def historical_inventory(*, slot=None):
 
 
 def historical_close_candidate(row):
-    """Only identical complete trees, ancestry, and no unresolved discussion."""
+    """Proven integrated ancestry, no remaining PR diff or identical tree, no discussion."""
     if (row.get("status") != "ANCESTRY_PRESENT_REVIEW_CLOSURE"
             or row.get("target") not in ("dev", "main")
             or row.get("draft") is not True or row.get("unique_head_commits") != 0):
@@ -244,8 +244,15 @@ def historical_close_candidate(row):
         return False
     a = api("GET", f"/git/commits/{head}")["tree"]["sha"]
     b = api("GET", f"/git/commits/{base}")["tree"]["sha"]
-    if not admission.valid_sha(a) or a != b:
+    if not admission.valid_sha(a) or not admission.valid_sha(b):
         return False
+    if a != b:
+        # Later legitimate dev changes need not reproduce the entire old tree.
+        # Require GitHub to report zero remaining PR files as well as ancestry.
+        if type(pr.get("changed_files")) is not int or pr["changed_files"] != 0:
+            return False
+        if admission.complete_page(api("GET", f"/pulls/{n}/files?per_page=100")):
+            return False
     # Unresolved historical findings may live in discussion rather than code.
     # Any existing review, inline comment or issue comment defers closure.
     for endpoint in (f"/pulls/{n}/reviews?per_page=100",
@@ -282,7 +289,9 @@ def close_integrated_history(*, execute=False):
                 or api("GET", f"/git/ref/heads/{target}")["object"]["sha"] != base):
             raise RuntimeError("Historical closure drift; manual reconciliation required")
         return {"status": "exact_history_closed", **receipt}
-    return {"status": "no_exact_history_closure", "merge_authorized": False}
+    return {"status": "no_exact_history_closure", "merge_authorized": False,
+            "pending_reconciliation": [r for r in report["findings"]
+                                       if r["status"] == "UNIQUE_COMMITS_REQUIRE_RECONCILIATION"]}
 
 
 def main():
