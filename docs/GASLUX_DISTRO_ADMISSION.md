@@ -359,3 +359,66 @@ and appended semantics equivalent (only local missingGates name differs);
 #409 current-base CI and live admission 45592368724 PASS. #395 closed
 as redundant, no merge, branch and evidence retained; #424 resolved.
 #409 still requires applicable independent owner/Safety/VM gates.
+
+
+## Development completion boundary: autonomous scopes and duplicate reconciliation
+
+The supervised planner now has two task classes, selected from actual
+missing code/test symbols and authenticated candidate inventory:
+- Persistent regression for integrated lifecycle helpers (six backend
+  roles, 256 boolean combinations, non-boolean and missing evidence).
+- Pinned release descriptor comparison for the existing Mint/Zorin
+  catalogue entries. Known version-specific pins are trusted main policy;
+  drift, duplicate IDs/keys, unsupported roles and an existing competing
+  candidate symbol fail closed. No image download, signature or genuine
+  source-authenticity assertion is made. Independent positive/negative
+  fixtures run before Draft publication. The actual Zorin source and
+  product suite were exercised on dev d89f1547c50787e4640164e34bfd1863134e2908.
+
+The same Factory select/worker/Safety/publisher jobs process both scopes.
+No issue text or per-task approval is needed within this policy. Canonical
+generation avoids unnecessary inference; existing inference scope and
+validator remain unchanged. The publisher independently recomputes
+eligibility, accepts only exact canonical bytes, requires unchanged dev
+and creates an absent scoped branch exclusively (including concurrent and
+identical-ref rejection). A separate read-only supervised admission
+inventory in the existing Integrator verifies the actual single-commit
+append, exact CI provenance, current base and independent reviewer/owner
+gates. It does not execute candidate code or grant merge authority.
+GASLUX_SUPERVISED_OWNER_IDS may specify independent owner IDs including
+Mint without changing the legacy five-role configuration.
+
+The Integrator now has a bounded metadata-only duplicate reconciliation job:
+two authenticated open lifecycle Drafts for the same role, one stale and
+one current; both exact scope, normal CI and provenance verified; same
+original source/test bytes and fixed AST semantics; no holds or objections.
+Recheck the whole decision before closing at most one redundant old Draft.
+Retain its branch, commits, discussions and evidence. No merge, ref deletion,
+automatic reopen or approval transfer. GitHub's close endpoint has no
+atomic expected-head CAS: revalidate before/after, emit a failure if
+concurrent metadata drift occurs and preserve refs for manual reconciliation.
+Additional job permission is pull-requests:write (metadata closure and
+comment only); no contents write. It remains inactive until this Draft is
+reviewed and integrated. Historical closed successor collisions remain
+blocked; do not blindly reopen a rejected proposal.
+
+Development evidence:
+- 95680a3d6d90aa7efe315d2d3a27f6684ea6e3a0: runs 45594947349 /
+  45594947811, 53 + 72 contracts PASS and both live read-only scope probes PASS.
+- 87e9ad4c5a25aa03b6a688258c686f691e14d185: runs 45595567059 /
+  45595566625, 56 + 73 contracts PASS; both scope probes passed again.
+  Real local Git publish tests for each scope exercise new branch creation,
+  concurrent ref rejection, exact candidate bytes, untouched dev and Draft
+  creation command; GitHub PR API is mocked in those tests, not a real
+  publication. Later duplicate AST-equivalence test requires fresh CI.
+
+Non-goals and unresolved dependencies: no general arbitrary model scope or
+installer integration is authorized. #419 is the separate isolated OpenCode
+agent development and overlaps the Factory workflow; exact composition must
+be reconciled before activation. Product VM acceptance and formal independent
+review/owner gates remain required where applicable. Test-only integration
+policy is distinct from automatic publication/duplicate closure. The PR
+remains Draft until the maintainer's requested development phase is complete
+and subsequent Safety review approves activation. Do not treat a green
+build-only probe, mocked PR request, or technical diagnostic as actual
+autonomous publication, closure, merge or a production installer result.
