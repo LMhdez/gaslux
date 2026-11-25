@@ -943,6 +943,28 @@ def safe_forward_draft_base(root: Path, role: str, old: str, current: str) -> bo
             return False
     return True
 
+def create_successor_ref(root: Path, role: str, base: str) -> None:
+    """Create an absent ref only; an existing ref is never overwritten."""
+    branch = origin_branch(role, base)
+    ref = "refs/heads/" + branch
+    # Empty expected value is a compare-and-create lease, NOT permission
+    # to replace an existing ref, even if that update is fast-forward.
+    result = subprocess.run(
+        ["git", "-C", str(root), "push", "--porcelain",
+         f"--force-with-lease={ref}:", "origin", f"HEAD:{ref}"],
+        check=True, capture_output=True, text=True, timeout=60,
+    )
+    # Git can report success for an already-identical ref. Require actual
+    # creation, not an up-to-date no-op, before attempting PR publication.
+    statuses = [line.split("\t") for line in result.stdout.splitlines()
+                if "\t" in line]
+    if (len(statuses) != 1 or len(statuses[0]) != 3
+            or statuses[0][0] != "*"
+            or statuses[0][1].split(":")[-1] != ref
+            or statuses[0][2] != "[new branch]"):
+        raise RuntimeError("Successor ref was not exclusively created")
+
+
 def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str = "lifecycle",
             repair_pr=None, repair_head=None) -> None:
     if os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true":
@@ -1008,7 +1030,10 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
     subprocess.run(["git", "-C", str(root), "commit", "-m", commit_subject], check=True)
     # No implicit token is available in any model-inference or test runner.
     subprocess.run(["gh", "auth", "setup-git"], check=True)
-    subprocess.run(["git", "-C", str(root), "push", "origin", f"HEAD:refs/heads/{branch}"], check=True)
+    if is_repair:
+        create_successor_ref(root, role, base)
+    else:
+        subprocess.run(["git", "-C", str(root), "push", "origin", f"HEAD:refs/heads/{branch}"], check=True)
     body = (f"Unprivileged Qwen3.5 9B proposal for {role}, pinned base {base}.\n\n"
             "Pure read-only lifecycle evidence helper appended to real backend source. "
             "Static AST scope and independent isolated acceptance checked; the PR is a "
