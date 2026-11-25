@@ -142,5 +142,66 @@ class ReconcileTests(unittest.TestCase):
                 self.assertEqual(rec.plan(), PICK if scenario == "valid" else None)
 
 
+    def test_historical_inventory_classifies_without_mutating(self):
+        repo = {"full_name": rec.admission.REPO}
+        prs = [{"number": n, "state": "open", "draft": True,
+                "head": {"sha": sha, "repo": repo},
+                "base": {"ref": "dev", "repo": repo}}
+               for n, sha in ((1, OLD), (2, NEW))]
+        prs.append({"number": 3, "state": "open", "draft": True,
+                    "head": {"sha": OLD, "repo": {"full_name": "foreign/repo"}},
+                    "base": {"ref": "dev", "repo": repo}})
+        def api(method, route):
+            self.assertEqual(method, "GET")
+            if route.startswith("/git/ref/heads/"):
+                return {"object": {"sha": BASE}}
+            if route.startswith("/pulls?"):
+                return prs
+            if route == f"/compare/{OLD}...{BASE}":
+                return {"base_commit": {"sha": OLD}, "merge_base_commit": {"sha": OLD},
+                        "status": "ahead", "ahead_by": 2, "behind_by": 0}
+            if route == f"/compare/{NEW}...{BASE}":
+                return {"base_commit": {"sha": NEW}, "merge_base_commit": {"sha": OLD},
+                        "status": "diverged", "ahead_by": 2, "behind_by": 1}
+            self.fail(route)
+        with patch.object(rec.admission, "api", side_effect=api):
+            report = rec.historical_inventory(slot=0)
+        self.assertEqual(report["total_open"], 3)
+        self.assertEqual([row["status"] for row in report["findings"]],
+                         ["ANCESTRY_PRESENT_REVIEW_CLOSURE",
+                          "UNIQUE_COMMITS_REQUIRE_RECONCILIATION", "UNSUPPORTED_OR_FOREIGN"])
+        self.assertFalse(report["close_authorized"])
+        self.assertTrue(all(not row["close_authorized"] for row in report["findings"]))
+
+    def test_historical_inventory_rotation_and_drift(self):
+        repo = {"full_name": rec.admission.REPO}
+        prs = [{"number": n, "state": "open", "draft": True,
+                "head": {"sha": OLD, "repo": repo}, "base": {"ref": "dev", "repo": repo}}
+               for n in range(1, 102)]
+        for drift in (False, True):
+            calls = 0
+            def api(method, route):
+                nonlocal calls
+                self.assertEqual(method, "GET")
+                if route.startswith("/git/ref/heads/"):
+                    calls += 1
+                    return {"object": {"sha": NEW if drift and calls > 2 else BASE}}
+                if route.startswith("/pulls?"):
+                    return prs[:100] if route.endswith("page=1") else prs[100:]
+                if route == f"/compare/{OLD}...{BASE}":
+                    return {"base_commit": {"sha": OLD}, "merge_base_commit": {"sha": OLD},
+                            "status": "ahead", "ahead_by": 1, "behind_by": 0}
+                self.fail(route)
+            with patch.object(rec.admission, "api", side_effect=api):
+                if drift:
+                    with self.assertRaises(ValueError):
+                        rec.historical_inventory(slot=10)
+                else:
+                    report = rec.historical_inventory(slot=10)
+                    self.assertEqual(report["total_open"], 101)
+                    self.assertEqual(report["batches"], 11)
+                    self.assertEqual([row["pr"] for row in report["findings"]], [101])
+
+
 if __name__ == "__main__":
     unittest.main()
