@@ -317,3 +317,45 @@ never attempts publication or merge. New exact HEAD CI required.
 #419 has an unresolved OpenCode containment/event-audit finding and
 failed current CI; do not combine its unapproved changes to claim a
 fully autonomous cycle. No changes to #417/#421 or old closed PRs.
+
+
+## Supervisor automatic test-scope discovery (2026-11-25)
+
+The goal Supervisor in dev is a read-only reporting producer, not a code
+authorization source. The trusted main Factory now has an additional
+bounded supervisory planner: after existing proposal and repair selection
+are blocked, inspect the actual integrated helper AST and its actual
+persistent backend regression suite. For an existing lifecycle classifier
+with no direct regression reference, create one canonical test-only task.
+The scope is derived from fixed trusted backend paths, not instructions
+from an issue, dev goal JSON, model or artifact.
+
+Confirmed first gap at dev d89f1547c50787e4640164e34bfd1863134e2908:
+Mint's assess_mint_lifecycle exists but test_distribution_capabilities.py
+does not reference it. Cover all 256 boolean combinations of eight gates,
+strict non-boolean/missing rejection, result shape, no input mutation and
+literal False authorization flags. No installer behavior is added; the
+same mechanism can select another backend when its helper is actually
+integrated and lacks regression coverage. A test reference suppresses
+work conservatively; it does not certify test completeness.
+
+Reuse existing Factory worker, product tests, independent runner Safety
+verification and main-only publisher; no Ollama inference for canonical
+test scope. Verify exact target test path, producer, base, product and
+test digests, canonical addition bytes; publisher only appends the test,
+rechecks live eligibility with workflow token, requires exact current dev,
+and exclusively creates a new Draft branch. Existing open role test
+proposals, prior same-branch PR or existing ref block publication.
+No production source writes, new write scopes, merges, VM or release
+authority. The PR-only probe uses read-only permissions, executes tests
+on disposable dev checkout and retains evidence, not a publication proof.
+Main review/CI and #419 workflow reconciliation remain necessary.
+This is the first deliberately narrow automatic development scope,
+not arbitrary autonomous installer implementation or a general
+automatic merge/close policy.
+
+Historical Zorin reconciliation: exact #395 and #409 original prefixes
+and appended semantics equivalent (only local missingGates name differs);
+#409 current-base CI and live admission 45592368724 PASS. #395 closed
+as redundant, no merge, branch and evidence retained; #424 resolved.
+#409 still requires applicable independent owner/Safety/VM gates.
