@@ -150,10 +150,13 @@ jobs:
           from pathlib import Path
           sys.path.insert(0, 'auto_tests/tools')
           from gaslux_opencode_factory_worker import route
+          from gaslux_agent_task_triage import discover_missing_implementations
           root = Path(os.environ['RUNNER_TEMP'])
           plan = json.loads((root / 'gaslux-route-plan.json').read_text())
           row = {k: plan.get(k) for k in ('status', 'role', 'scope', 'base', 'repair_pr', 'repair_head')}
-          row.update(worker=route(plan), probe_only=True, publication_authorized=False)
+          gaps = discover_missing_implementations(Path('route-source'))
+          row.update(worker=route(plan), probe_only=True, publication_authorized=False,
+                     dynamic_discovery_count=len(gaps), dynamic_discovery=gaps)
           print(json.dumps(row, sort_keys=True))
           (root / 'gaslux-route-receipt.json').write_text(json.dumps(row, sort_keys=True) + '\n')
           PY
