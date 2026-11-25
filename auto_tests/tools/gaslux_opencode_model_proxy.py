@@ -23,6 +23,9 @@ MAX_CALLS = 16
 MAX_OUTPUT = 2048
 TIMEOUT = 300
 PATH = "/v1/chat/completions"
+ALLOWED_TOOLS = frozenset({"skill", "gaslux_workspace_inspect_task",
+                           "gaslux_workspace_read_candidate", "gaslux_workspace_replace_candidate",
+                           "gaslux_workspace_run_tests"})
 ALLOWED_KEYS = frozenset({
     "model", "messages", "stream", "stream_options", "tools", "tool_choice",
     "temperature", "top_p", "max_tokens", "max_completion_tokens", "stop",
@@ -80,9 +83,22 @@ def validate_request(raw):
         if type(tools) is not list or len(tools) > 16 or any(
             type(tool) is not dict or set(tool) != {"type", "function"}
             or tool["type"] != "function" or type(tool["function"]) is not dict
+            or type(tool["function"].get("name")) is not str
+            or tool["function"]["name"] not in ALLOWED_TOOLS
             for tool in tools
         ):
             raise ValueError("TOOLS_SCOPE")
+    choice = row.get("tool_choice")
+    if choice is not None:
+        if type(choice) is str:
+            if choice not in ("auto", "none", "required"):
+                raise ValueError("TOOL_CHOICE_SCOPE")
+        elif (type(choice) is not dict or set(choice) != {"type", "function"}
+              or choice["type"] != "function" or type(choice["function"]) is not dict
+              or set(choice["function"]) != {"name"}
+              or type(choice["function"]["name"]) is not str
+              or choice["function"]["name"] not in ALLOWED_TOOLS):
+            raise ValueError("TOOL_CHOICE_SCOPE")
     return json.dumps(row, ensure_ascii=True, allow_nan=False, separators=(",", ":")).encode()
 
 
@@ -92,6 +108,7 @@ class ModelServer(socketserver.UnixStreamServer):
     def __init__(self, path, handler):
         self.calls = 0
         self.forwarded = 0
+        self.completed = 0
         self.denied = 0
         self.deadline = time.monotonic() + 1200
         super().__init__(str(path), handler)
@@ -180,8 +197,9 @@ class Handler(BaseHTTPRequestHandler):
                     self.deny(502)
                     return
                 declared = response.getheader("Content-Length")
-                if declared is not None and (not declared.isdecimal() or
-                                             int(declared) > MAX_RESPONSE):
+                if declared is not None and (not declared.isascii() or not declared.isdecimal()
+                                             or len(declared) > 7
+                                             or not 0 < int(declared) <= MAX_RESPONSE):
                     self.deny(502)
                     return
                 self.close_connection = True
@@ -203,6 +221,9 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("RESPONSE_LIMIT")
                     self.wfile.write(data)
                     self.wfile.flush()
+                if total == 0 or (declared is not None and total != int(declared)):
+                    raise ValueError("RESPONSE_TRUNCATED")
+                self.server.completed += 1
         except (OSError, ValueError, http.client.HTTPException):
             if not started:
                 self.deny(502)
@@ -233,7 +254,8 @@ def main():
             while time.monotonic() < server.deadline and server.calls < MAX_CALLS:
                 server.handle_request()
             print(json.dumps({"calls": server.calls, "forwarded": server.forwarded,
-                              "denied": server.denied, "operational_authorized": False}))
+                              "completed": server.completed, "denied": server.denied,
+                              "operational_authorized": False}))
     finally:
         os.umask(old)
     return 0

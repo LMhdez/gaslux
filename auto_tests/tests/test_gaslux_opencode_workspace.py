@@ -186,10 +186,18 @@ class WorkspaceTests(unittest.TestCase):
                 {"type": "image_url", "image_url": {"url": "file:///etc/passwd"}}]}]},
             {**valid, "messages": [{"role": "user", "content": "x", "attachments": []}]},
             {**valid, "tools": [{"type": "web_search"}]},
+            {**valid, "tools": [{"type": "function", "function": {"name": "bash"}}]},
+            {**valid, "tools": [{"type": "function", "function": {"name": []}}]},
+            {**valid, "tool_choice": {"type": "function", "function": {"name": "bash"}}},
+            {**valid, "tool_choice": "bash"},
         ):
             with self.subTest(changed=changed):
                 with self.assertRaises(ValueError):
                     proxy.validate_request(raw(changed))
+        allowed = {**valid, "tools": [{"type": "function", "function": {"name": name}}
+                                    for name in sorted(proxy.ALLOWED_TOOLS)],
+                   "tool_choice": {"type": "function", "function": {"name": "skill"}}}
+        self.assertEqual(json.loads(proxy.validate_request(raw(allowed)))["tools"], allowed["tools"])
         for invalid in (b'{"model":"other","model":"qwen3.5:9b"}',
                         b'{"model":"qwen3.5:9b","messages":[],"temperature":NaN}',
                         b"x" * (proxy.MAX_REQUEST + 1)):
@@ -227,6 +235,52 @@ class WorkspaceTests(unittest.TestCase):
                         self.assertIn(response.split(b" ")[1], (b"400", b"403"))
                     upstream.assert_not_called()
                 self.assertEqual(server.forwarded, 0)
+
+
+    def test_model_proxy_actual_unix_forwarding_and_truncation(self):
+        import socket
+        import threading
+        from unittest.mock import MagicMock, patch
+        body = json.dumps({"model": proxy.MODEL,
+                           "messages": [{"role": "user", "content": "fixture"}]}).encode()
+        data = b"{}"
+        with tempfile.TemporaryDirectory() as tmp:
+            endpoint = Path(tmp) / "model.sock"
+            with proxy.ModelServer(endpoint, proxy.Handler) as server:
+                server.timeout = 2
+                for declared, expected in (("2", 1), ("3", 1)):
+                    with patch.object(proxy.http.client, "HTTPConnection") as upstream:
+                        response = MagicMock()
+                        response.status = 200
+                        response.headers.get_content_type.return_value = "application/json"
+                        response.getheader.return_value = declared
+                        response.read1.side_effect = [data, b""]
+                        upstream.return_value.getresponse.return_value.__enter__.return_value = response
+                        thread = threading.Thread(target=server.handle_request)
+                        thread.start()
+                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                            client.settimeout(3)
+                            client.connect(str(endpoint))
+                            request = (b"POST /v1/chat/completions HTTP/1.0\r\n"
+                                       b"Content-Type: application/json\r\n"
+                                       b"Authorization: MUST-NOT-FORWARD\r\n"
+                                       + b"Content-Length: " + str(len(body)).encode()
+                                       + b"\r\n\r\n" + body)
+                            client.sendall(request)
+                            client.shutdown(socket.SHUT_WR)
+                            received = client.makefile("rb").read()
+                        thread.join(3)
+                        self.assertFalse(thread.is_alive())
+                        self.assertIn(b"200", received.split(b"\r\n", 1)[0])
+                        upstream.assert_called_once_with("127.0.0.1", 11434, timeout=proxy.TIMEOUT)
+                        args, kwargs = upstream.return_value.request.call_args
+                        self.assertEqual(args, ("POST", proxy.PATH))
+                        self.assertNotIn("Authorization", kwargs["headers"])
+                        self.assertEqual(json.loads(kwargs["body"])["model"], proxy.MODEL)
+                        self.assertEqual(server.completed, expected)
+                self.assertEqual(server.forwarded, 2)
+                self.assertEqual(server.completed, 1)
+                self.assertEqual(server.denied, 1)
 
     def test_fixed_runtime_failure_categories(self):
         self.assertEqual(i.fixed_failure(ValueError("MCP_RED_EDIT_PASS_INCOMPLETE")),
