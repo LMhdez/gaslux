@@ -248,6 +248,8 @@ jobs:
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+          GASLUX_VM_OBSERVER_ID: ${{ vars.GASLUX_VM_OBSERVER_ID }}
+          GASLUX_VM_ACCEPTANCE_WORKFLOW_ID: ${{ vars.GASLUX_VM_ACCEPTANCE_WORKFLOW_ID }}
         run: |
           set -euo pipefail
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_supervised_admission.py -v
@@ -327,8 +329,53 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-  independent_supervised_safety:
+  independent_supervised_owner:
     if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      vars.GASLUX_INDEPENDENT_OWNER_ENABLED == 'true' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       github.event_name == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment: gaslux-independent-owner
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate owner review contracts without credential
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_supervised_admission.py -v
+      - name: Independent backend owner exact-HEAD review
+        env:
+          GH_TOKEN: ${{ secrets.GASLUX_INDEPENDENT_OWNER_TOKEN }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+          GASLUX_VM_OBSERVER_ID: ${{ vars.GASLUX_VM_OBSERVER_ID }}
+          GASLUX_VM_ACCEPTANCE_WORKFLOW_ID: ${{ vars.GASLUX_VM_ACCEPTANCE_WORKFLOW_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 -I auto_tests/tools/gaslux_supervised_admission.py --independent-owner > evidence/independent-owner.json
+          cat evidence/independent-owner.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: gaslux-independent-owner
+          path: evidence/independent-owner.json
+          if-no-files-found: warn
+          retention-days: 14
+
+  independent_supervised_safety:
+    needs: independent_supervised_owner
+    if: >-
+      always() && !cancelled() &&
+      (needs.independent_supervised_owner.result == 'success' || needs.independent_supervised_owner.result == 'skipped') &&
       github.repository == 'LMhdez/gaslux' &&
       github.ref == 'refs/heads/main' &&
       vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
@@ -354,6 +401,8 @@ jobs:
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+          GASLUX_VM_OBSERVER_ID: ${{ vars.GASLUX_VM_OBSERVER_ID }}
+          GASLUX_VM_ACCEPTANCE_WORKFLOW_ID: ${{ vars.GASLUX_VM_ACCEPTANCE_WORKFLOW_ID }}
         run: |
           set -euo pipefail
           mkdir -p evidence
@@ -401,15 +450,21 @@ jobs:
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+          GASLUX_VM_OBSERVER_ID: ${{ vars.GASLUX_VM_OBSERVER_ID }}
+          GASLUX_VM_ACCEPTANCE_WORKFLOW_ID: ${{ vars.GASLUX_VM_ACCEPTANCE_WORKFLOW_ID }}
         run: |
           set -euo pipefail
           mkdir -p evidence
           python3 -I auto_tests/tools/gaslux_supervised_admission.py --integrate-test > evidence/supervised-integration.json
           cat evidence/supervised-integration.json
+          python3 -I auto_tests/tools/gaslux_supervised_admission.py --integrate-product > evidence/supervised-product-integration.json
+          cat evidence/supervised-product-integration.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
           name: gaslux-supervised-integration
-          path: evidence/supervised-integration.json
+          path: |
+            evidence/supervised-integration.json
+            evidence/supervised-product-integration.json
           if-no-files-found: warn
           retention-days: 14
