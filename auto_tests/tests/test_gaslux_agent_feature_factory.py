@@ -776,6 +776,68 @@ class DeterministicRepairTests(unittest.TestCase):
             git.assert_not_called()
             self.assertEqual(__import__("os").environ["GH_TOKEN"], "fixture-publisher")
 
+    def test_repair_planner_rejects_drift_duplicate_and_existing_helper(self):
+        import sys
+        sys.path.insert(0, str(SCRIPT.parent))
+        import gaslux_distro_admission as admission
+        old = "c" * 40
+        source, test, _ = factory.TASKS["zorin"]
+        original = {
+            "number": 395,
+            "head": {"sha": self.HEAD, "ref": factory.origin_branch("zorin", old),
+                     "repo": {"full_name": factory.REPO}},
+            "base": {"ref": "dev", "repo": {"full_name": factory.REPO}},
+        }
+        good = {"pr": 395, "role": "zorin", "head": self.HEAD, "base": self.BASE,
+                "exact_scope_verified": True, "current_base_verified": False,
+                "ci_verified": True, "ci_workflow_provenance_verified": True,
+                "technical_objection": False, "merge_authorized": False,
+                "release_eligible": False, "next_action": "REFRESH_CANDIDATE_BASE"}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / source
+            target.parent.mkdir(parents=True)
+            for scenario in ("valid", "duplicate", "source_drift", "test_drift",
+                             "diverged", "objection", "history", "ref_exists", "already_done"):
+                with self.subTest(scenario=scenario):
+                    target.write_text(factory.repair_addition("zorin") if scenario == "already_done"
+                                      else "# existing source\n")
+                    rows = [original, {**original, "number": 500}] if scenario == "duplicate" else [original]
+                    def get(method, route):
+                        self.assertEqual(method, "GET")
+                        if route == "/git/ref/heads/dev":
+                            return {"object": {"sha": self.BASE}}
+                        if route == "/pulls?state=open&base=dev&per_page=100":
+                            return rows
+                        if route == "/pulls/395":
+                            return original
+                        if route == f"/compare/{old}...{self.BASE}":
+                            return {"status": "diverged" if scenario == "diverged" else "ahead",
+                                    "merge_base_commit": {"sha": old}}
+                        if route.startswith("/contents/"):
+                            drift = (scenario == "source_drift" and source in route
+                                     or scenario == "test_drift" and test in route)
+                            return {"type": "file", "sha": "d" * 40 if drift and
+                                    route.endswith(self.BASE) else "e" * 40}
+                        if route.startswith("/pulls?state=all"):
+                            return [original] if scenario == "history" else []
+                        self.fail(f"Unexpected repair read: {route}")
+                    row = {**good, "technical_objection": scenario == "objection"}
+                    with patch.object(factory, "git", return_value=self.BASE), \
+                         patch.object(admission, "discover_candidates",
+                                      return_value={395: ("zorin", self.HEAD)}), \
+                         patch.object(admission, "inspect", return_value=row), \
+                         patch.object(admission, "candidate_append", return_value=(old, None)), \
+                         patch.object(admission, "api", side_effect=get), \
+                         patch.object(factory.subprocess, "run", return_value=subprocess.CompletedProcess(
+                             [], 0 if scenario == "ref_exists" else 1, "", "HTTP 404")):
+                        plan = factory.repair_plan(root, self.BASE)
+                    if scenario == "valid":
+                        self.assertEqual(plan["repair_pr"], 395)
+                        self.assertEqual(plan["repair_head"], self.HEAD)
+                    else:
+                        self.assertIsNone(plan)
+
     def test_workflow_reuses_existing_isolated_jobs(self):
         workflow = (SCRIPT.parents[2] /
                     ".github/workflows/gaslux-agent-feature-factory.yml").read_text()
