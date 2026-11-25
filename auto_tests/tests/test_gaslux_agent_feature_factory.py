@@ -1042,6 +1042,76 @@ class SupervisedRegressionTests(unittest.TestCase):
                 self.assertIsNone(factory.supervised_scope_plan(
                     root, self.BASE, factory.SUPERVISED_MEDIA_SCOPE))
 
+    def test_real_git_publication_for_both_scopes_is_draft_only(self):
+        import os
+        for role, scope in (("mint", factory.SUPERVISED_TEST_SCOPE),
+                            ("zorin", factory.SUPERVISED_MEDIA_SCOPE)):
+            for collision in (False, True):
+                with self.subTest(role=role, collision=collision), tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp) / "work"
+                    remote = Path(tmp) / "remote.git"
+                    evidence = Path(tmp) / "evidence"
+                    root.mkdir()
+                    product, suite = self.fixture(root, role)
+                    if scope == factory.SUPERVISED_MEDIA_SCOPE:
+                        _, pins = factory.supervised_media_pins(role)
+                        (root / "release-config.json").write_text(json.dumps({"distributions": [pins]}))
+                    def cmd(*args):
+                        return subprocess.check_output(["git", "-C", str(root), *args],
+                                                       text=True, stderr=subprocess.STDOUT, timeout=20).strip()
+                    subprocess.run(["git", "init", "--bare", str(remote)], check=True,
+                                   capture_output=True, timeout=20)
+                    cmd("init", "-b", "dev")
+                    cmd("config", "user.name", "Fixture")
+                    cmd("config", "user.email", "fixture@example.invalid")
+                    cmd("remote", "add", "origin", str(remote))
+                    cmd("add", ".")
+                    cmd("commit", "-m", "fixture base")
+                    cmd("push", "origin", "HEAD:refs/heads/dev")
+                    base = cmd("rev-parse", "HEAD")
+                    factory.generate_supervised_test(root, evidence, role, base, scope=scope)
+                    report = factory.verify(root, evidence, role, base, execute=True, scope=scope)
+                    branch = factory.supervised_branch(role, base, scope)
+                    ref = "refs/heads/" + branch
+                    real_run = subprocess.run
+                    gh_calls = []
+                    def run(args, **kwargs):
+                        if args[:1] == ["gh"]:
+                            gh_calls.append(list(args))
+                            if args[:3] == ["gh", "auth", "setup-git"] and collision:
+                                # Simulate a concurrent creator AFTER publisher eligibility.
+                                cmd("push", "origin", f"{base}:{ref}")
+                            return subprocess.CompletedProcess(args, 0, "", "")
+                        return real_run(args, **kwargs)
+                    env = {"GITHUB_REPOSITORY": factory.REPO, "GITHUB_REF": "refs/heads/main",
+                           "GH_TOKEN": "fixture-publisher", "GASLUX_REPAIR_READ_TOKEN": "fixture-reader"}
+                    with patch.dict(os.environ, env, clear=False), \
+                         patch.object(factory, "supervised_scope_plan",
+                                      return_value={"role": role, "scope": scope, "base": base}), \
+                         patch.object(factory.subprocess, "run", side_effect=run):
+                        if collision:
+                            with self.assertRaises(subprocess.CalledProcessError):
+                                factory.publish(root, evidence, role, base, scope=scope)
+                        else:
+                            factory.publish(root, evidence, role, base, scope=scope)
+                        self.assertEqual(os.environ["GH_TOKEN"], "fixture-publisher")
+                    self.assertEqual(cmd("ls-remote", "origin", "refs/heads/dev").split()[0], base)
+                    pushed = cmd("ls-remote", "origin", ref).split()[0]
+                    creates = [args for args in gh_calls if args[:3] == ["gh", "pr", "create"]]
+                    if collision:
+                        self.assertEqual(pushed, base)
+                        self.assertEqual(creates, [])
+                    else:
+                        self.assertNotEqual(pushed, base)
+                        self.assertEqual(cmd("diff", "--name-only", base, pushed), report["target"])
+                        data = subprocess.check_output(["git", "-C", str(root), "show",
+                                                        pushed + ":" + report["target"]], timeout=20)
+                        self.assertEqual(factory.sha256(data), report["candidate_sha256"])
+                        self.assertEqual(len(creates), 1)
+                        self.assertIn("--draft", creates[0])
+                        self.assertEqual(creates[0][creates[0].index("--base") + 1], "dev")
+                        self.assertEqual(creates[0][creates[0].index("--head") + 1], branch)
+
     def test_all_canonical_regression_templates_parse(self):
         import ast
         for role in factory.TASKS:
