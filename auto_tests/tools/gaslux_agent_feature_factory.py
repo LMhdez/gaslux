@@ -882,14 +882,19 @@ def supervised_scope_plan(root, base, scope, *, requested_role=None):
             for pr in rows:
                 if (pr["head"].get("repo") or {}).get("full_name") != REPO:
                     continue
+                number = pr.get("number")
+                if type(number) is not int or not 1 <= number <= 1000000:
+                    raise ValueError("Malformed open candidate identity")
                 files = admission.complete_page(admission.api(
-                    "GET", f"/pulls/{pr['number']}/files?per_page=100"))
+                    "GET", f"/pulls/{number}/files?per_page=100"))
                 for item in files:
                     if item.get("filename") != target:
                         continue
-                    # A missing/truncated diff cannot establish no collision.
-                    patch = item.get("patch")
-                    if not isinstance(patch, str) or name in patch:
+                    # Inspect exact candidate bytes, not potentially truncated
+                    # diff text. A deletion/unknown source blocks this scope.
+                    if item.get("status") not in ("added", "modified"):
+                        duplicate = True
+                    elif name.encode() in admission.source_at(target, pr["head"]["sha"]):
                         duplicate = True
             if duplicate:
                 continue
@@ -926,6 +931,9 @@ def supervised_test_report(root, role, base, *, scope=SUPERVISED_TEST_SCOPE):
     addition = supervised_addition(role, scope)
     before, after = expected_source(root, role, addition, scope=scope)
     return {
+        **({"release_descriptor_sha256": sha256((root / "release-config.json").read_bytes()),
+            "regression_suite_sha256": sha256((root / "auto_tests/tests" / TASKS[role][1]).read_bytes())}
+           if scope == SUPERVISED_MEDIA_SCOPE else {}),
         "role": role, "base": base, "scope": scope,
         "producer": ("trusted-supervisor-regression-v1" if scope == SUPERVISED_TEST_SCOPE
                      else "trusted-supervisor-media-v1"),
