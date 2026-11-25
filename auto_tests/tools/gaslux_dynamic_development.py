@@ -15,8 +15,10 @@ import os
 from pathlib import Path
 import re
 import subprocess
+import sys
 import tempfile
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gaslux_agent_feature_factory as factory
 import gaslux_agent_task_triage as triage
 import gaslux_opencode_product_shadow as shadow
@@ -261,6 +263,12 @@ def publish_draft(repo, base, key, evidence, replay):
         return {"status": "dynamic_scope_no_longer_eligible"}
     branch = branch_for(task, base)
     ref = "refs/heads/" + branch
+    import gaslux_distro_admission as admission
+    # An already-created branch or PR is not permission to overwrite it.
+    prior = admission.complete_page(admission.api(
+        "GET", f"/pulls?state=all&head=LMhdez:{branch}&base=dev&per_page=100"))
+    if prior:
+        return {"status": "dynamic_already_published", "key": key}
     subprocess.run(["gh", "auth", "setup-git"], check=True, timeout=30)
     factory.git(repo, "fetch", "origin", "refs/heads/dev:refs/remotes/origin/dev")
     if factory.git(repo, "rev-parse", "refs/remotes/origin/dev") != base:
