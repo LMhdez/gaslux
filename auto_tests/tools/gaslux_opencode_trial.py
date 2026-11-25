@@ -15,6 +15,7 @@ import stat
 import subprocess
 import tempfile
 import time
+import urllib.request
 
 import gaslux_agent_feature_factory as factory
 from gaslux_agent_history import SKILLS
@@ -49,10 +50,17 @@ AGENT_PROMPT = PROMPT.replace(
 )
 SIGNATURE = "def assess_mint_lifecycle(evidence: dict) -> dict:"
 MAX_ADDITION_BYTES = 16384
+COMPACT_CONTEXT = 16384
+BASELINE_CONTEXT = 65536
+MAX_ATTEMPTS = 2
+RETRYABLE = frozenset({"CANDIDATE_FORMAT_INVALID", "CANDIDATE_FENCE_INVALID",
+                       "CANDIDATE_JSON_INVALID", "CANDIDATE_SCHEMA_INVALID"})
 
 
 
-def prepare(work: Path, source: Path = ROOT):
+def prepare(work: Path, source: Path = ROOT, *, context=BASELINE_CONTEXT):
+    if context not in (BASELINE_CONTEXT, COMPACT_CONTEXT):
+        raise ValueError("Unreviewed context profile")
     for name in SKILLS:
         actual = "gaslux-" + name
         target = work / ".opencode" / "skills" / actual / "SKILL.md"
@@ -71,11 +79,13 @@ def prepare(work: Path, source: Path = ROOT):
         "plugin": [], "mcp": {},
         "skills": {"paths": [str(work / ".opencode" / "skills")], "urls": []},
         "permission": permission,
-        "agent": {"gaslux-lab": {"mode": "primary", "steps": 4, "permission": permission}},
+        "agent": {"gaslux-lab": {"mode": "primary", "steps": 4, "temperature": 0, "permission": permission}},
         "provider": {"ollama": {"npm": "@ai-sdk/openai-compatible",
                                 "name": "Ollama", "options": {"baseURL": "http://127.0.0.1:11434/v1"},
                                 "models": {factory.MODEL: {"name": factory.MODEL,
-                                    "limit": {"context": 65536, "output": 1000}}}}},
+                                    "limit": {"context": context, "output": 1000},
+                                    **({"options": {"reasoningEffort": "none"}}
+                                       if context == COMPACT_CONTEXT else {})}}}},
     }
     (work / "opencode.json").write_text(json.dumps(config), encoding="utf-8")
     return config
@@ -133,13 +143,21 @@ def decode_candidate(text):
     return addition
 
 
-def parse_events(raw: bytes):
+def parse_events(raw: bytes, observations=None):
     if len(raw) > MAX_EVENTS:
         raise TrialFailure("EVENT_STREAM_OVERSIZE")
     texts, skills = [], []
     counts = {}
+    token_totals = {"input": 0, "output": 0, "reasoning": 0, "cache_read": 0, "cache_write": 0}
+    token_steps = 0
+
+    def record():
+        if observations is not None:
+            observations.update({"event_counts": dict(counts), "reported_tokens": dict(token_totals),
+                                 "token_steps": token_steps})
 
     def fail(category, detail=None):
+        record()
         raise TrialFailure(category, skills=skills, counts=counts, detail=detail)
 
     for line in raw.splitlines():
@@ -162,6 +180,17 @@ def parse_events(raw: bytes):
                        "MessageAbortedError", "ContextOverflowError",
                        "OutputLengthError", "StructuredOutputError")
             fail("OPENCODE_ERROR_EVENT", name if name in allowed else "OTHER")
+        if kind == "step_finish":
+            part = row.get("part")
+            tokens = part.get("tokens") if type(part) is dict else None
+            if type(tokens) is dict:
+                cache = tokens.get("cache")
+                for key in ("input", "output", "reasoning", "cache_read", "cache_write"):
+                    value = (cache.get(key.removeprefix("cache_")) if
+                             key.startswith("cache_") and type(cache) is dict else tokens.get(key))
+                    if type(value) is int and 0 <= value <= 1_000_000:
+                        token_totals[key] += value
+                token_steps += 1
         if kind not in ("text", "tool_use"):
             continue
         part = row.get("part")
@@ -204,6 +233,7 @@ def parse_events(raw: bytes):
         addition = decode_candidate("".join(texts))
     except TrialFailure as error:
         fail(error.category, error.detail)
+    record()
     return addition, sorted(set(skills))
 
 
@@ -306,7 +336,7 @@ def bounded_process(argv, work, env, timeout=900):
             proc.wait()
 
 
-def run_cli(binary: Path, work: Path):
+def run_cli(binary: Path, work: Path, observations=None, correction=None):
     # No GITHUB_TOKEN, credentials, checkout, user config, or job command files
     # in the process environment. This is an experimental permission boundary,
     # not an OS-level sandbox. Third-party provider dependency fetches may occur.
@@ -319,17 +349,65 @@ def run_cli(binary: Path, work: Path):
            "OPENCODE_DISABLE_CLAUDE_CODE": "true",
            "OPENCODE_DISABLE_EXTERNAL_SKILLS": "true",
            "OPENCODE_CONFIG": str(work / "opencode.json"), "CI": "true", "TERM": "dumb"}
+    if correction is not None and correction not in RETRYABLE | {"AST_FUNCTIONAL_REJECTED"}:
+        raise ValueError("Unreviewed repair reason")
+    prompt = AGENT_PROMPT
+    if correction:
+        prompt += "\nPrevious attempt rejected: " + correction + ". Re-read the skill and return corrected source only."
     code, raw, stderr = bounded_process(
         [str(binary), "run", "--format", "json", "--agent", "gaslux-lab",
          "--model", MODEL, "First load the native skill gaslux-history-reuse using the skill tool. "
-         "This is a synthetic read-only coding trial, not repository work. Then " + AGENT_PROMPT],
-        work, env)
+         "This is a synthetic read-only coding trial, not repository work. Then " + prompt],
+        work, env, timeout=480 if correction else 900)
     if code:
         raise cli_failure(code, raw, stderr)
-    return parse_events(raw)
+    return parse_events(raw, observations)
 
 
-def assess(method):
+def model_snapshot():
+    # Ollama /api/ps reports model allocation, not whole-run peak RSS.
+    try:
+        with urllib.request.urlopen("http://127.0.0.1:11434/api/ps", timeout=5) as response:
+            raw = response.read(65537)
+        if len(raw) > 65536:
+            return None
+        data = json.loads(raw)
+        for row in data.get("models", []):
+            if row.get("digest") != factory.MODEL_DIGEST:
+                continue
+            result = {}
+            for key in ("size", "size_vram", "context_length"):
+                value = row.get(key)
+                if type(value) is int and 0 <= value <= 2**50:
+                    result[key] = value
+            return result
+    except (ValueError, TypeError, AttributeError, OSError):
+        pass
+    return None
+
+
+def attempt_candidate(binary, work, context, correction=None):
+    prepare(work, context=context)
+    observations = {}
+    row = assess(lambda: run_cli(binary, work, observations, correction), workspace=work)
+    row.update(observations)
+    row["ollama_loaded_model"] = model_snapshot()
+    return row
+
+
+def bounded_repair(attempt):
+    rows = [attempt(None)]
+    first = rows[0]
+    if not first["accepted"] and SKILL in first["native_skills"]:
+        reason = first["failure"]
+        if first["failure_stage"] == "ast_functional_guard":
+            reason = "AST_FUNCTIONAL_REJECTED"
+        if reason in RETRYABLE | {"AST_FUNCTIONAL_REJECTED"}:
+            rows.append(attempt(reason))
+    return rows[-1], rows
+
+
+def assess(method, workspace=None):
     start = time.monotonic()
     report = {"accepted": False, "native_skills": [], "failure": None,
               "failure_stage": None, "failure_detail": None, "event_counts": {}}
@@ -338,6 +416,17 @@ def assess(method):
         addition, skills = method()
         report["native_skills"] = skills
         stage = "ast_functional_guard"
+        if workspace is not None:
+            # The model has no edit tool. The trusted harness materializes only
+            # a statically admitted function in a fresh private scratch file.
+            factory.validate_addition("mint", addition, execute=False)
+            path = workspace / "candidate.py"
+            with path.open("x", encoding="utf-8", newline="\n") as handle:
+                handle.write(addition)
+            if path.read_bytes() != addition.encode():
+                raise ValueError("Candidate readback mismatch")
+            addition = path.read_text(encoding="utf-8")
+            report["scratch_candidate_materialized"] = True
         factory.validate_addition("mint", addition, execute=True)
         report["accepted"] = True
         report["candidate_sha256"] = factory.sha256(addition.encode())
@@ -358,17 +447,25 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--binary", type=Path, required=True)
     parser.add_argument("--report", type=Path, required=True)
+    parser.add_argument("--context", type=int, choices=(BASELINE_CONTEXT, COMPACT_CONTEXT),
+                        default=BASELINE_CONTEXT)
     args = parser.parse_args()
     binary = args.binary.resolve(strict=True)
     # The exact release archive is verified by the existing job before this CLI.
     with tempfile.TemporaryDirectory(prefix="gaslux-opencode-scratch-") as temp:
         work = Path(temp)
-        prepare(work)
         direct = assess(lambda: (factory.call_model(PROMPT), []))
-        agent = assess(lambda: run_cli(binary, work))
-    report = {"experiment": "opencode-native-skill-synthetic-v4", "version": VERSION,
+        direct["ollama_loaded_model"] = model_snapshot()
+        def attempt(correction):
+            with tempfile.TemporaryDirectory(prefix="attempt-", dir=work) as attempt_dir:
+                return attempt_candidate(binary, Path(attempt_dir), args.context, correction)
+        agent, attempts = bounded_repair(attempt)
+    report = {"experiment": "opencode-native-skill-synthetic-v5", "version": VERSION,
               "model": factory.MODEL, "model_digest": factory.MODEL_DIGEST,
-              "direct_num_ctx": 5800, "opencode_configured_context": 65536,
+              "direct_num_ctx": 5800, "opencode_configured_context": args.context,
+              "opencode_requested_reasoning_effort": "none" if args.context == COMPACT_CONTEXT else None,
+              "opencode_attempts": attempts, "max_attempts": MAX_ATTEMPTS,
+              "native_edit_or_shell_enabled": False, "os_sandbox_verified": False,
               "direct_response_contract": "structured_json",
               "opencode_response_contract": "one_source_function_or_exact_json_envelope",
               "stream_limit_bytes": MAX_EVENTS, "internal_file_limit_bytes": MAX_INTERNAL_FILE,

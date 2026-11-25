@@ -182,6 +182,51 @@ class OpenCodeTrialTests(unittest.TestCase):
         self.assertEqual(row["failure_stage"], "ast_functional_guard")
         self.assertEqual(row["native_skills"], [trial.SKILL])
 
+    def test_compact_profile_is_explicit_and_keeps_tool_permissions(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            config = trial.prepare(Path(tmp), context=trial.COMPACT_CONTEXT)
+            model = config["provider"]["ollama"]["models"][trial.factory.MODEL]
+            self.assertEqual(model["limit"]["context"], 16384)
+            self.assertEqual(model["options"]["reasoningEffort"], "none")
+            self.assertEqual(config["permission"]["*"], "deny")
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(ValueError):
+                trial.prepare(Path(tmp), context=1)
+
+    def test_metrics_and_native_skill_are_bounded(self):
+        rows = event_rows()
+        rows.insert(0, {"type": "step_finish", "part": {"tokens": {
+            "input": 123, "output": 45, "reasoning": 4, "cache": {"read": 10, "write": 0}}}})
+        metrics = {}
+        trial.parse_events(encode(rows), metrics)
+        self.assertEqual(metrics["event_counts"]["tool_use"], 1)
+        self.assertEqual(metrics["reported_tokens"]["input"], 123)
+        self.assertEqual(metrics["reported_tokens"]["cache_read"], 10)
+        self.assertEqual(metrics["token_steps"], 1)
+
+    def test_repair_retries_only_known_model_rejections(self):
+        calls = []
+        def attempt(reason):
+            calls.append(reason)
+            return {"accepted": bool(reason), "native_skills": [trial.SKILL],
+                    "failure": "CANDIDATE_FORMAT_INVALID", "failure_stage": "opencode_events"}
+        final, rows = trial.bounded_repair(attempt)
+        self.assertEqual(calls, [None, "CANDIDATE_FORMAT_INVALID"])
+        self.assertEqual(len(rows), 2)
+        self.assertTrue(final["accepted"])
+        for category, skills in (("CLI_TIMEOUT", [trial.SKILL]), ("CANDIDATE_FORMAT_INVALID", [])):
+            final, rows = trial.bounded_repair(lambda _: {"accepted": False, "native_skills": skills,
+                "failure": category, "failure_stage": "opencode_events"})
+            self.assertEqual(len(rows), 1)
+
+    def test_scratch_materialization_does_not_write_rejected_ast(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            work = Path(tmp)
+            row = trial.assess(lambda: (trial.SIGNATURE + "\n    import os\n    return {}", [trial.SKILL]),
+                               workspace=work)
+            self.assertFalse(row["accepted"])
+            self.assertFalse((work / "candidate.py").exists())
+
     def test_agent_prompt_does_not_require_double_json(self):
         self.assertIn("Return only the Python function source", trial.AGENT_PROMPT)
         self.assertNotIn("Return exactly one JSON object", trial.AGENT_PROMPT)
