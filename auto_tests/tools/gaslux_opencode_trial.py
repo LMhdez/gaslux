@@ -84,7 +84,7 @@ def prepare(work: Path, source: Path = ROOT, *, context=BASELINE_CONTEXT):
                                 "name": "Ollama", "options": {"baseURL": "http://127.0.0.1:11434/v1"},
                                 "models": {factory.MODEL: {"name": factory.MODEL,
                                     "limit": {"context": context, "output": 1000},
-                                    **({"options": {"reasoningEffort": "none"}}
+                                    **({"options": {"reasoningEffort": "low"}}
                                        if context == COMPACT_CONTEXT else {})}}}},
     }
     (work / "opencode.json").write_text(json.dumps(config), encoding="utf-8")
@@ -509,7 +509,7 @@ def main():
     report = {"experiment": "opencode-native-skill-synthetic-v5", "version": VERSION,
               "model": factory.MODEL, "model_digest": factory.MODEL_DIGEST,
               "direct_num_ctx": 5800, "opencode_configured_context": args.context,
-              "opencode_requested_reasoning_effort": "none" if args.context == COMPACT_CONTEXT else None,
+              "opencode_requested_reasoning_effort": "low" if args.context == COMPACT_CONTEXT else None,
               "opencode_attempts": attempts, "max_attempts": MAX_ATTEMPTS,
               "native_edit_or_shell_enabled": False, "os_sandbox_verified": False,
               "direct_response_contract": "structured_json",

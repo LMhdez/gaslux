@@ -81,28 +81,60 @@ def source_task(tree, role, base):
                               "trailing commas, max 100 columns; one function only."}
 
 
+def regression_counts(raw, code):
+    # pytest emits duration after "passed"; parse the structured JUnit witness
+    # instead of depending on terminal formatting, ANSI escapes or duration.
+    import xml.etree.ElementTree as ET
+    result = {"passed": 0, "failed": 0, "errors": 0, "skipped": 0,
+              "exit_code": code, "accepted": False}
+    if not raw or len(raw) > 2 * 1024**2 or b"<!DOCTYPE" in raw.upper() or b"<!ENTITY" in raw.upper():
+        return result
+    try:
+        root = ET.fromstring(raw)
+        suites = [root] if root.tag == "testsuite" else list(root) if root.tag == "testsuites" else []
+        if len(suites) != 1 or suites[0].tag != "testsuite":
+            return result
+        suite = suites[0]
+        counts = {k: int(suite.attrib[k]) for k in ("tests", "failures", "errors", "skipped")}
+        cases = suite.findall("testcase")
+        if not 0 < counts["tests"] <= 10000 or len(cases) != counts["tests"]:
+            return result
+        observed = {k: sum(case.find(tag) is not None for case in cases)
+                    for k, tag in (("failures", "failure"), ("errors", "error"), ("skipped", "skipped"))}
+        if any(counts[k] != n for k, n in observed.items()):
+            return result
+        passed = counts["tests"] - sum(observed.values())
+        if passed < 0 or any(sum(case.find(tag) is not None for tag in ("failure", "error", "skipped")) > 1
+                             for case in cases):
+            return result
+        result.update(passed=passed, failed=counts["failures"], errors=counts["errors"],
+                      skipped=counts["skipped"])
+        result["accepted"] = code == 0 and passed > 0 and not any(observed.values())
+    except (ET.ParseError, ValueError, KeyError):
+        pass
+    return result
+
+
 def regression(tree, dependencies, role, work):
     suite = factory.TASKS[role][1]
     if not dependencies.is_dir() or dependencies.is_symlink():
         raise ValueError("SHADOW_TEST_DEPENDENCIES")
-    # Product tree is read-only inside separate namespace; no model/broker
-    # sockets, host checkout, host home or secrets. Test tmp/caches isolated.
-    argv = boundary.sandbox_base() + [
-        "--ro-bind", str(tree), "/product", "--ro-bind", str(dependencies), "/deps",
-        "--bind", str(work), "/scratch", "--setenv", "HOME", "/scratch",
-        "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "PYTHONPATH", "/deps",
-        "--setenv", "PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1",
-        "--setenv", "PYTHONDONTWRITEBYTECODE", "1", "--chdir", "/product",
-        "/usr/bin/python3", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider",
-        "auto_tests/tests/" + suite]
-    code, stdout, _ = trial.bounded_process(argv, work, {"PATH": "/usr/bin:/bin"}, timeout=120)
-    # Keep only bounded counts, not stdout or filenames supplied by tests.
-    import re
-    matches = re.findall(rb"(?m)^(?:=+ )?([0-9]{1,6}) passed(?:[ ,].*)?$", stdout)
-    count = int(matches[-1]) if matches else 0
-    failed = re.findall(rb"(?m)^(?:=+ )?([0-9]{1,6}) failed(?:[ ,].*)?$", stdout)
-    return {"passed": count, "failed": int(failed[-1]) if failed else 0,
-            "exit_code": code, "accepted": code == 0 and count > 0}
+    with tempfile.TemporaryDirectory(prefix="regression-", dir=work) as tmp:
+        scratch = Path(tmp)
+        argv = boundary.sandbox_base() + [
+            "--ro-bind", str(tree), "/product", "--ro-bind", str(dependencies), "/deps",
+            "--bind", str(scratch), "/scratch", "--setenv", "HOME", "/scratch",
+            "--setenv", "PATH", "/usr/bin:/bin", "--setenv", "PYTHONPATH", "/deps",
+            "--setenv", "PYTEST_DISABLE_PLUGIN_AUTOLOAD", "1",
+            "--setenv", "PYTHONDONTWRITEBYTECODE", "1", "--chdir", "/product",
+            "/usr/bin/python3", "-B", "-m", "pytest", "-q", "-p", "no:cacheprovider",
+            "--junitxml=/scratch/result.xml", "auto_tests/tests/" + suite]
+        code, _, _ = trial.bounded_process(argv, scratch, {"PATH": "/usr/bin:/bin"}, timeout=120)
+        try:
+            raw = broker.read_bounded(scratch / "result.xml", 2 * 1024**2)
+        except (OSError, ValueError):
+            raw = b""
+        return regression_counts(raw, code)
 
 
 def style_check(tree, dependencies, role, work):

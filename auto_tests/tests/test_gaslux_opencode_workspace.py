@@ -486,6 +486,20 @@ class WorkspaceTests(unittest.TestCase):
                 with self.assertRaises(ValueError):
                     i.task_for("mint", {**task, "merge_authorized": True})
 
+    def test_regression_junit_requires_real_nonempty_matching_cases(self):
+        import gaslux_opencode_product_shadow as shadow
+        good = b'<testsuites><testsuite tests="2" failures="0" errors="0" skipped="0"><testcase/><testcase/></testsuite></testsuites>'
+        self.assertEqual(shadow.regression_counts(good, 0)["passed"], 2)
+        self.assertTrue(shadow.regression_counts(good, 0)["accepted"])
+        for raw, code in ((good, 1), (b"", 0), (good.replace(b'tests="2"', b'tests="3"'), 0),
+                          (good.replace(b'<testcase/>', b'<testcase><failure/></testcase>', 1), 0),
+                          (b'<!DOCTYPE x>' + good, 0)):
+            self.assertFalse(shadow.regression_counts(raw, code)["accepted"])
+        red = good.replace(b'failures="0"', b'failures="1"').replace(
+            b'<testcase/>', b'<testcase><failure/></testcase>', 1)
+        self.assertEqual(shadow.regression_counts(red, 1)["failed"], 1)
+        self.assertFalse(shadow.regression_counts(red, 1)["accepted"])
+
     def test_verified_journal_and_independent_final_recheck(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)

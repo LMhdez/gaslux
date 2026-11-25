@@ -229,7 +229,7 @@ class OpenCodeTrialTests(unittest.TestCase):
             config = trial.prepare(Path(tmp), context=trial.COMPACT_CONTEXT)
             model = config["provider"]["ollama"]["models"][trial.factory.MODEL]
             self.assertEqual(model["limit"]["context"], 16384)
-            self.assertEqual(model["options"]["reasoningEffort"], "none")
+            self.assertEqual(model["options"]["reasoningEffort"], "low")
             self.assertEqual(config["permission"]["*"], "deny")
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(ValueError):
