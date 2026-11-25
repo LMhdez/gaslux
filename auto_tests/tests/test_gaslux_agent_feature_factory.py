@@ -726,5 +726,69 @@ class FeatureFactoryTests(unittest.TestCase):
                 publisher.index("GH_TOKEN: ${{ steps.publish_identity.outputs.token"),
             )
 
+class DeterministicRepairTests(unittest.TestCase):
+    HEAD, BASE = "a" * 40, "b" * 40
+
+    def test_repair_artifact_bound_to_identity_bytes_and_non_writer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / factory.TASKS["zorin"][0]
+            path.parent.mkdir(parents=True)
+            path.write_text("# existing source\n")
+            evidence = root / "evidence"
+            with patch.object(factory, "git", return_value=self.BASE):
+                factory.generate_repair(root, evidence, "zorin", self.BASE, 395, self.HEAD)
+                result = factory.verify(root, evidence, "zorin", self.BASE, execute=True,
+                                        repair_pr=395, repair_head=self.HEAD)
+                self.assertEqual(result["producer"], "trusted-fixed-lifecycle-repair-v1")
+                self.assertNotIn("model", result)
+                for args in ({}, {"repair_pr": 396, "repair_head": self.HEAD},
+                             {"repair_pr": 395, "repair_head": self.BASE}):
+                    with self.assertRaises(ValueError):
+                        factory.verify(root, evidence, "zorin", self.BASE, execute=False, **args)
+                raw = (evidence / "addition.py").read_bytes()
+                (evidence / "addition.py").write_bytes(raw.replace(b"False", b"True"))
+                with self.assertRaises(ValueError):
+                    factory.verify(root, evidence, "zorin", self.BASE, execute=False,
+                                   repair_pr=395, repair_head=self.HEAD)
+
+    def test_repair_role_and_identity_fail_closed(self):
+        for number, head in ((True, self.HEAD), (0, self.HEAD), (395, None),
+                             (None, self.HEAD), (395, "bad")):
+            with self.assertRaises(ValueError):
+                factory.repair_identity(number, head)
+        with self.assertRaises(ValueError):
+            factory.repair_addition("mint")
+        for role in ("zorin", "cachyos", "popos", "q4os", "bazzite"):
+            factory.validate_addition(role, factory.repair_addition(role), execute=True)
+
+    def test_repair_publisher_denies_changed_eligibility_before_git_or_push(self):
+        env = {"GITHUB_REPOSITORY": factory.REPO, "GITHUB_REF": "refs/heads/main",
+               "GH_TOKEN": "fixture-publisher", "GASLUX_REPAIR_READ_TOKEN": "fixture-reader"}
+        with patch.dict("os.environ", env, clear=True), \
+             patch.object(factory, "verify"), \
+             patch.object(factory, "repair_plan", return_value=None) as plan, \
+             patch.object(factory, "git") as git:
+            with self.assertRaisesRegex(RuntimeError, "no longer eligible"):
+                factory.publish(Path("."), Path("."), "zorin", self.BASE,
+                                repair_pr=395, repair_head=self.HEAD)
+            plan.assert_called_once()
+            git.assert_not_called()
+            self.assertEqual(__import__("os").environ["GH_TOKEN"], "fixture-publisher")
+
+    def test_workflow_reuses_existing_isolated_jobs(self):
+        workflow = (SCRIPT.parents[2] /
+                    ".github/workflows/gaslux-agent-feature-factory.yml").read_text()
+        model = workflow.split("  model:\n", 1)[1].split("  safety:\n", 1)[0]
+        safety = workflow.split("  safety:\n", 1)[1].split("  publish_draft:\n", 1)[0]
+        publisher = workflow.split("  publish_draft:\n", 1)[1].split("  triage_missing_gates:\n", 1)[0]
+        self.assertIn("if: needs.select.outputs.repair_pr == ''", model)
+        for part in (model, safety, publisher):
+            self.assertIn('--repair-pr "$REPAIR_PR" --repair-head "$REPAIR_HEAD"', part)
+        self.assertNotIn("GASLUX_REPAIR_READ_TOKEN", model)
+        self.assertNotIn("GASLUX_REPAIR_READ_TOKEN", safety)
+        self.assertIn("needs.safety.result == 'success'", publisher)
+
+
 if __name__ == "__main__":
     unittest.main()
