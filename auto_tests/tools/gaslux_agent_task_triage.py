@@ -585,13 +585,86 @@ def sync_implementation_gap(root, *, dry_run=False, eligible_reason=None):
     return {"status": "no_unclaimed_implementation_gap", "discovered": len(candidates)}
 
 
+def sync_historical_reconciliation(*, dry_run=False):
+    """Route one unique historical PR to an exact-head reconciliation mission."""
+    if (os.getenv("GITHUB_REPOSITORY") != REPO
+            or os.getenv("GITHUB_REF") != "refs/heads/main"
+            or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
+            or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true"):
+        raise RuntimeError("Trusted unpaused main event required")
+    import gaslux_agent_reconcile as reconcile
+    import gaslux_distro_admission as admission
+    report = reconcile.historical_inventory()
+    issues = all_issues()
+
+    def tracked(rows, marker, title):
+        return any((i.get("user") or {}).get("id") == 41898282
+                   and (i.get("user") or {}).get("login") == TRUSTED_TASK_BOT
+                   and i.get("repository_url") == API and i.get("title") == title
+                   and str(i.get("body", "")).splitlines()[:1] == [marker]
+                   for i in rows)
+
+    for row in report["findings"]:
+        if row["status"] != "UNIQUE_COMMITS_REQUIRE_RECONCILIATION":
+            continue
+        number, head, base, target = row["pr"], row["head"], row["base"], row["target"]
+        if (type(number) is not int or not 1 <= number <= 1000000
+                or not admission.valid_sha(head) or not admission.valid_sha(base)
+                or target not in ("dev", "main")):
+            raise ValueError("Malformed historical reconciliation identity")
+        marker = f"<!-- GASLUX-HISTORICAL-RECONCILE-V1:{number}:{head} -->"
+        title = f"[GASLUX-RECONCILE] #{number}: preserve unique changes"
+        if tracked(issues, marker, title):
+            continue
+        pr = admission.api("GET", f"/pulls/{number}")
+        if (pr.get("state") != "open" or pr["head"]["sha"] != head
+                or pr["base"]["ref"] != target or pr["base"]["sha"] != base
+                or pr["head"]["repo"]["full_name"] != REPO
+                or pr["base"]["repo"]["full_name"] != REPO):
+            continue
+        relation = admission.api("GET", f"/compare/{head}...{base}")
+        if (type(relation.get("behind_by")) is not int
+                or relation["behind_by"] <= 0
+                or relation["behind_by"] != row["unique_head_commits"]):
+            continue
+        payload = {"title": title, "body": (
+            marker + "\n\n"
+            f"Historical PR #{number}, exact HEAD {head}, target {target} at {base}.\n"
+            f"Unique historical commits: {row['unique_head_commits']}.\n\n"
+            "Compare ancestry and exact changed paths; identify superseding work, "
+            "unresolved review findings, conflicting changes and distinct evidence. "
+            "Preserve the original branch and PR. If needed, prepare a minimal "
+            "successor Draft with fresh tests and independent review; do not transfer "
+            "historical approvals or close the original before proving equivalence. "
+            "No force-push, automatic merge, disk writes or release authorization.")}
+        if dry_run:
+            return {"status": "historical_reconciliation_dry_run", "pr": number,
+                    "head": head, "base": base, "target": target}
+        fresh = admission.api("GET", f"/pulls/{number}")
+        if (fresh["head"]["sha"] != head or fresh["base"]["sha"] != base
+                or fresh.get("state") != "open"
+                or admission.api("GET", f"/git/ref/heads/{target}")["object"]["sha"] != base
+                or tracked(all_issues(), marker, title)):
+            return {"status": "historical_reconciliation_drift"}
+        created = api("POST", "/issues", payload)
+        if type(created.get("number")) is not int or created["number"] <= 0:
+            raise RuntimeError("GitHub did not confirm reconciliation issue")
+        return {"status": "historical_reconciliation_routed", "pr": number,
+                "issue": created["number"], "head": head, "base": base, "target": target}
+    return {"status": "no_unclaimed_historical_reconciliation"}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--with-admission-repair", action="store_true")
     parser.add_argument("--with-implementation-discovery", action="store_true")
+    parser.add_argument("--historical-reconciliation", action="store_true")
     args = parser.parse_args()
+    if args.historical_reconciliation:
+        print(json.dumps(sync_historical_reconciliation(dry_run=args.dry_run), sort_keys=True))
+        return
     result = sync_admission_repair(dry_run=args.dry_run) if args.with_admission_repair else {
         "status": "no_repair_action"
     }
