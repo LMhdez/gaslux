@@ -17,12 +17,13 @@ import gaslux_agent_feature_factory as factory
 import gaslux_distro_admission as admission
 import gaslux_dynamic_development as dynamic
 import gaslux_multifile_development as multi
+import gaslux_candidate_repair as repair
 
 DYNAMIC_SCOPE = "dynamic-test-demanded-api-v1"
 MULTIFILE_SCOPE = "dynamic-multifile-api-v1"
 PRODUCT_SCOPES = (factory.SUPERVISED_MEDIA_SCOPE, DYNAMIC_SCOPE, MULTIFILE_SCOPE)
-MULTIFILE_BRANCH = re.compile(r"bot/gaslux-multi-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}-[0-9a-f]{12}")
-DYNAMIC_BRANCH = re.compile(r"bot/gaslux-dynamic-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}-[0-9a-f]{12}")
+MULTIFILE_BRANCH = re.compile(r"bot/gaslux-multi-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}-[0-9a-f]{12}(?:-r[1-9][0-9]{0,6}-[0-9a-f]{12})?")
+DYNAMIC_BRANCH = re.compile(r"bot/gaslux-dynamic-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}-[0-9a-f]{12}(?:-r[1-9][0-9]{0,6}-[0-9a-f]{12})?")
 
 BRANCH = re.compile(r"bot/gaslux-(test|pins)-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}")
 
@@ -57,6 +58,39 @@ def discover():
     return result
 
 
+def verify_repair_branch(pr, role, head, parent, branch, paths, scope):
+    actual = pr["head"]["ref"]
+    if actual == branch:
+        return
+    match = re.fullmatch(re.escape(branch) + r"-r([1-9][0-9]{0,6})-([0-9a-f]{12})", actual)
+    if not match:
+        raise ValueError("Invalid successor branch")
+    n = int(match.group(1))
+    if n == pr.get("number") or n > 1000000:
+        raise ValueError("Invalid predecessor")
+    old = admission.api("GET", f"/pulls/{n}")
+    prior_head = old.get("head", {}).get("sha")
+    if (old.get("number") != n or not admission.valid_sha(prior_head)
+            or prior_head[:12] != match.group(2) or prior_head == head
+            or old["head"]["ref"] != branch or old["base"]["ref"] != "dev"
+            or old["head"]["repo"]["full_name"] != admission.REPO
+            or old["base"]["repo"]["full_name"] != admission.REPO
+            or not admission.publisher_ok(old.get("user") or {})
+            or old.get("merged") is not False):
+        raise ValueError("Unverified repair predecessor")
+    reviewer, owners = configured_reviewers()
+    owner = owners.get(role)
+    if (reviewer is None or owner is None or reviewer == owner
+            or reviewer in admission.BOTS.values() or owner in admission.BOTS.values()
+            or old["user"]["id"] in (reviewer, owner)
+            or not repair.negative_reviews(admission, n, prior_head, (reviewer, owner))
+            or canonical_scope(old, role, scope, prior_head) != parent):
+        raise ValueError("Independent predecessor rejection not verified")
+    previous = {name: repair.semantic_hash(admission.source_at(name, prior_head)) for name in paths}
+    if all(repair.semantic_hash(admission.source_at(name, head)) == previous[name] for name in paths):
+        raise ValueError("Successor is semantically unchanged")
+
+
 def dynamic_scope(pr, role, head):
     """Recover the task from immutable source/test bytes, not PR prose."""
     if pr.get("commits") != 1:
@@ -81,9 +115,11 @@ def dynamic_scope(pr, role, head):
             p.parent.mkdir(parents=True, exist_ok=True)
             p.write_bytes(admission.source_at(name, parent))
         task = dynamic.select_task(root, key)
-        if (task["role"] != role or pr["head"]["ref"] != dynamic.branch_for(task, parent)
+        if (task["role"] != role
                 or dynamic.candidate_bytes(before, symbol, generated) != after):
             raise ValueError("Dynamic task/branch or exact bytes mismatch")
+        verify_repair_branch(pr, role, head, parent, dynamic.branch_for(task, parent),
+                             [source], DYNAMIC_SCOPE)
     return parent
 
 
@@ -130,8 +166,7 @@ def multifile_scope(pr, role, head):
             raise ValueError("Multifile mission cannot be reconstructed")
         task = tasks[0]
         branch = f"bot/gaslux-multi-{role}-{task['key'][6:18]}-{parent[:12]}"
-        if pr["head"]["ref"] != branch:
-            raise ValueError("Multifile branch mismatch")
+        verify_repair_branch(pr, role, head, parent, branch, names, MULTIFILE_SCOPE)
         proposed = {}
         for name in names:
             before = (root / name).read_bytes()
