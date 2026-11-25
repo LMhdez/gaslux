@@ -514,6 +514,40 @@ class WorkspaceTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 worker.route({**row, **change})
 
+    def test_worker_exact_artifact_roundtrip_and_tamper_rejection(self):
+        import gaslux_opencode_factory_worker as worker
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source = root / b.factory.TASKS["mint"][0]
+            source.parent.mkdir(parents=True)
+            source.write_bytes(b"# baseline\n")
+            addition = correct().encode()
+            before, after = b.factory.expected_source(root, "mint", addition.decode(), formatted_repair=True)
+            report = {"scope": "lifecycle", "composition": "opencode-python-v1", "role": "mint",
+                      "base": "a"*40, "target": b.factory.TASKS["mint"][0],
+                      "task": b.factory.TASKS["mint"][2], "model": b.factory.MODEL,
+                      "model_digest": b.factory.MODEL_DIGEST, "source_sha256": b.factory.sha256(before),
+                      "addition_sha256": b.factory.sha256(addition),
+                      "candidate_sha256": b.factory.sha256(after)}
+            result = {"accepted": True, "product_regressions_run": True,
+                      "factory_artifact_contract_verified": True, "role": "mint",
+                      "base": "a"*40, "candidate_sha256": report["candidate_sha256"]}
+            dest = root / "candidate"
+            with patch.object(b.factory, "git", return_value="a"*40):
+                worker.export(root, "mint", "a"*40, result,
+                              [(addition, json.dumps(report).encode())], dest)
+                self.assertEqual(b.factory.verify(root, dest, "mint", "a"*40, execute=False), report)
+                self.assertEqual((dest / "addition.py").read_bytes(), addition)
+                self.assertEqual(source.read_bytes(), before)
+                for change in ({"composition": "unknown"}, {"source_sha256": "0"*64},
+                               {"addition_sha256": "0"*64}, {"candidate_sha256": "0"*64}):
+                    bad = root / "bad"
+                    with self.assertRaises(ValueError):
+                        worker.export(root, "mint", "a"*40, result,
+                                      [(addition, json.dumps({**report, **change}).encode())], bad)
+                    self.assertFalse(bad.exists())
+
     def test_worker_export_rejects_failed_shadow_without_writing(self):
         import gaslux_opencode_factory_worker as worker
         with tempfile.TemporaryDirectory() as tmp:

@@ -6,7 +6,42 @@ on:
     - cron: '6,21,36,51 * * * *' # staggered scheduler registration refresh
   workflow_dispatch:
     inputs:
-      repair_live_probe:
+          - name: Checkout actual dev for autonomous route probe
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 419 && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          path: route-source
+          persist-credentials: false
+      - name: Probe current real task selection without inference or repository writes
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 419 && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 -B auto_tests/tools/gaslux_agent_feature_factory.py plan --repo route-source --enable-stale-repair > "$RUNNER_TEMP/gaslux-route-plan.json"
+          python3 -B - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          sys.path.insert(0, 'auto_tests/tools')
+          from gaslux_opencode_factory_worker import route
+          root = Path(os.environ['RUNNER_TEMP'])
+          plan = json.loads((root / 'gaslux-route-plan.json').read_text())
+          row = {k: plan.get(k) for k in ('status', 'role', 'scope', 'base', 'repair_pr', 'repair_head')}
+          row.update(worker=route(plan), probe_only=True, publication_authorized=False)
+          print(json.dumps(row, sort_keys=True))
+          (root / 'gaslux-route-receipt.json').write_text(json.dumps(row, sort_keys=True) + '\n')
+          PY
+      - name: Retain actual task route receipt only
+        if: github.event_name == 'pull_request' && github.event.pull_request.number == 419 && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-autonomous-route-probe
+          path: ${{ runner.temp }}/gaslux-route-receipt.json
+          if-no-files-found: error
+          retention-days: 14
+
+  repair_live_probe:
     # Read-only candidate-branch experiment. Never runs the publisher.
     if: >-
       github.event_name == 'pull_request' &&
@@ -204,7 +239,13 @@ jobs:
   contracts:
     if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'push' || github.event_name == 'pull_request')
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 8
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      checks: read
+      issues: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -638,6 +679,8 @@ jobs:
           python3 -m pip install --target "$RUNNER_TEMP/gaslux-shadow-deps" 'pytest==9.0.2' 'jsonschema==4.25.1' 'cryptography==44.0.3' 'ruff==0.17.6'
       - name: Run exact admitted OpenCode lifecycle task
         if: needs.select.outputs.worker == 'opencode'
+        env:
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
         run: |
           set -euo pipefail
           python3 -B trusted/auto_tests/tools/gaslux_opencode_factory_worker.py \
