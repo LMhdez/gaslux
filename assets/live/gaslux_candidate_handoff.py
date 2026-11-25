@@ -175,7 +175,22 @@ def verify_handoff(
         "antiReplayDurableStateVerified": False,
     }
 
+
 def assess_zorin_lifecycle(evidence: dict) -> dict:
-    gates = ('source-authenticity', 'windows-preflight', 'install', 'linux-first-boot', 'windows-return', 'linux-update-reboot', 'uninstall-windows-integrity', 'fault-injection-rollback')
+    gates = (
+        "source-authenticity",
+        "windows-preflight",
+        "install",
+        "linux-first-boot",
+        "windows-return",
+        "linux-update-reboot",
+        "uninstall-windows-integrity",
+        "fault-injection-rollback",
+    )
     missingGates = sorted([name for name in gates if evidence.get(name) is not True])
-    return {'backend': 'zorin', 'missingGates': missingGates, 'installationAuthorized': False, 'releaseEligible': False}
+    return {
+        "backend": "zorin",
+        "missingGates": missingGates,
+        "installationAuthorized": False,
+        "releaseEligible": False,
+    }
