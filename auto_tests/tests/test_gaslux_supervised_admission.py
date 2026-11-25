@@ -231,5 +231,54 @@ class SupervisedIntegrationTests(unittest.TestCase):
                 self.assertEqual(writes, [], scenario)
 
 
+class IndependentSafetyTests(unittest.TestCase):
+    def test_separate_identity_and_exact_review(self):
+        env = {"GITHUB_REPOSITORY": A.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule", "GASLUX_AUTONOMY_PAUSED": "",
+               "GH_TOKEN": "fixture-only"}
+        row = {"next_action": "INDEPENDENT_SAFETY_REVIEW", "technical_objection": False,
+               "base": BASE, **{key: True for key in (
+                   "exact_scope_verified", "current_base_verified",
+                   "ci_workflow_provenance_verified", "ci_verified")}}
+        for scenario in ("valid", "wrong_actor", "shared_owner", "missing_token", "bad_ci",
+                         "product", "drift", "stale_review"):
+            candidate = dict(row)
+            if scenario == "bad_ci":
+                candidate["ci_verified"] = False
+            writes = []
+            def api(method, route, body=None):
+                if method == "POST":
+                    writes.append((route, body))
+                    return {"id": 10, "user": {"id": 123}, "commit_id": HEAD, "state": "APPROVED"}
+                if route == "/pulls/500":
+                    return {"user": {"id": 41898282}, "head": {"sha": HEAD},
+                            "base": {"sha": BASE}, "state": "open"}
+                if route.endswith("/reviews?per_page=100"):
+                    return [{"user": {"id": 123}, "state": "DISMISSED"}] if scenario == "stale_review" else []
+                if route == "/git/ref/heads/dev":
+                    return {"object": {"sha": BASE}}
+                self.fail(route)
+            actor = type("Response", (), {"stdout": '{"id": %d}' % (999 if scenario == "wrong_actor" else 123)})()
+            owners = {ROLE: 123 if scenario == "shared_owner" else 456}
+            current = dict(env)
+            if scenario == "missing_token":
+                current["GH_TOKEN"] = ""
+            scope = F.SUPERVISED_MEDIA_SCOPE if scenario == "product" else SCOPE
+            with patch.dict(os.environ, current), patch.object(gate, "configured_reviewers", return_value=(123, owners)), patch.object(gate.subprocess, "run", return_value=actor), patch.object(gate, "discover", return_value={500: (ROLE, scope, HEAD)}), patch.object(gate, "inspect", side_effect=[candidate, {} if scenario == "drift" else candidate]), patch.object(A, "api", side_effect=api):
+                if scenario == "wrong_actor":
+                    with self.assertRaises(ValueError):
+                        gate.independent_safety_review()
+                else:
+                    result = gate.independent_safety_review()
+                    self.assertEqual(result["status"] == "reviewed", scenario == "valid")
+            if scenario == "valid":
+                self.assertEqual(len(writes), 1)
+                self.assertEqual(writes[0][1]["commit_id"], HEAD)
+                self.assertEqual(writes[0][1]["body"].splitlines()[0],
+                                 f"GASLUX-SAFETY-V1 head={HEAD} base={BASE}")
+            else:
+                self.assertEqual(writes, [], scenario)
+
+
 if __name__ == "__main__":
     unittest.main()
