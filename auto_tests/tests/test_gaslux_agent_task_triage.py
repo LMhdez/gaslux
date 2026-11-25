@@ -515,5 +515,29 @@ class ImplementationDiscoveryTests(unittest.TestCase):
                 triage.discover_missing_implementations(root)
 
 
+    def test_missing_api_has_existing_test_witness_and_no_execution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source, test, _ = triage.TASKS["zorin"]
+            path = root / source
+            path.parent.mkdir(parents=True)
+            path.write_text("def available():\n    return 1\n")
+            suite = root / "auto_tests/tests" / test
+            suite.parent.mkdir(parents=True)
+            module = path.stem
+            suite.write_text(
+                f"from {module} import missing_api, available, unused_api\n"
+                "def test_requested():\n    assert missing_api() == available()\n"
+            )
+            rows = triage.discover_missing_implementations(root)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["symbol"], "missing_api")
+            self.assertEqual(rows[0]["reason"], "TEST_REQUIRES_MISSING_API")
+            self.assertEqual(rows[0]["witness"], "auto_tests/tests/" + test)
+            self.assertFalse(rows[0]["code_authorized"])
+            path.write_text("def __getattr__(name):\n    return None\n")
+            self.assertEqual(triage.discover_missing_implementations(root), [])
+
+
 if __name__ == "__main__":
     unittest.main()
