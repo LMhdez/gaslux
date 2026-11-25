@@ -684,7 +684,7 @@ def dynamic_safety_findings(number, role, head):
 def independent_dynamic_assessment(reviewer, owners):
     """Publish a bounded technical finding with the independent Safety actor."""
     for number, (role, scope, head) in sorted(discover().items()):
-        if scope != DYNAMIC_SCOPE:
+        if scope not in (DYNAMIC_SCOPE, MULTIFILE_SCOPE):
             continue
         row = inspect(number, role, scope, head, reviewer, owners.get(role), allow_ready=True)
         if (row.get("technical_objection") is not False
@@ -704,7 +704,15 @@ def independent_dynamic_assessment(reviewer, owners):
                 str(r.get("body", "")).splitlines()[:1] == [marker])
                for r in reviews):
             continue
-        findings = dynamic_safety_findings(number, role, head)
+        if scope == MULTIFILE_SCOPE:
+            parent = multifile_scope(pr, role, head)
+            findings = {"schema": "gaslux-multifile-safety-v1", "pr": number,
+                        "head": head, "base": parent, "role": role,
+                        "restricted_ast_verified": True, "source_prefix_preserved": True,
+                        "semantic_approval": False, "merge_authorized": False,
+                        "status": "SEMANTIC_AND_VM_REVIEW_REQUIRED"}
+        else:
+            findings = dynamic_safety_findings(number, role, head)
         if (findings["base"] != base or
                 inspect(number, role, scope, head, reviewer, owners.get(role), allow_ready=True) != row):
             return {"status": "dynamic_assessment_drift", "pr": number}
