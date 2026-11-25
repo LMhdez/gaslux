@@ -509,11 +509,11 @@ def sync_implementation_gap(root, *, dry_run=False):
         if overlap:
             continue
         payload = {"title": title, "body": (
-            marker + "\\n\\n"
-            f"Concrete source gap, assigned backend: {row['role']}.\\n"
+            marker + "\n\n"
+            f"Concrete source gap, assigned backend: {row['role']}.\n"
             f"Exact dev: {base}; source: {row['source']}:{row['line']}; "
-            f"symbol: {row['symbol']}; source SHA256: {row['source_sha256']}.\\n"
-            f"Regression suite: {row['test']}.\\n"
+            f"symbol: {row['symbol']}; source SHA256: {row['source_sha256']}.\n"
+            f"Regression suite: {row['test']}.\n"
             "Investigate callers and native semantics; reproduce the missing behavior, "
             "define positive and adversarial tests, then propose the smallest isolated implementation. "
             "This discovery does not authorize arbitrary code, protected writers, installation, "
