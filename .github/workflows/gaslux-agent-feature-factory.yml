@@ -46,6 +46,114 @@ jobs:
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_task_triage.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_phase2b.py -v
 
+
+  repair_live_probe:
+    # Read-only candidate-branch experiment. Never runs the publisher.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.repository == 'LMhdez/gaslux' &&
+      github.event.pull_request.head.repo.full_name == 'LMhdez/gaslux' &&
+      github.head_ref == 'feat/autonomous-safety-repair-triage'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      checks: read
+      issues: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          path: source
+          persist-credentials: false
+      - name: Resolve a real eligible stale candidate, no repository writes
+        id: probe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/repair-probe
+          python3 -B - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path("trusted/auto_tests/tools").resolve()))
+          import gaslux_agent_feature_factory as factory
+          root = Path("source").resolve()
+          base = factory.git(root, "rev-parse", "HEAD")
+          plan = factory.repair_plan(root, base)
+          evidence = Path("evidence/repair-probe")
+          row = {"status": "eligible" if plan else "blocked", "base": base,
+                 "publication_attempted": False, "merge_attempted": False,
+                 "plan": plan}
+          (evidence / "plan.json").write_text(json.dumps(row, sort_keys=True) + "\n")
+          print(json.dumps(row, sort_keys=True))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write("eligible=" + ("true" if plan else "false") + "\n")
+          PY
+      - name: Build, independently verify and test the actual repair against dev
+        if: steps.probe.outputs.eligible == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B - <<'PY'
+          import json, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path("trusted/auto_tests/tools").resolve()))
+          import gaslux_agent_feature_factory as factory
+          evidence = Path("evidence/repair-probe")
+          plan = json.loads((evidence / "plan.json").read_text())["plan"]
+          root = Path("source").resolve()
+          role, base = plan["role"], plan["base"]
+          number, head = plan["repair_pr"], plan["repair_head"]
+          factory.generate_repair(root, evidence, role, base, number, head)
+          report = factory.verify(root, evidence, role, base, execute=True,
+                                  repair_pr=number, repair_head=head)
+          target = root / report["target"]
+          before, after = factory.expected_source(
+              root, role, (evidence / "addition.py").read_text(),
+              formatted_repair=True)
+          target.write_bytes(after)
+          print(json.dumps(report, sort_keys=True))
+          PY
+          python3 -m pip install 'pytest==9.0.2' 'jsonschema==4.25.1' 'cryptography==44.0.3' 'ruff==0.17.6'
+          target_file=$(python3 -c 'import json; print(json.load(open("evidence/repair-probe/report.json"))["target"])')
+          python3 -m ruff check --config trusted/auto_tests/pyproject.toml "source/$target_file"
+          python3 -m ruff format --check --config trusted/auto_tests/pyproject.toml "source/$target_file"
+          python3 -B -m compileall -q source/assets/live
+          role=$(python3 -c 'import json; print(json.load(open("evidence/repair-probe/report.json"))["role"])')
+          case "$role" in
+            cachyos) suite=test_distribution_capabilities.py ;;
+            zorin) suite=test_candidate_handoff.py ;;
+            popos) suite=test_popos_native_preflight.py ;;
+            q4os) suite=test_q4os_native_preflight.py ;;
+            bazzite) suite=test_bazzite_atomic_preflight.py ;;
+            *) exit 1 ;;
+          esac
+          (cd source && python3 -B -m pytest -q "auto_tests/tests/$suite")
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          evidence = Path("evidence/repair-probe")
+          row = json.loads((evidence / "plan.json").read_text())
+          row.update(status="repair_prepublication_pass", product_tests_passed=True)
+          (evidence / "result.json").write_text(json.dumps(row, sort_keys=True) + "\n")
+          PY
+      - name: Retain read-only repair receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-repair-live-probe
+          path: evidence/repair-probe/*.json
+          if-no-files-found: error
+          retention-days: 14
+
   select:
     if: >-
       github.repository == 'LMhdez/gaslux' &&
