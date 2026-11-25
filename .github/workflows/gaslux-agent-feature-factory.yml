@@ -35,6 +35,7 @@ on:
       - auto_tests/tests/test_gaslux_opencode_trial.py
       - auto_tests/tools/gaslux_opencode_workspace.py
       - auto_tests/tools/gaslux_opencode_iterative.py
+      - auto_tests/tools/gaslux_opencode_parent_boundary.py
       - auto_tests/tests/test_gaslux_opencode_workspace.py
   pull_request:
     paths:
@@ -60,6 +61,7 @@ on:
       - auto_tests/tests/test_gaslux_opencode_trial.py
       - auto_tests/tools/gaslux_opencode_workspace.py
       - auto_tests/tools/gaslux_opencode_iterative.py
+      - auto_tests/tools/gaslux_opencode_parent_boundary.py
       - auto_tests/tests/test_gaslux_opencode_workspace.py
 
 permissions:
@@ -193,12 +195,26 @@ jobs:
           python3 -B auto_tests/tools/gaslux_opencode_iterative.py \
             --binary "$GASLUX_OPENCODE_BIN" --role mint --context 16384 \
             --report evidence/opencode-iterative/report.json
+      - name: Verify independent broker and isolated synthetic parent boundary
+        if: ${{ !cancelled() && steps.workspace_admission.conclusion == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -x /usr/bin/bwrap ]; then
+            sudo timeout 180 apt-get update
+            sudo timeout 180 apt-get install -y --no-install-recommends bubblewrap
+          fi
+          mkdir -p evidence/opencode-iterative
+          python3 -B auto_tests/tools/gaslux_opencode_parent_boundary.py \
+            --report evidence/opencode-iterative/parent-boundary.json
       - name: Retain iterative lab report only (never a Factory candidate)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gaslux-opencode-iterative
-          path: evidence/opencode-iterative/report.json
+          path: |
+            evidence/opencode-iterative/report.json
+            evidence/opencode-iterative/parent-boundary.json
           if-no-files-found: ignore
           retention-days: 14
       - name: Retain comparison report only (never a Factory candidate)
