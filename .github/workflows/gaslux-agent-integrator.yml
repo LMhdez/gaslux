@@ -266,12 +266,21 @@ jobs:
                   assert row['merge_authorized'] is False
                   out.write(f"- #{row['pr']} {row['role']} / {row['scope']}: {row['next_action']}\n")
           PY
+      - name: Inventory historical open PR ancestry in rotating bounded batches
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_reconcile.py -v
+          python3 -I auto_tests/tools/gaslux_agent_reconcile.py --historical-inventory > evidence/historical-reconciliation.json
+          cat evidence/historical-reconciliation.json
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gaslux-distro-admission
           path: |
             evidence/distro-admission.json
             evidence/supervised-admission.json
+            evidence/historical-reconciliation.json
           if-no-files-found: error
           retention-days: 14
 
