@@ -7,6 +7,8 @@ an evidence pass. The caller's job must have issues:write but no App private key
 from __future__ import annotations
 
 import argparse
+import ast
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -424,16 +426,123 @@ def sync_admission_repair(*, dry_run=False):
     return {"status": "no_repair_action"}
 
 
+def discover_missing_implementations(root):
+    """Find concrete unimplemented public backend functions, without imports."""
+    root = root.resolve(strict=True)
+    result = []
+    for role, (source, test, _) in TASKS.items():
+        path = root / source
+        if not path.is_file():
+            continue
+        if path.resolve(strict=True) != path or path.stat().st_size > 262144:
+            raise ValueError("Untrusted or oversized backend source")
+        raw = path.read_bytes()
+        tree = ast.parse(raw, filename=source)
+        for node in tree.body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", node.name):
+                continue
+            body = list(node.body)
+            if (body and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)):
+                body.pop(0)
+            if len(body) != 1 or not isinstance(body[0], ast.Raise):
+                continue
+            exc = body[0].exc
+            if isinstance(exc, ast.Call):
+                exc = exc.func
+            if not isinstance(exc, ast.Name) or exc.id != "NotImplementedError":
+                continue
+            identity = hashlib.sha256(f"{role}:{source}:{node.name}".encode()).hexdigest()
+            result.append({"key": identity, "role": role, "source": source,
+                           "test": "auto_tests/tests/" + test, "symbol": node.name,
+                           "line": node.lineno, "source_sha256": hashlib.sha256(raw).hexdigest(),
+                           "reason": "EXPLICIT_NOT_IMPLEMENTED",
+                           "code_authorized": False, "installation_authorized": False,
+                           "release_eligible": False})
+            if len(result) > 64:
+                raise ValueError("Unbounded implementation gap inventory")
+    return result
+
+
+def sync_implementation_gap(root, *, dry_run=False):
+    """Route one concrete source gap to the backend; never infer write authority."""
+    if (os.getenv("GITHUB_REPOSITORY") != REPO
+            or os.getenv("GITHUB_REF") != "refs/heads/main"
+            or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
+            or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true"):
+        raise RuntimeError("Trusted unpaused main event required")
+    base = subprocess.check_output(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], text=True, timeout=12).strip()
+    if not SHA.fullmatch(base) or api("GET", "/git/ref/heads/dev")["object"]["sha"] != base:
+        raise ValueError("Unpinned source discovery")
+    candidates = discover_missing_implementations(root)
+    def tracked(issues, marker, title):
+        return any((i.get("user") or {}).get("id") == 41898282
+                   and (i.get("user") or {}).get("login") == TRUSTED_TASK_BOT
+                   and i.get("repository_url") == API and i.get("title") == title
+                   and str(i.get("body", "")).splitlines()[:1] == [marker]
+                   for i in issues)
+    issues = all_issues()
+    import gaslux_distro_admission as admission
+    prs = admission.complete_page(admission.api("GET", "/pulls?state=open&base=dev&per_page=100"))
+    for row in candidates:
+        marker = f"<!-- GASLUX-IMPLEMENTATION-GAP-V1:{row['key']} -->"
+        title = f"[GASLUX-GAP] {row['role']}: implement {row['symbol']}"
+        if tracked(issues, marker, title):
+            continue
+        # Defer if another same-repository candidate changes the actual file.
+        overlap = False
+        for pr in prs:
+            if (pr["head"].get("repo") or {}).get("full_name") != REPO:
+                continue
+            n = pr["number"]
+            if type(n) is not int or not 1 <= n <= 1000000:
+                raise ValueError("Malformed PR identity")
+            files = admission.complete_page(admission.api("GET", f"/pulls/{n}/files?per_page=100"))
+            if any(item.get("filename") == row["source"] or
+                   item.get("previous_filename") == row["source"] for item in files):
+                overlap = True
+                break
+        if overlap:
+            continue
+        payload = {"title": title, "body": (
+            marker + "\\n\\n"
+            f"Concrete source gap, assigned backend: {row['role']}.\\n"
+            f"Exact dev: {base}; source: {row['source']}:{row['line']}; "
+            f"symbol: {row['symbol']}; source SHA256: {row['source_sha256']}.\\n"
+            f"Regression suite: {row['test']}.\\n"
+            "Investigate callers and native semantics; reproduce the missing behavior, "
+            "define positive and adversarial tests, then propose the smallest isolated implementation. "
+            "This discovery does not authorize arbitrary code, protected writers, installation, "
+            "merge or release. Preserve independent Safety and backend acceptance.")}
+        if dry_run:
+            return {"status": "implementation_gap_dry_run", "base": base, **row}
+        if (api("GET", "/git/ref/heads/dev")["object"]["sha"] != base
+                or tracked(all_issues(), marker, title)):
+            return {"status": "implementation_gap_retry"}
+        created = api("POST", "/issues", payload)
+        if type(created.get("number")) is not int or created["number"] <= 0:
+            raise RuntimeError("GitHub did not confirm gap issue")
+        return {"status": "implementation_gap_routed", "issue": created["number"], "base": base, **row}
+    return {"status": "no_unclaimed_implementation_gap", "discovered": len(candidates)}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--with-admission-repair", action="store_true")
+    parser.add_argument("--with-implementation-discovery", action="store_true")
     args = parser.parse_args()
     result = sync_admission_repair(dry_run=args.dry_run) if args.with_admission_repair else {
         "status": "no_repair_action"
     }
-    if result["status"] == "no_repair_action":
+    if result["status"] == "no_repair_action" and args.with_implementation_discovery:
+        result = sync_implementation_gap(args.repo.resolve(strict=True), dry_run=args.dry_run)
+    if result["status"] in ("no_repair_action", "no_unclaimed_implementation_gap"):
         result = sync(args.repo.resolve(strict=True), dry_run=args.dry_run)
     print(json.dumps(result, sort_keys=True))
 
