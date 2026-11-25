@@ -64,6 +64,53 @@ class ReconcileTests(unittest.TestCase):
             self.assertEqual(writes, [("POST", "/issues/395/comments")] +
                              ([] if scenario == "before" else [("PATCH", "/pulls/395")]))
 
+    def test_actual_equivalence_requires_same_prefix_suite_and_fixed_semantics(self):
+        from gaslux_agent_feature_factory import repair_addition, TASKS
+        role = "zorin"
+        path, suite, _ = TASKS[role]
+        suite = "auto_tests/tests/" + suite
+        parent = "d" * 40
+        prefix = b"# original source\n"
+        addition = repair_addition(role).encode()
+        old = {"pr": 395, "head": OLD}
+        new = {"pr": 409, "head": NEW}
+        for scenario in ("valid", "source_drift", "test_drift", "semantic_change", "hold"):
+            def api(method, route):
+                self.assertEqual(method, "GET")
+                if route in ("/pulls/395", "/pulls/409"):
+                    return {"state": "open", "draft": True,
+                            "user": {"login": "github-actions[bot]", "id": 41898282},
+                            "head": {"sha": OLD if route.endswith("395") else NEW}}
+                if route == f"/compare/{parent}...{BASE}":
+                    return {"status": "ahead", "merge_base_commit": {"sha": parent}}
+                if route.endswith("comments?per_page=100"):
+                    return [{"body": "SAFETY HOLD"}] if scenario == "hold" else []
+                self.fail(route)
+            def source_at(name, ref):
+                if name == suite:
+                    return b"# drift\n" if scenario == "test_drift" and ref == BASE else b"# tests\n"
+                if ref == parent:
+                    return prefix
+                if ref == BASE:
+                    return b"# drift\n" if scenario == "source_drift" else prefix
+                if ref == OLD:
+                    return prefix.rstrip(b"\n") + b"\n\n\n" + addition
+                if ref == NEW:
+                    normalized = addition.replace(b"missing = sorted", b"missingGates = sorted").replace(
+                        b'"missingGates": missing,', b'"missingGates": missingGates,')
+                    if scenario == "semantic_change":
+                        normalized = normalized.replace(b'"releaseEligible": False', b'"releaseEligible": True')
+                    return prefix.rstrip(b"\n") + b"\n\n\n" + normalized
+                self.fail(ref)
+            with patch.object(rec.admission, "api", side_effect=api), \
+                 patch.object(rec.admission, "source_at", side_effect=source_at), \
+                 patch.object(rec.admission, "candidate_append", side_effect=[(parent, None), (BASE, None)]):
+                if scenario == "semantic_change":
+                    with self.assertRaises(ValueError):
+                        rec.equivalent(old, new, role, BASE)
+                else:
+                    self.assertEqual(rec.equivalent(old, new, role, BASE), scenario == "valid")
+
     def test_plan_refuses_unknown_third_candidate_bad_ci_hold_or_drift(self):
         def row(number, head, current):
             return {"pr": number, "head": head, "base": BASE,
