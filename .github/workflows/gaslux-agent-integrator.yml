@@ -190,6 +190,7 @@ jobs:
       contents: read
       pull-requests: read
       checks: read
+      actions: read
       issues: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -202,11 +203,32 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
         run: |
           set -euo pipefail
           mkdir -p evidence
           python3 -B auto_tests/tools/gaslux_distro_admission.py > evidence/distro-admission.json
           cat evidence/distro-admission.json
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          report = json.loads(Path('evidence/distro-admission.json').read_text())
+          assert report['schema'] == 'gaslux-distro-admission-v3'
+          assert report['read_only'] is True and report['merge_authorized'] is False
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
+              out.write('## GASLUX-SAFETY / INTEGRATOR — automatic technical triage\n\n')
+              if report['inventory_verified'] is not True:
+                  out.write('Inventory blocked: reconcile before processing candidates.\n')
+              else:
+                  out.write('| PR | Backend | Technical check | Next action |\n| --- | --- | --- | --- |\n')
+                  for row in report['candidates']:
+                      assert row['merge_authorized'] is False
+                      assert row['release_eligible'] is False
+                      result = 'PASS' if row['automatic_technical_safety_passed'] else 'BLOCKED'
+                      out.write(f"| #{row['pr']} | {row['role']} | {result} | {row['next_action']} |\n")
+              out.write('\nTechnical triage is not an independent approval or merge authorization.\n')
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gaslux-distro-admission

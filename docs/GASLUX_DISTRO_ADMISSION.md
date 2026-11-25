@@ -82,3 +82,113 @@ read-only admission on trusted main; and separate reviewed, bounded merge
 implementation with pause, race, revocation and post-merge checks. The current
 PR is read-only and does not grant that authority. Never reuse the CI from a
 previous HEAD. No credentials or Safety approval are provisioned here.
+
+
+## Follow-on: authenticated backend owner review (read-only)
+
+Dependent on #417 at `f41ea7b91b4cdbef5be16780954a5997795de4f3`.
+The original reviewed head is preserved. No new workflow or write permissions.
+The repository administrator may provision `GASLUX_BACKEND_OWNER_IDS`, a JSON
+mapping of role to positive numeric GitHub user ID. Missing, malformed, duplicate,
+unknown or oversized configuration fails closed. Example shape (illustrative
+only; these are not configured accounts): `{"zorin":123,"cachyos":456}`.
+
+An actual GitHub APPROVED review from the configured backend owner must have the
+exact candidate commit_id and contain a line in this form:
+
+    GASLUX-BACKEND-OWNER-V1 role=<role> head=<40-hex-head> base=<40-hex-current-dev>
+
+The owner must be distinct from the configured Safety identity, PR publisher and
+repair author. Safety must also be distinct from publisher and repair author.
+A stale base, changes requested, dismissed review, identity collision, wrong
+role, missing review, API failure or observed HEAD drift blocks verification.
+A plain comment or generated JSON does not constitute an attestation.
+Configuration must be controlled by the administrator, with real role
+separation; numeric IDs alone do not establish operational independence.
+
+The v2 report identifies configured roles and can attest the owner-review gate.
+It still never grants merge, writer or release authority. Full VM acceptance
+remains false pending independent, exact-candidate Windows/Linux evidence and
+a trusted evidence transport. No account has been provisioned by this change.
+
+Live inspection (2026-11-24): all five candidate formal-review lists and #417's
+formal-review list were empty. Historical contract workflow successes are not
+installed-guest proof. #263 contains historical Windows/CachyOS experiments;
+these do not prove the current candidate or current dev. Revalidate exact
+ancestry, current base, actual CI and independent evidence before any merge.
+
+
+## CI provenance and historical lab receipts (2026-11-24)
+
+The read-only admission now requires successful named check runs AND actual
+pull_request workflow runs for the immutable repository ID 1460159259, candidate
+HEAD, observed workflow IDs (420402269, 420417743 and either 420471368 or
+420371034), and exact run attempt/job metadata. Incomplete pages, mismatched
+origin, unknown workflow, failed/skipped jobs, duplicate job names and stale
+HEADs fail closed. It adds only actions:read to the existing admission job.
+These checks identify workflow provenance, not a proof of actual installed
+guest behavior or of an independently observed checkout tree. Live API
+compatibility and scheduled behavior still need verification on trusted main.
+No merge authority is granted.
+
+Existing historical laboratory evidence, inspected via authenticated GitHub
+run/job logs and artifact metadata (not downloaded or independently rehashed):
+
+- #383 HEAD f6c79778b780d8abdfaf73a8beeef664dbca6a5c:
+  run [45064724367](https://github.com/LMhdez/gaslux/actions/runs/45064724367),
+  artifact 14770149177, reported ZIP SHA256
+  9f387e95c5fe1e9d7166aa150a2eb11fbf91411224d4ac982c92827af06a2a82.
+  Private synthetic QCOW2/OVMF restore verified; writer and quota denied.
+- #388 HEAD ba1817d41330d33e500c36dc17c2f88e313c5fee:
+  run [45067845469](https://github.com/LMhdez/gaslux/actions/runs/45067845469),
+  artifact 14771887332, reported ZIP SHA256
+  63c48150bb0108be5934c5b24dc9079780ec316dc319ce11cfb68258d69229e0.
+  Actual 384-MiB ENOSPC/restore fixture and 60-GiB physical reservation plus
+  synthetic overlay write/reset verified; not full-size exhaustion or guest
+  recovery. Readiness report 2/11, next gate windows_iso_exact_microsoft_hash
+  BLOCKED_MEDIA. Both artifacts expire 2026-12-06 unless retained elsewhere.
+
+These are historical receipts, NOT current candidate acceptance. They do not
+set full_vm_acceptance_verified or alter dev:docs/autonomy/evidence.json.
+#418 is the existing private media preflight path; legal media provenance,
+private environment, source URL, digest and exact byte length must be
+provisioned independently before enabling it. #416 and #418 overlap the
+Lifecycle workflow and require reviewed composition. #383/#388 remain Draft.
+Do not reuse the old quota results as a guarantee of current runner capacity.
+The full VM producer does not yet exist at the required evidence level;
+do not introduce a permissive synthetic VM acceptance verifier to compensate.
+
+
+## Autonomous inventory and technical triage (2026-11-24)
+
+The former v2 diagnostic only enumerated five historical PR numbers. This
+would leave newly generated candidates invisible to the scheduled agent.
+The v3 report dynamically enumerates open Draft PRs targeting dev using a
+bounded, complete GitHub API inventory. The supported five backend scopes,
+exact append/AST contract, CI provenance and all existing authorization
+gates are unchanged. Publisher login AND numeric GitHub identity are
+checked against the two observed publisher identities (41898282 and
+360620437); foreign repositories, unsupported roles, malformed branches,
+closed/non-Draft PRs and impersonation are not admitted. No new publisher
+is implicitly trusted. Duplicate inventory, a full page or more than ten
+candidates blocks inventory processing rather than silently truncating it.
+The observed HEAD is bound into the subsequent per-candidate inspection.
+
+The scheduled Integrator job now exposes a separate deterministic
+automatic_technical_safety_passed result (exact scope/current base/CI
+provenance/no observed objection) and explicit blockers/next_action.
+This is an automated technical assessment of a narrowly scoped helper,
+not a formal independent Safety or backend-owner approval. It does not
+override a formal review requirement, resolve an objection, prove VM
+acceptance, or allow merge. An unknown objection state never passes.
+The job outputs an Actions summary and existing JSON artifact; no new
+workflow, write permission or issue/comment publication is introduced.
+A future authorized planner can consume the blocker codes. The system
+does not yet dispatch repair tasks automatically from this report.
+
+The independent review/owner gate, full VM gate and merge/release denial
+remain in place. Historical fixed QUEUE values are retained as regression
+fixtures/role scope only, not the live PR inventory. The earlier technical
+verdict on 04da81ce5be9fe8478d886377fcd495f6944640e remains historical:
+fresh CI and independent review are required before integrating the new
+HEAD. #417 remains unchanged. Do not activate by bypassing main protection.
