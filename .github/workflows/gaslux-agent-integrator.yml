@@ -59,6 +59,59 @@ jobs:
 
       - name: Supervised scope negative cases
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_supervised_admission.py -v
+      - name: Probe effective dev protection with read-only workflow token
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -I - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path("auto_tests/tools").resolve()))
+          import gaslux_supervised_admission as gate
+          a = gate.admission
+          report = {"read_only": True, "merge_authorized": False,
+                    "strict_dev_verified": False, "rulesets": []}
+          try:
+              base = a.api("GET", "/git/ref/heads/dev")["object"]["sha"]
+              if not a.valid_sha(base):
+                  raise ValueError("Invalid dev ref")
+              report["base"] = base
+              report["strict_dev_verified"] = gate.strict_dev_protected(base)
+              rows = a.complete_page(a.api("GET", "/rules/branches/dev?per_page=100"))
+              groups = {}
+              for row in rows:
+                  rid = row.get("ruleset_id")
+                  if (type(rid) is int and rid > 0 and
+                          row.get("ruleset_source") == a.REPO and
+                          row.get("ruleset_source_type") == "Repository"):
+                      groups.setdefault(rid, set()).add(row["type"])
+              if len(groups) > 16:
+                  raise ValueError("Too many rulesets")
+              for rid, kinds in sorted(groups.items()):
+                  entry = {"id": rid, "effective_rule_types": sorted(kinds),
+                           "bypass_visibility": "unknown"}
+                  report["rulesets"].append(entry)
+                  try:
+                      detail = a.api("GET", f"/rulesets/{rid}?includes_parents=false")
+                      actors = detail.get("bypass_actors")
+                      if isinstance(actors, list):
+                          entry["bypass_visibility"] = "empty" if not actors else "nonempty"
+                      params = [r.get("parameters", {}) for r in detail.get("rules", [])
+                                if r.get("type") == "required_status_checks"]
+                      entry["strict_checks_enabled"] = any(
+                          x.get("strict_required_status_checks_policy") is True for x in params)
+                      entry["active"] = detail.get("enforcement") == "active"
+                  except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
+                      entry["detail_unavailable"] = True
+              report["base_unchanged"] = a.api("GET", "/git/ref/heads/dev")["object"]["sha"] == base
+              if not report["base_unchanged"]:
+                  report["strict_dev_verified"] = False
+          except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
+              report["probe_incomplete"] = True
+              report["strict_dev_verified"] = False
+          print("GASLUX_DEV_PROTECTION_PROBE " + json.dumps(report, sort_keys=True))
+          PY
 
   select:
     if: >-
@@ -443,6 +496,59 @@ jobs:
           persist-credentials: false
       - name: Validate bounded integration contracts without a token
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_supervised_admission.py -v
+      - name: Probe effective dev protection with actual Integrator token (GET-only probe)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          python3 -I - <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path("auto_tests/tools").resolve()))
+          import gaslux_supervised_admission as gate
+          a = gate.admission
+          report = {"read_only": True, "merge_authorized": False,
+                    "strict_dev_verified": False, "rulesets": []}
+          try:
+              base = a.api("GET", "/git/ref/heads/dev")["object"]["sha"]
+              if not a.valid_sha(base):
+                  raise ValueError("Invalid dev ref")
+              report["base"] = base
+              report["strict_dev_verified"] = gate.strict_dev_protected(base)
+              rows = a.complete_page(a.api("GET", "/rules/branches/dev?per_page=100"))
+              groups = {}
+              for row in rows:
+                  rid = row.get("ruleset_id")
+                  if (type(rid) is int and rid > 0 and
+                          row.get("ruleset_source") == a.REPO and
+                          row.get("ruleset_source_type") == "Repository"):
+                      groups.setdefault(rid, set()).add(row["type"])
+              if len(groups) > 16:
+                  raise ValueError("Too many rulesets")
+              for rid, kinds in sorted(groups.items()):
+                  entry = {"id": rid, "effective_rule_types": sorted(kinds),
+                           "bypass_visibility": "unknown"}
+                  report["rulesets"].append(entry)
+                  try:
+                      detail = a.api("GET", f"/rulesets/{rid}?includes_parents=false")
+                      actors = detail.get("bypass_actors")
+                      if isinstance(actors, list):
+                          entry["bypass_visibility"] = "empty" if not actors else "nonempty"
+                      params = [r.get("parameters", {}) for r in detail.get("rules", [])
+                                if r.get("type") == "required_status_checks"]
+                      entry["strict_checks_enabled"] = any(
+                          x.get("strict_required_status_checks_policy") is True for x in params)
+                      entry["active"] = detail.get("enforcement") == "active"
+                  except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
+                      entry["detail_unavailable"] = True
+              report["base_unchanged"] = a.api("GET", "/git/ref/heads/dev")["object"]["sha"] == base
+              if not report["base_unchanged"]:
+                  report["strict_dev_verified"] = False
+          except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
+              report["probe_incomplete"] = True
+              report["strict_dev_verified"] = False
+          print("GASLUX_DEV_PROTECTION_PROBE " + json.dumps(report, sort_keys=True))
+          PY
       - name: Integrate at most one canonical independently approved test append into dev
         env:
           GH_TOKEN: ${{ github.token }}
