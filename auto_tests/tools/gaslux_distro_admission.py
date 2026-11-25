@@ -201,7 +201,7 @@ def candidate_append(pr, role, sha, path):
 def checks_ok(response, head, role):
     rows = complete_page(response.get("check_runs"))
     required = COMMON_CHECKS | (
-        {"python-contracts", "windows-contracts"} if role == "cachyos"
+        {"python-contracts", "windows-contracts"} if role in ("mint", "cachyos")
         else {"read-only-contracts"}
     )
     if type(response.get("total_count")) is not int or response["total_count"] != len(rows):
@@ -227,11 +227,11 @@ WORKFLOW_JOBS = {
 }
 
 
-def ci_workflow_provenance(head, role):
-    if not valid_sha(head) or role not in ROLES:
+def ci_workflow_provenance(head, role, *, supervised=False):
+    if not valid_sha(head) or role not in (TASKS if supervised else ROLES):
         return False
     required = {420402269, 420417743,
-                420371034 if role == "cachyos" else 420471368}
+                420371034 if role in ("mint", "cachyos") else 420471368}
     data = api("GET", f"/actions/runs?head_sha={head}&event=pull_request&per_page=100")
     rows = complete_page(data["workflow_runs"])
     if type(data.get("total_count")) is not int or data["total_count"] != len(rows):
@@ -290,7 +290,7 @@ def review_ok(reviews, reviewer_id, author_id, head, dev):
                for row in own)
 
 
-def parse_owner_ids(raw):
+def parse_owner_ids(raw, *, allowed_roles=ROLES):
     """Strict, administrator-provided configuration; no default identities."""
     if not isinstance(raw, str) or not raw or len(raw) > 1024:
         return {}
@@ -306,7 +306,7 @@ def parse_owner_ids(raw):
     try:
         data = json.loads(raw, object_pairs_hook=unique_pairs)
         if (type(data) is not dict
-                or not set(data) <= ROLES
+                or not set(data) <= set(allowed_roles)
                 or any(type(value) is not int or not 1 <= value < 10**19
                        for value in data.values())):
             return {}
@@ -315,10 +315,10 @@ def parse_owner_ids(raw):
         return {}
 
 
-def owner_review_ok(reviews, owner_id, safety_id, author_id, repair_id, role, head, dev):
+def owner_review_ok(reviews, owner_id, safety_id, author_id, repair_id, role, head, dev, *, supervised=False):
     # A shared account cannot attest two roles. Unknown Safety identity also
     # blocks this gate; no inferred role from PR text or model output.
-    if (role not in ROLES or not valid_sha(head) or not valid_sha(dev)
+    if (role not in (TASKS if supervised else ROLES) or not valid_sha(head) or not valid_sha(dev)
             or any(type(value) is not int or value <= 0
                    for value in (owner_id, safety_id, author_id))
             or owner_id in (safety_id, author_id, repair_id)
