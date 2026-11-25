@@ -1,0 +1,141 @@
+"""Bounded workspace protocol, state transitions and negative sandbox probes."""
+import json
+import os
+from pathlib import Path
+import sys
+import tempfile
+import unittest
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+import gaslux_opencode_workspace as b
+import gaslux_opencode_iterative as i
+
+
+def correct(role="mint"):
+    return (f"def assess_{role}_lifecycle(evidence: dict) -> dict:\n"
+            "    gates = " + repr(b.factory.GATES) + "\n"
+            "    missing = sorted([name for name in gates if evidence.get(name) is not True])\n"
+            f"    return {{'backend': {role!r}, 'missingGates': missing, "
+            "'installationAuthorized': False, 'releaseEligible': False}\n")
+
+
+class WorkspaceTests(unittest.TestCase):
+    def workspace(self, path):
+        return b.Workspace(path, {"role": "mint"}, tester=lambda role, src:
+                           "RED" if src == b.seed_source(role) else "PASS")
+
+    def test_required_red_edit_pass_and_sha_cas(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            w = self.workspace(Path(tmp))
+            with self.assertRaises(ValueError):
+                w.call("replace_candidate", {"expected_sha256": w.sha, "source": correct()})
+            w.call("inspect_task", {})
+            w.call("read_candidate", {})
+            self.assertEqual(w.call("run_tests", {})["status"], "RED")
+            before = w.sha
+            with self.assertRaises(ValueError):
+                w.call("replace_candidate", {"expected_sha256": "0"*64, "source": correct()})
+            edited = w.call("replace_candidate", {"expected_sha256": before, "source": correct()})
+            self.assertEqual(edited["status"], "EDITED")
+            self.assertNotEqual(w.sha, before)
+            self.assertEqual(w.call("run_tests", {})["status"], "PASS")
+            self.assertEqual((Path(tmp) / "candidate-1.py").read_text(), correct())
+
+    def test_no_paths_shell_or_imports(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            w = self.workspace(Path(tmp))
+            w.call("inspect_task", {})
+            w.call("read_candidate", {})
+            w.call("run_tests", {})
+            for name, args in (("bash", {"command": "true"}),
+                               ("read_candidate", {"path": "/etc/passwd"}),
+                               ("replace_candidate", {"expected_sha256": w.sha,
+                                "source": "def assess_mint_lifecycle(evidence: dict) -> dict:\n"
+                                          "    import os\n    return {}"})):
+                with self.assertRaises((ValueError, TypeError)):
+                    w.call(name, args)
+            self.assertEqual(w.edits, 0)
+
+    def test_protocol_tools_are_exactly_pathless(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            w = self.workspace(Path(tmp))
+            response = b.rpc(w, {"jsonrpc": "2.0", "id": 1, "method": "tools/list"})
+            self.assertEqual([t["name"] for t in response["result"]["tools"]], list(b.TOOLS))
+            denied = b.rpc(w, {"jsonrpc": "2.0", "id": 2, "method": "tools/call",
+                               "params": {"name": "unknown", "arguments": {}}})
+            self.assertTrue(denied["result"]["isError"])
+
+    def test_exhaustive_suite_catches_mixed_and_truthy_inputs(self):
+        self.assertEqual(b.exhaustive("mint", correct()), 259)
+        with self.assertRaises(ValueError):
+            b.exhaustive("mint", b.seed_source("mint"))
+        with self.assertRaises(ValueError):
+            b.exhaustive("mint", correct().replace(" is not True", " == False"))
+
+    def test_sandbox_worker_real_red_and_green(self):
+        if sys.platform != "linux":
+            self.skipTest("Linux-only lab")
+        # In the hosted lab this is mandatory. No fallback to unrestricted execution.
+        self.assertEqual(b.isolated_test("mint", b.seed_source("mint")), "RED")
+        self.assertEqual(b.isolated_test("mint", correct()), "PASS")
+
+    def test_landlock_read_write_network_negative_probes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            state = root / "state"
+            state.mkdir()
+            outside = root / "outside"
+            outside.write_bytes(b"unchanged")
+            rd, wr = os.pipe()
+            pid = os.fork()
+            if pid == 0:
+                os.close(rd)
+                result = b"FAIL"
+                try:
+                    b.restrict(state)
+                    b.probe(state, outside)
+                    result = b"PASS"
+                except BaseException:
+                    pass
+                os.write(wr, result)
+                os._exit(0)
+            os.close(wr)
+            try:
+                self.assertEqual(os.read(rd, 16), b"PASS")
+            finally:
+                os.close(rd)
+                os.waitpid(pid, 0)
+            self.assertEqual(outside.read_bytes(), b"unchanged")
+
+    def test_native_event_parser_rejects_shell_and_fake_skill(self):
+        skill = {"type": "tool_use", "part": {"tool": "skill", "state": {
+            "status": "completed", "input": {"name": i.trial.SKILL},
+            "output": '<skill_content name="' + i.trial.SKILL + '">'}}}
+        tool = {"type": "tool_use", "part": {"tool": i.PREFIX + "inspect_task",
+                                             "state": {"status": "completed"}}}
+        raw = lambda rows: "\n".join(json.dumps(row) for row in rows).encode()
+        self.assertEqual(i.native_events(raw([skill, tool]))[0], ["inspect_task"])
+        tool["part"]["tool"] = "bash"
+        with self.assertRaises(ValueError):
+            i.native_events(raw([skill, tool]))
+        with self.assertRaises(ValueError):
+            i.native_events(raw([{"type": "text", "part": {"text": "skill loaded"}}]))
+
+    def test_verified_journal_and_independent_final_recheck(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            state = Path(tmp)
+            proof = {key: True for key in i.PROOF_KEYS}
+            proof["landlock_abi"] = 4
+            w = b.Workspace(state, {"role": "mint"}, sandbox=proof, tester=b.isolated_test)
+            events = ["inspect_task", "read_candidate", "run_tests", "replace_candidate", "run_tests"]
+            for name in events:
+                w.call(name, {"expected_sha256": w.sha, "source": correct()} if
+                       name == "replace_candidate" else {})
+            result = i.verify_journal(state, events, "mint")
+            self.assertEqual(result["functional_cases"], 259)
+            with self.assertRaises(ValueError):
+                i.verify_journal(state, events[:-1], "mint")
+
+
+if __name__ == "__main__":
+    unittest.main()

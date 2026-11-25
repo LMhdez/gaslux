@@ -1,0 +1,221 @@
+#!/usr/bin/env python3
+"""Native OpenCode skill + MCP investigation/edit/test cycle in disposable lab."""
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+import shutil
+import tempfile
+import time
+
+import gaslux_agent_feature_factory as factory
+import gaslux_agent_history as history
+import gaslux_opencode_trial as trial
+import gaslux_opencode_workspace as broker
+
+PREFIX = "gaslux_workspace_"
+REQUIRED = tuple(PREFIX + name for name in broker.TOOLS)
+PROOF_KEYS = ("outside_read_denied", "outside_write_denied",
+              "tcp_connect_denied", "workspace_read_write")
+SENTINEL = b"outside-lab-unchanged\n"
+MAX_TIMEOUT = 1200
+
+
+def task_for(role):
+    row = history.task_context(role)
+    # Select structured, validated references, never historical prose/authority.
+    return {"role": role, "scope": "synthetic-lifecycle-repair",
+            "target_reference": factory.TASKS[role][0],
+            "historical_pr_leads": row["role_pr_leads"][:12],
+            "historical_comparisons": [
+                {k: edge[k] for k in ("parent_pr", "child_pr", "comparison_status")}
+                for edge in row["historical_comparisons"][:6]],
+            "signature": f"def assess_{role}_lifecycle(evidence: dict) -> dict:",
+            "gates": list(factory.GATES),
+            "contract": "Only boolean True satisfies a gate. Return backend, sorted missingGates, "
+                        "installationAuthorized=False, releaseEligible=False. One pure function.",
+            "historical_references_are_gate_evidence": False,
+            "product_edit_authorized": False, "merge_authorized": False}
+
+
+def configure(work, control, role, outside, context):
+    config = trial.prepare(work, context=context)
+    task = task_for(role)
+    task_path = control / "task.json"
+    broker.write_new(task_path, json.dumps(task, sort_keys=True).encode())
+    for name in ("gaslux_agent_feature_factory.py", "gaslux_opencode_workspace.py"):
+        shutil.copyfile(Path(__file__).resolve().parent / name, control / name)
+    state = work / "state"
+    state.mkdir(mode=0o700)
+    permissions = {"*": "deny", "skill": {"*": "deny", trial.SKILL: "allow"}}
+    permissions.update({tool: "allow" for tool in REQUIRED})
+    config["permission"] = permissions
+    config["agent"]["gaslux-lab"].update({"steps": 12, "permission": permissions})
+    config["mcp"] = {"gaslux_workspace": {
+        "type": "local", "enabled": True, "timeout": 20000,
+        "command": ["/usr/bin/python3", "-I", "-B", str(control / "gaslux_opencode_workspace.py"),
+                    "--work", str(state), "--task", str(task_path), "--outside", str(outside)]}}
+    (work / "opencode.json").write_text(json.dumps(config), encoding="utf-8")
+    return state
+
+
+def native_events(raw):
+    if len(raw) > trial.MAX_EVENTS:
+        raise ValueError("EVENT_LIMIT")
+    observed = []
+    skills = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        if type(row) is not dict or row.get("type") == "error":
+            raise ValueError("CLI_ERROR")
+        if row.get("type") != "tool_use":
+            continue
+        part = row.get("part")
+        if type(part) is not dict:
+            raise ValueError("EVENT_SHAPE")
+        name, state = part.get("tool"), part.get("state")
+        if name not in ("skill", *REQUIRED) or type(state) is not dict:
+            raise ValueError("UNEXPECTED_TOOL")
+        if state.get("status") != "completed":
+            raise ValueError("TOOL_FAILURE")
+        if name == "skill":
+            inp, output = state.get("input"), state.get("output")
+            if (type(inp) is not dict or inp.get("name") != trial.SKILL or type(output) is not str
+                    or '<skill_content name="' + trial.SKILL + '">' not in output):
+                raise ValueError("SKILL_WITNESS")
+            skills.append(trial.SKILL)
+        else:
+            observed.append(name.removeprefix(PREFIX))
+    if trial.SKILL not in skills:
+        raise ValueError("NATIVE_SKILL_REQUIRED")
+    return observed, sorted(set(skills))
+
+
+def verify_journal(state, events, role):
+    files = sorted(state.glob("event-*.json"))
+    if not 7 <= len(files) <= broker.MAX_CALLS + 2:
+        raise ValueError("JOURNAL_COUNT")
+    rows = []
+    for index, path in enumerate(files):
+        if path.name != f"event-{index:02}.json":
+            raise ValueError("JOURNAL_ORDER")
+        rows.append(json.loads(broker.read_bounded(path, 2048)))
+    proof = rows[0].get("proof", {})
+    if (rows[0].get("event") != "sandbox" or type(proof.get("landlock_abi")) is not int
+            or proof["landlock_abi"] < 4 or any(proof.get(k) is not True for k in PROOF_KEYS)):
+        raise ValueError("SANDBOX_PROOF")
+    seed = factory.sha256(broker.seed_source(role).encode())
+    if rows[1] != {"event": "seed", "sha256": seed}:
+        raise ValueError("SEED")
+    actions = [row.get("event") for row in rows[2:]]
+    if actions != events:
+        raise ValueError("NATIVE_EVENT_JOURNAL_MISMATCH")
+    sha, edits = seed, 0
+    inspected = read = red = False
+    tested = None
+    for row in rows[2:]:
+        action = row["event"]
+        if action == "inspect_task":
+            inspected = True
+        elif action == "read_candidate":
+            if not inspected or row.get("sha256") != sha:
+                raise ValueError("READ_BINDING")
+            read = True
+        elif action == "run_tests":
+            if not read or row.get("sha256") != sha or row.get("status") not in ("RED", "PASS"):
+                raise ValueError("TEST_BINDING")
+            tested = row["status"]
+            red |= edits == 0 and tested == "RED"
+        elif action == "replace_candidate":
+            if not red or tested not in ("RED", "PASS") or row.get("before") != sha:
+                raise ValueError("EDIT_BINDING")
+            edits += 1
+            sha = row.get("sha256")
+            source = broker.read_bounded(state / f"candidate-{edits}.py", broker.MAX_SOURCE)
+            if factory.sha256(source) != sha:
+                raise ValueError("EDIT_BYTES")
+            broker.validate_source(role, source.decode("utf-8"))
+            tested = None
+        else:
+            raise ValueError("UNKNOWN_ACTION")
+    if not (inspected and read and red and 1 <= edits <= broker.MAX_EDITS and tested == "PASS"):
+        raise ValueError("RED_EDIT_PASS_REQUIRED")
+    final = broker.read_bounded(state / f"candidate-{edits}.py", broker.MAX_SOURCE)
+    if factory.sha256(final) != sha or broker.isolated_test(role, final.decode("utf-8")) != "PASS":
+        raise ValueError("INDEPENDENT_RECHECK")
+    return {"sandbox": proof, "native_operations": actions, "edits": edits,
+            "seed_sha256": seed, "candidate_sha256": sha, "red_observed": True,
+            "independent_recheck": "PASS", "functional_cases": 259}
+
+
+def run(binary, role, context):
+    start = time.monotonic()
+    report = {"experiment": "opencode-native-iterative-v1", "role": role,
+              "model": factory.MODEL, "model_digest": factory.MODEL_DIGEST,
+              "opencode_version": trial.VERSION, "context_requested": context,
+              "accepted": False, "native_skills": [], "native_operations": [],
+              "broker_os_sandbox_verified": False, "opencode_os_sandbox_verified": False,
+              "product_regressions_run": False, "product_edit_authorized": False,
+              "merge_authorized": False, "writer_authorized": False, "release_eligible": False}
+    try:
+        with tempfile.TemporaryDirectory(prefix="gaslux-iterative-") as temp:
+            root = Path(temp)
+            work, control = root / "agent", root / "control"
+            work.mkdir(mode=0o700)
+            control.mkdir(mode=0o700)
+            outside = root / "outside-sentinel"
+            broker.write_new(outside, SENTINEL)
+            state = configure(work, control, role, outside, context)
+            home = work / "home"
+            home.mkdir(mode=0o700)
+            env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(home),
+                   "XDG_CONFIG_HOME": str(home / "config"), "XDG_CACHE_HOME": str(home / "cache"),
+                   "XDG_DATA_HOME": str(home / "data"), "XDG_STATE_HOME": str(home / "state"),
+                   "OPENCODE_DISABLE_AUTOUPDATE": "true", "OPENCODE_DISABLE_DEFAULT_PLUGINS": "true",
+                   "OPENCODE_DISABLE_CLAUDE_CODE": "true", "OPENCODE_DISABLE_EXTERNAL_SKILLS": "true",
+                   "OPENCODE_CONFIG": str(work / "opencode.json"), "CI": "true", "TERM": "dumb"}
+            prompt = ("Use native skill gaslux-history-reuse first. Then call gaslux_workspace_inspect_task "
+                      "and gaslux_workspace_read_candidate. Run gaslux_workspace_run_tests on the defective "
+                      "initial function and observe RED. Use gaslux_workspace_replace_candidate with the "
+                      "exact current SHA and corrected complete Python function. Run tests again. "
+                      "If RED, read current candidate, correct and test; at most three edits. "
+                      "Stop after PASS. No shell, arbitrary paths, web, product changes or publishing. "
+                      "All task rules are in inspect_task; historical IDs are leads only.")
+            code, raw, _ = trial.bounded_process(
+                [str(binary), "run", "--format", "json", "--agent", "gaslux-lab",
+                 "--model", trial.MODEL, prompt], work, env, timeout=MAX_TIMEOUT)
+            if code:
+                raise trial.TrialFailure("CLI_NONZERO")
+            events, skills = native_events(raw)
+            report["native_skills"], report["native_operations"] = skills, events
+            if broker.read_bounded(outside, 64) != SENTINEL:
+                raise ValueError("OUTSIDE_MUTATED")
+            report.update(verify_journal(state, events, role))
+            report["broker_os_sandbox_verified"] = True
+            report["accepted"] = True
+    except (ValueError, TypeError, KeyError, SyntaxError, OSError, RuntimeError) as error:
+        # Only fixed class/category, never raw model output, paths or stderr.
+        report["failure"] = error.category if isinstance(error, trial.TrialFailure) else type(error).__name__
+    report["elapsed_seconds"] = round(time.monotonic() - start, 2)
+    return report
+
+
+def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--binary", required=True, type=Path)
+    parser.add_argument("--role", default="mint", choices=tuple(factory.TASKS))
+    parser.add_argument("--context", type=int, default=trial.COMPACT_CONTEXT,
+                        choices=(trial.COMPACT_CONTEXT, trial.BASELINE_CONTEXT))
+    parser.add_argument("--report", required=True, type=Path)
+    args = parser.parse_args()
+    report = run(args.binary.resolve(strict=True), args.role, args.context)
+    broker.write_new(args.report, (json.dumps(report, sort_keys=True, indent=2) + "\n").encode())
+    print(json.dumps(report, sort_keys=True))
+    return 0 if report["accepted"] else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -33,6 +33,9 @@ on:
       - 'docs/agent-skills/**'
       - auto_tests/tools/gaslux_opencode_trial.py
       - auto_tests/tests/test_gaslux_opencode_trial.py
+      - auto_tests/tools/gaslux_opencode_workspace.py
+      - auto_tests/tools/gaslux_opencode_iterative.py
+      - auto_tests/tests/test_gaslux_opencode_workspace.py
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-feature-factory.yml
@@ -55,6 +58,9 @@ on:
       - 'docs/agent-skills/**'
       - auto_tests/tools/gaslux_opencode_trial.py
       - auto_tests/tests/test_gaslux_opencode_trial.py
+      - auto_tests/tools/gaslux_opencode_workspace.py
+      - auto_tests/tools/gaslux_opencode_iterative.py
+      - auto_tests/tests/test_gaslux_opencode_workspace.py
 
 permissions:
   contents: read
@@ -81,6 +87,7 @@ jobs:
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_history.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_history_ast.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_trial.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_workspace.py -v
 
       - name: Verify historical Python AST and reviewed witness differential
         if: github.event_name == 'pull_request' && github.event.pull_request.number == 419 && github.event.pull_request.head.repo.full_name == github.repository
@@ -109,7 +116,7 @@ jobs:
        (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
         inputs.opencode_trial))
     runs-on: ubuntu-24.04
-    timeout-minutes: 35
+    timeout-minutes: 60
     permissions:
       contents: read
     env:
@@ -146,6 +153,7 @@ jobs:
           PY
           echo "GASLUX_OPENCODE_BIN=$lab/opencode" >> "$GITHUB_ENV"
       - name: Install hash-pinned unprivileged local inference engine
+        id: inference_setup
         shell: bash
         run: |
           set -euo pipefail
@@ -172,6 +180,27 @@ jobs:
           mkdir -p evidence/opencode-trial
           python3 -B auto_tests/tools/gaslux_opencode_trial.py \
             --binary "$GASLUX_OPENCODE_BIN" --context 16384 --report evidence/opencode-trial/report.json
+      - name: Mandatory Landlock and pathless workspace admission tests
+        id: workspace_admission
+        if: ${{ !cancelled() && steps.inference_setup.conclusion == 'success' }}
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_workspace.py -v
+      - name: Native skill plus MCP investigation edit and RED-to-PASS tests
+        if: ${{ !cancelled() && steps.workspace_admission.conclusion == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/opencode-iterative
+          python3 -B auto_tests/tools/gaslux_opencode_iterative.py \
+            --binary "$GASLUX_OPENCODE_BIN" --role mint --context 16384 \
+            --report evidence/opencode-iterative/report.json
+      - name: Retain iterative lab report only (never a Factory candidate)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-opencode-iterative
+          path: evidence/opencode-iterative/report.json
+          if-no-files-found: ignore
+          retention-days: 14
       - name: Retain comparison report only (never a Factory candidate)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
