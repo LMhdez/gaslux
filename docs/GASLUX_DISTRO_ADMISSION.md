@@ -230,3 +230,60 @@ composition must receive its own CI/review. #419 also edits the Factory
 workflow; reconcile exact changes and test the resulting tree before
 main activation. Do not assume the new runtime job has executed merely
 because PR tests passed.
+
+
+## Bounded deterministic stale-repair execution (2026-11-25)
+
+The successor path is now implemented in the existing Factory select,
+model, safety and publish_draft jobs. Only when the normal planner is
+blocked can it select a stale, exact-scope, non-objected and
+CI-provenance-verified candidate. Require forward-only dev ancestry,
+unchanged source and regression-suite blob IDs, absent lifecycle helper
+on current dev, exactly one same-repository open PR for that role,
+no previous PR on the successor branch and an absent successor ref.
+Current dev and the old candidate HEAD are pinned.
+
+For this fixed eight-gate non-writer helper only, generate canonical
+trusted Python rather than invoke Qwen again. Its distinct producer
+record binds candidate number/head, current base and exact artifact
+hashes; do not represent it as new model inference. Apply canonical
+Ruff spacing. The existing unprivileged product regression and separate
+Safety job must pass before the existing publisher runs. Publisher
+verifies exact canonical bytes without execution, repeats the live
+eligibility checks with the workflow credential (not the publication
+App credential), and requires dev still equal the tested base.
+The workflow credential in the publisher job retains its existing
+write scopes; the new API recheck makes GET requests only. Added
+permissions are actions/checks/issues read, not new write scopes.
+
+The successor is deliberately a new Draft linked to the historical PR;
+old PR and all evidence remain untouched. Two open role candidates
+block further repair generation, and a previously used successor branch
+cannot be reused. No automatic close, force-push, merge, VM writer or
+release; GitHub ref/PR creation is not an atomic transaction. Failed
+publication or an orphaned ref requires reconciliation, not blind retry.
+A changed source/test or any Safety hold is escalated rather than
+automatically rewritten. The existing issue route remains for blocked
+stale repairs. A formatted single-commit append is admitted only with
+the same strict fixed AST and all existing checks.
+
+Actual source and regression-test blob comparison on 2026-11-25:
+#395 Zorin and #400 Bazzite have unchanged relevant blobs between
+5c34b16651f120816fd0b13b566da3815678179b and
+d89f1547c50787e4640164e34bfd1863134e2908.
+Historical HEAD CI and job identities were inspected through GitHub API;
+no formal reviews on those candidates were observed. This is a lead,
+not a merge decision. No old approval or CI transfers to a successor.
+
+Contract CI on intermediate cd21ad96a89698ed8b3ad54c581de254dbac53f1:
+45572159732 (27+22 tests) and 45572159930 (32+19+15 tests) SUCCESS.
+The additional repair_live_probe job is confined to the same-repo
+#423 feature branch PR and uses read-only permissions, without App
+credentials or publication; it checks real live selection and patched
+source regressions, not production execution. Run 45572245481 on
+5ad367fdb58b5a262c626b999522b523ac8ff3dc was still in progress at
+the recorded observation. Final composition needs fresh CI and review.
+A green probe does not prove actual publication or merge.
+#417/#421 remain at their prior heads, #419 workflow overlap still
+requires reconciliation. Independent review/actual main gates are not
+waived by this implementation or by the user's engineering delegation.
