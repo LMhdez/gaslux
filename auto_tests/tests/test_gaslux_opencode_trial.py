@@ -53,6 +53,41 @@ class OpenCodeTrialTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             trial.parse_events(encode(rows))
 
+    def test_safety1_419_01_event_types_and_tool_disguises_fail_closed(self):
+        malformed = [
+            {"type": "unknown", "part": {"tool": "bash"}},
+            {"type": "unknown", "part": {}},
+            {"part": {"tool": "bash"}},
+            {"type": None, "part": {}},
+            {"type": [], "part": {}},
+            {"type": "reasoning", "part": {"tool": "bash"}},
+            {"type": "step_start", "part": {"type": "tool", "tool": "bash"}},
+            {"type": "step_finish", "part": {"type": "tool"}},
+            {"type": "text", "part": {"type": "tool", "text": "", "tool": "bash"}},
+            {"type": "text", "tool": "bash", "part": {"text": ""}},
+            {"type": "tool_use", "part": {"type": "text", "tool": "skill",
+                "state": event_rows()[0]["part"]["state"]}},
+        ]
+        for event in malformed:
+            with self.subTest(event=event):
+                with self.assertRaises(trial.TrialFailure):
+                    trial.parse_events(encode(event_rows() + [event]))
+        # Duplicate keys must not mask a forbidden event or a tool identity.
+        good = encode(event_rows())
+        for raw in (
+            b'{"type":"unknown","type":"reasoning","part":{}}',
+            b'{"type":"reasoning","part":{"tool":"bash","tool":"skill"}}',
+        ):
+            with self.assertRaises(trial.TrialFailure):
+                trial.parse_events(good + b"\n" + raw)
+        # Recognized non-tool events and free text are still legitimate.
+        rows = event_rows()
+        rows.insert(1, {"type": "reasoning", "part": {"type": "reasoning",
+            "text": "the word bash is not a tool invocation"}})
+        rows.insert(1, {"type": "step_start", "part": {"type": "step-start"}})
+        rows.append({"type": "step_finish", "part": {"type": "step-finish"}})
+        self.assertEqual(trial.parse_events(encode(rows)), ("synthetic", [trial.SKILL]))
+
     def test_forged_text_and_oversize_denied(self):
         rows = event_rows()
         rows[0]["part"]["state"]["output"] = "claimed skill"
