@@ -6,7 +6,123 @@ on:
     - cron: '6,21,36,51 * * * *' # staggered scheduler registration refresh
   workflow_dispatch:
     inputs:
-      opencode_trial:
+      repair_live_probe:
+    # Read-only candidate-branch experiment. Never runs the publisher.
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.repository == 'LMhdez/gaslux' &&
+      github.event.pull_request.head.repo.full_name == 'LMhdez/gaslux' &&
+      github.head_ref == 'feat/autonomous-safety-repair-triage'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+      pull-requests: read
+      actions: read
+      checks: read
+      issues: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          path: source
+          persist-credentials: false
+      - name: Resolve a real eligible stale candidate, no repository writes
+        id: probe
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/repair-probe
+          python3 -B - <<'PY'
+          import json, os, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path("trusted/auto_tests/tools").resolve()))
+          import gaslux_agent_feature_factory as factory
+          root = Path("source").resolve()
+          base = factory.git(root, "rev-parse", "HEAD")
+          diagnostics = []
+          eligible_plan = factory.repair_plan(root, base, diagnostics=diagnostics)
+          # A historical successor is a real publication blocker. The read-only
+          # probe may build/test the canonical bytes but cannot publish them.
+          build_only = next((d["build_only_plan"] for d in diagnostics
+                             if d["reason"] == "SUCCESSOR_PR_HISTORY_EXISTS"), None)
+          plan = eligible_plan or build_only
+          evidence = Path("evidence/repair-probe")
+          row = {"status": "eligible" if eligible_plan else
+                           "build_only_history_blocked" if build_only else "blocked",
+                 "base": base, "publication_eligible": bool(eligible_plan),
+                 "publication_attempted": False, "merge_attempted": False,
+                 "diagnostics": diagnostics, "plan": plan}
+          (evidence / "plan.json").write_text(json.dumps(row, sort_keys=True) + "\n")
+          print(json.dumps(row, sort_keys=True))
+          with open(os.environ["GITHUB_OUTPUT"], "a") as out:
+              out.write("eligible=" + ("true" if plan else "false") + "\n")
+          PY
+      - name: Build, independently verify and test the actual repair against dev
+        if: steps.probe.outputs.eligible == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B - <<'PY'
+          import json, sys
+          from pathlib import Path
+          sys.path.insert(0, str(Path("trusted/auto_tests/tools").resolve()))
+          import gaslux_agent_feature_factory as factory
+          evidence = Path("evidence/repair-probe")
+          plan = json.loads((evidence / "plan.json").read_text())["plan"]
+          root = Path("source").resolve()
+          role, base = plan["role"], plan["base"]
+          number, head = plan["repair_pr"], plan["repair_head"]
+          factory.generate_repair(root, evidence, role, base, number, head)
+          report = factory.verify(root, evidence, role, base, execute=True,
+                                  repair_pr=number, repair_head=head)
+          target = root / report["target"]
+          before, after = factory.expected_source(
+              root, role, (evidence / "addition.py").read_text(),
+              formatted_repair=True)
+          target.write_bytes(after)
+          print(json.dumps(report, sort_keys=True))
+          PY
+          python3 -m pip install 'pytest==9.0.2' 'jsonschema==4.25.1' 'cryptography==44.0.3' 'ruff==0.17.6'
+          target_file=$(python3 -c 'import json; print(json.load(open("evidence/repair-probe/report.json"))["target"])')
+          python3 -m ruff check --config trusted/auto_tests/pyproject.toml "source/$target_file"
+          python3 -m ruff format --check --config trusted/auto_tests/pyproject.toml "source/$target_file"
+          python3 -B -m compileall -q source/assets/live
+          role=$(python3 -c 'import json; print(json.load(open("evidence/repair-probe/report.json"))["role"])')
+          case "$role" in
+            cachyos) suite=test_distribution_capabilities.py ;;
+            zorin) suite=test_candidate_handoff.py ;;
+            popos) suite=test_popos_native_preflight.py ;;
+            q4os) suite=test_q4os_native_preflight.py ;;
+            bazzite) suite=test_bazzite_atomic_preflight.py ;;
+            *) exit 1 ;;
+          esac
+          (cd source && python3 -B -m pytest -q "auto_tests/tests/$suite")
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          evidence = Path("evidence/repair-probe")
+          row = json.loads((evidence / "plan.json").read_text())
+          row.update(status=("repair_prepublication_pass" if row["publication_eligible"]
+                             else "repair_build_only_pass_history_blocked"), product_tests_passed=True)
+          (evidence / "result.json").write_text(json.dumps(row, sort_keys=True) + "\n")
+          PY
+      - name: Retain read-only repair receipts
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-repair-live-probe
+          path: evidence/repair-probe/*.json
+          if-no-files-found: error
+          retention-days: 14
+
+  opencode_trial:
         description: 'Run isolated OpenCode comparison and dev shadow only (no publishing)'
         type: boolean
         default: false
@@ -44,6 +160,7 @@ on:
       - auto_tests/tools/gaslux_opencode_model_proxy.py
       - auto_tests/tools/gaslux_opencode_isolated_runtime.py
       - auto_tests/tools/gaslux_opencode_product_shadow.py
+      - auto_tests/tools/gaslux_opencode_factory_worker.py
       - auto_tests/tests/test_gaslux_opencode_workspace.py
   pull_request:
     paths:
@@ -73,6 +190,7 @@ on:
       - auto_tests/tools/gaslux_opencode_model_proxy.py
       - auto_tests/tools/gaslux_opencode_isolated_runtime.py
       - auto_tests/tools/gaslux_opencode_product_shadow.py
+      - auto_tests/tools/gaslux_opencode_factory_worker.py
       - auto_tests/tests/test_gaslux_opencode_workspace.py
 
 permissions:
@@ -296,12 +414,18 @@ jobs:
     permissions:
       contents: read
       pull-requests: read
+      actions: read
+      checks: read
+      issues: read
     outputs:
       active: ${{ steps.plan.outputs.active }}
       role: ${{ steps.plan.outputs.role }}
       base: ${{ steps.plan.outputs.base }}
       blocked: ${{ steps.plan.outputs.blocked }}
       scope: ${{ steps.plan.outputs.scope }}
+      repair_pr: ${{ steps.plan.outputs.repair_pr }}
+      repair_head: ${{ steps.plan.outputs.repair_head }}
+      worker: ${{ steps.plan.outputs.worker }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -342,10 +466,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py plan --repo source > /tmp/gaslux-feature-plan.json
+          python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py plan --repo source --enable-stale-repair > /tmp/gaslux-feature-plan.json
           cat /tmp/gaslux-feature-plan.json
           python3 - <<'PY'
-          import json, os
+          import json, os, sys
+          sys.path.insert(0, 'trusted/auto_tests/tools')
+          from gaslux_opencode_factory_worker import route
           row = json.load(open('/tmp/gaslux-feature-plan.json'))
           if row['status'] not in ('pending', 'idle', 'blocked'):
               raise SystemExit('Invalid feature factory state')
@@ -355,6 +481,9 @@ jobs:
               out.write('base=' + row['base'] + '\n')
               out.write('blocked=' + str(row['status'] == 'blocked').lower() + '\n')
               out.write('scope=' + row.get('scope', 'lifecycle') + '\n')
+              out.write('repair_pr=' + str(row.get('repair_pr', '')) + '\n')
+              out.write('repair_head=' + row.get('repair_head', '') + '\n')
+              out.write('worker=' + route(row) + '\n')
           if row['status'] == 'blocked':
               with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
                   summary.write('### GASLUX: actual unsatisfied lifecycle gates (read-only)\n\n')
@@ -388,13 +517,15 @@ jobs:
     needs: select
     if: needs.select.outputs.active == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 28
+    timeout-minutes: 65
     permissions:
       contents: read
     env:
       ROLE: ${{ needs.select.outputs.role }}
       BASE: ${{ needs.select.outputs.base }}
       SCOPE: ${{ needs.select.outputs.scope }}
+      REPAIR_PR: ${{ needs.select.outputs.repair_pr }}
+      REPAIR_HEAD: ${{ needs.select.outputs.repair_head }}
       OLLAMA_HOST: 127.0.0.1:11434
       OLLAMA_NUM_PARALLEL: '1'
     steps:
@@ -414,7 +545,106 @@ jobs:
           test "$(git -C source rev-parse HEAD)" = "$BASE"
           python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
           python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_phase2b.py -v
+      - name: Fetch pinned OpenCode v1.19.6 release asset
+        if: needs.select.outputs.worker == 'opencode'
+        shell: bash
+        run: |
+          set -euo pipefail
+          lab=$(mktemp -d "$RUNNER_TEMP/gaslux-opencode.XXXXXXXX")
+          curl --fail --location --proto '=https' --retry 2 --max-time 180 \
+            https://github.com/anomalyco/opencode/releases/download/v1.19.6/opencode-linux-x64-baseline.tar.gz \
+            -o "$lab/opencode.tar.gz"
+          echo "8443113b3f3dfebf8b0fa91c4377e5519a62b9231732d9344a5df001e4a852b3  $lab/opencode.tar.gz" | sha256sum -c -
+          python3 -B - "$lab" <<'PY'
+          import pathlib, sys, tarfile
+          root = pathlib.Path(sys.argv[1])
+          with tarfile.open(root / 'opencode.tar.gz') as archive:
+              files = [m for m in archive.getmembers()
+                       if m.isfile() and pathlib.PurePosixPath(m.name).name == 'opencode']
+              assert len(files) == 1 and 0 < files[0].size <= 300_000_000
+              with archive.extractfile(files[0]) as src, (root / 'opencode').open('xb') as dst:
+                  import shutil
+                  shutil.copyfileobj(src, dst)
+          (root / 'opencode').chmod(0o700)
+          PY
+          echo "GASLUX_OPENCODE_BIN=$lab/opencode" >> "$GITHUB_ENV"
       - name: Install hash-pinned unprivileged local inference engine
+        if: needs.select.outputs.worker == 'opencode'
+        id: inference_setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/ollama/ollama/releases/download/v0.40.17/install.sh -o /tmp/ollama-install.sh
+          echo 'eb510679f45de4a914d99953cd3deaada5dc73f9d585014df99d704449dd7dcc  /tmp/ollama-install.sh' | sha256sum -c -
+          OLLAMA_VERSION=0.40.17 timeout 420 sh /tmp/ollama-install.sh
+          # The installer may start a systemd service with its own environment.
+          # Never silently reuse that server: OpenAI-compatible context settings
+          # are not the server's num_ctx.
+          if systemctl is-active --quiet ollama.service; then
+            sudo systemctl stop ollama.service
+          fi
+          if curl -fsS --max-time 2 http://127.0.0.1:11434/api/version >/dev/null 2>&1; then
+            echo "Unexpected existing Ollama listener"; exit 1
+          fi
+          OLLAMA_CONTEXT_LENGTH=16384 ollama serve > /tmp/ollama.log 2>&1 &
+          server_pid=$!
+          ready=false
+          for i in $(seq 1 50); do
+            kill -0 "$server_pid"
+            if curl -fsS --max-time 2 http://127.0.0.1:11434/api/version >/dev/null; then
+              ready=true; break
+            fi
+            sleep 2
+          done
+          test "$ready" = true
+          timeout 720 ollama pull qwen3.5:9b
+          python3 - <<'PY'
+          import json, urllib.request
+          tags = json.load(urllib.request.urlopen('http://127.0.0.1:11434/api/tags'))
+          model = next((x for x in tags.get('models', []) if x.get('name') == 'qwen3.5:9b'), None)
+          assert model and model.get('digest') == '56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
+          PY
+      - name: Mandatory isolated workspace regression tests
+        if: needs.select.outputs.worker == 'opencode'
+        run: python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_opencode_workspace.py -v
+      - name: Verify independent broker and isolated synthetic parent boundary
+        id: parent_admission
+        if: needs.select.outputs.worker == 'opencode'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -x /usr/bin/bwrap ] || [ ! -f /usr/share/apparmor/extra-profiles/bwrap-userns-restrict ]; then
+            sudo timeout 180 apt-get update
+            sudo timeout 180 apt-get install -y --no-install-recommends bubblewrap apparmor-profiles
+          fi
+          # Ubuntu Noble's restrictive, bwrap-specific profile. Do not disable
+          # AppArmor, change sysctl, replace a loaded profile or fall back.
+          profile=/usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+          if [ "$(cat /sys/module/apparmor/parameters/enabled)" = Y ]; then
+            test -f "$profile"
+            dpkg-query -S "$profile" | grep -q '^apparmor-profiles:'
+            loaded=$(sudo cat /sys/kernel/security/apparmor/profiles)
+            if ! printf '%s\n' "$loaded" | grep -Eq '^(bwrap-userns-restrict|bwrap|/usr/bin/bwrap) \('; then
+              sudo apparmor_parser -a "$profile"
+            fi
+          fi
+          mkdir -p evidence/opencode-iterative
+          python3 -B trusted/auto_tests/tools/gaslux_opencode_parent_boundary.py \
+            --report evidence/opencode-iterative/parent-boundary.json
+      - name: Install isolated product regression dependencies
+        if: needs.select.outputs.worker == 'opencode'
+        run: |
+          python3 -m pip install --target "$RUNNER_TEMP/gaslux-shadow-deps" 'pytest==9.0.2' 'jsonschema==4.25.1' 'cryptography==44.0.3' 'ruff==0.17.6'
+      - name: Run exact admitted OpenCode lifecycle task
+        if: needs.select.outputs.worker == 'opencode'
+        run: |
+          set -euo pipefail
+          python3 -B trusted/auto_tests/tools/gaslux_opencode_factory_worker.py \
+            --binary "$GASLUX_OPENCODE_BIN" --repo source --base "$BASE" --role "$ROLE" \
+            --scope "$SCOPE" --dependencies "$RUNNER_TEMP/gaslux-shadow-deps" --evidence evidence/feature-factory
+      - name: Install hash-pinned unprivileged local inference engine
+        if: needs.select.outputs.worker == 'direct'
         shell: bash
         run: |
           set -euo pipefail
@@ -435,16 +665,22 @@ jobs:
           assert model and model.get('digest') == '56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
           PY
       - name: Generate and adversarially check model-authored backend product code
+        if: needs.select.outputs.worker != 'opencode'
         env:
           GASLUX_FACTORY_RUFF_ENFORCE: 'true'
         shell: bash
         run: |
           set -euo pipefail
+          repair=()
+          if [[ -n "$REPAIR_PR" || -n "$REPAIR_HEAD" ]]; then
+            repair=(--repair-pr "$REPAIR_PR" --repair-head "$REPAIR_HEAD")
+          fi
           timeout 700 python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py generate \
-            --repo source --role "$ROLE" --base "$BASE" --scope "$SCOPE" --evidence evidence/feature-factory
+            --repo source --role "$ROLE" --base "$BASE" --scope "$SCOPE" --evidence evidence/feature-factory "${repair[@]}"
           python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py verify \
-            --repo source --role "$ROLE" --base "$BASE" --scope "$SCOPE" --evidence evidence/feature-factory
+            --repo source --role "$ROLE" --base "$BASE" --scope "$SCOPE" --evidence evidence/feature-factory "${repair[@]}"
       - name: Recompile and run relevant current-dev product regression tests without write token
+        if: needs.select.outputs.worker != 'opencode'
         shell: bash
         run: |
           set -euo pipefail
@@ -456,7 +692,8 @@ jobs:
           target = Path('source') / info['target']
           addition = Path('evidence/feature-factory/addition.py').read_bytes()
           raw = target.read_bytes()
-          target.write_bytes(raw.rstrip(b'\n') + b'\n\n' + addition)
+          sep = b'\n\n\n' if info.get('producer') == 'trusted-fixed-lifecycle-repair-v1' else b'\n\n'
+          target.write_bytes(raw.rstrip(b'\n') + sep + addition)
           PY
           # Ruff analyzes bytes only; model-authored code is never imported
           # by the style gate. Only the trusted source+function is checked.
@@ -475,7 +712,7 @@ jobs:
           cd source
           python3 -B -m pytest -q "auto_tests/tests/$suite"
       - name: Export immutable candidate bytes, never the complete checkout
-        if: always()
+        if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gaslux-feature-candidate
@@ -510,12 +747,18 @@ jobs:
           ROLE: ${{ needs.select.outputs.role }}
           BASE: ${{ needs.select.outputs.base }}
           SCOPE: ${{ needs.select.outputs.scope }}
+          REPAIR_PR: ${{ needs.select.outputs.repair_pr }}
+          REPAIR_HEAD: ${{ needs.select.outputs.repair_head }}
         run: |
           set -euo pipefail
           python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
           python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_phase2b.py -v
+          repair=()
+          if [[ -n "$REPAIR_PR" || -n "$REPAIR_HEAD" ]]; then
+            repair=(--repair-pr "$REPAIR_PR" --repair-head "$REPAIR_HEAD")
+          fi
           python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py verify \
-            --repo source --role "$ROLE" --base "$BASE" --scope "$SCOPE" --evidence evidence/feature-factory
+            --repo source --role "$ROLE" --base "$BASE" --scope "$SCOPE" --evidence evidence/feature-factory "${repair[@]}"
 
   publish_draft:
     needs: [select, model, safety]
@@ -531,6 +774,9 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      actions: read
+      checks: read
+      issues: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -564,14 +810,21 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ steps.publish_identity.outputs.token || secrets.GITHUB_TOKEN }}
+          GASLUX_REPAIR_READ_TOKEN: ${{ github.token }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           ROLE: ${{ needs.select.outputs.role }}
           BASE: ${{ needs.select.outputs.base }}
           SCOPE: ${{ needs.select.outputs.scope }}
+          REPAIR_PR: ${{ needs.select.outputs.repair_pr }}
+          REPAIR_HEAD: ${{ needs.select.outputs.repair_head }}
         run: |
           set -euo pipefail
+          repair=()
+          if [[ -n "$REPAIR_PR" || -n "$REPAIR_HEAD" ]]; then
+            repair=(--repair-pr "$REPAIR_PR" --repair-head "$REPAIR_HEAD")
+          fi
           timeout 120 python3 -I trusted/auto_tests/tools/gaslux_agent_feature_factory.py publish \
-            --repo source --role "$ROLE" --base "$BASE" --scope "$SCOPE" --evidence evidence/feature-factory
+            --repo source --role "$ROLE" --base "$BASE" --scope "$SCOPE" --evidence evidence/feature-factory "${repair[@]}"
 
   triage_missing_gates:
     needs: select
@@ -586,6 +839,8 @@ jobs:
       contents: read
       issues: write
       pull-requests: read
+      checks: read
+      actions: read
     steps:
       - name: Trusted main-only triage source, no persisted Git credential
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -599,7 +854,7 @@ jobs:
           ref: dev
           path: source
           persist-credentials: false
-      - name: Deduplicate real missing-gate task and publish one scope-review issue
+      - name: Route stale Safety candidate or real missing gate, at most one scope-review issue
         env:
           GH_TOKEN: ${{ github.token }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
@@ -609,4 +864,4 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python3 -B trusted/auto_tests/tools/gaslux_agent_task_triage.py --repo source
+          python3 -B trusted/auto_tests/tools/gaslux_agent_task_triage.py --repo source --with-admission-repair

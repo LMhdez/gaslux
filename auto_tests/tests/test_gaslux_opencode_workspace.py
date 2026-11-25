@@ -500,6 +500,28 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(shadow.regression_counts(red, 1)["failed"], 1)
         self.assertFalse(shadow.regression_counts(red, 1)["accepted"])
 
+    def test_operational_routing_preserves_scope_and_repairs(self):
+        import gaslux_opencode_factory_worker as worker
+        row = {"status": "pending", "role": "zorin", "base": "a"*40,
+               "scope": "lifecycle", "task": b.factory.TASKS["zorin"][2]}
+        self.assertEqual(worker.route(row), "opencode")
+        self.assertEqual(worker.route({"status": "blocked"}), "none")
+        self.assertEqual(worker.route({**row, "repair_pr": 395, "repair_head": "b"*40}), "repair")
+        self.assertEqual(worker.route({**row, "role": "mint", "scope": b.factory.SCOPE2B_ID,
+                                       "task": b.factory.SCOPE2B_TASK}), "direct")
+        for change in ({"scope": "arbitrary"}, {"task": "untrusted"},
+                       {"repair_pr": 395}, {"base": "main"}):
+            with self.assertRaises(ValueError):
+                worker.route({**row, **change})
+
+    def test_worker_export_rejects_failed_shadow_without_writing(self):
+        import gaslux_opencode_factory_worker as worker
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "candidate"
+            with self.assertRaises(ValueError):
+                worker.export(Path(tmp), "mint", "a"*40, {"accepted": False}, [], dest)
+            self.assertFalse(dest.exists())
+
     def test_verified_journal_and_independent_final_recheck(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)

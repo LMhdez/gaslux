@@ -503,7 +503,152 @@ def validate_addition(
         raise ValueError("Untrusted empty evidence was treated as proof")
 
 
-def expected_source(root: Path, role: str, addition: str, *, scope: str = "lifecycle") -> tuple[bytes, bytes]:
+def repair_identity(number, head):
+    if number is None and head is None:
+        return False
+    if (type(number) is not int or not 1 <= number <= 999999
+            or not isinstance(head, str) or not SHA.fullmatch(head)):
+        raise ValueError("Invalid repair candidate identity")
+    return True
+
+
+def repair_plan(root, base, *, number=None, head=None, diagnostics=None):
+    """Recompute a narrow successor plan; no issue/artifact can grant authority."""
+    # -I publisher deliberately imports only the trusted script directory.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import gaslux_distro_admission as admission
+    from gaslux_agent_task_triage import repair_eligible
+    pinned = repair_identity(number, head)
+    def record(old, role, reason, **details):
+        if diagnostics is not None:
+            diagnostics.append({"pr": old, "role": role, "reason": reason, **details})
+    if git(root, "rev-parse", "HEAD") != base or not SHA.fullmatch(base):
+        raise ValueError("Wrong repair base")
+    if admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != base:
+        return None
+    candidates = admission.discover_candidates()
+    rows = admission.complete_page(admission.api(
+        "GET", "/pulls?state=open&base=dev&per_page=100"))
+    for old, (role, old_head) in candidates.items():
+        if pinned and (old != number or old_head != head):
+            continue
+        # A successor is an intentional exception to cross-base dedup, but
+        # never more than one successor while the original remains open.
+        same_role = []
+        for pr in rows:
+            h, b = pr["head"], pr["base"]
+            name = h.get("ref")
+            match = admission.BRANCH.fullmatch(name) if isinstance(name, str) else None
+            if (match and match[1] == role and b.get("ref") == "dev"
+                    and (h.get("repo") or {}).get("full_name") == REPO
+                    and (b.get("repo") or {}).get("full_name") == REPO):
+                same_role.append(pr.get("number"))
+        if same_role != [old]:
+            record(old, role, "ROLE_ALREADY_HAS_MULTIPLE_CANDIDATES")
+            continue
+        row = admission.inspect(old, role, None, expected_head=old_head)
+        if not repair_eligible(row, old, role, old_head) or row["base"] != base:
+            record(old, role, "ADMISSION_NOT_ELIGIBLE", admission=row)
+            continue
+        pr = admission.api("GET", f"/pulls/{old}")
+        if pr["head"]["sha"] != old_head:
+            record(old, role, "HEAD_CHANGED")
+            continue
+        source, test, task = TASKS[role]
+        original, _ = admission.candidate_append(pr, role, old_head, source)
+        ancestry = admission.api("GET", f"/compare/{original}...{base}")
+        if (ancestry.get("status") != "ahead"
+                or ancestry.get("merge_base_commit", {}).get("sha") != original):
+            record(old, role, "NON_FORWARD_ANCESTRY")
+            continue
+        for path in (source, "auto_tests/tests/" + test):
+            before = admission.api("GET", f"/contents/{path}?ref={original}")
+            now = admission.api("GET", f"/contents/{path}?ref={base}")
+            if (before.get("type") != "file" or now.get("type") != "file"
+                    or not admission.valid_sha(before.get("sha"))
+                    or before["sha"] != now.get("sha")):
+                record(old, role, "SOURCE_OR_TEST_CHANGED", path=path)
+                break
+        else:
+            if f"def assess_{role}_lifecycle(" in (root / source).read_text():
+                record(old, role, "ALREADY_IMPLEMENTED")
+                continue
+            branch = origin_branch(role, base)
+            history = admission.complete_page(admission.api(
+                "GET", f"/pulls?state=all&head=LMhdez:{branch}&base=dev&per_page=100"))
+            if history:
+                # Historical successors are not reusable publication authority.
+                # Record a build-only plan after all source/safety checks, while
+                # leaving the runtime plan blocked. The probe has no write token.
+                record(old, role, "SUCCESSOR_PR_HISTORY_EXISTS",
+                       history=[{"number": h.get("number"), "state": h.get("state")}
+                                for h in history],
+                       build_only_plan={"role": role, "base": base, "scope": "lifecycle",
+                                        "repair_pr": old, "repair_head": old_head})
+                continue
+            ref = subprocess.run(
+                ["gh", "api", f"repos/{REPO}/git/ref/heads/{branch}"],
+                text=True, capture_output=True, check=False, timeout=20)
+            if ref.returncode == 0:
+                record(old, role, "SUCCESSOR_REF_EXISTS")
+                continue
+            if "404" not in ref.stderr and "Not Found" not in ref.stderr:
+                raise RuntimeError("Cannot establish successor branch absence")
+            if admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != base:
+                return None
+            return {"status": "pending", "role": role, "base": base,
+                    "scope": "lifecycle", "task": task,
+                    "repair_pr": old, "repair_head": old_head}
+    return None
+
+
+def repair_addition(role):
+    if role not in ("zorin", "cachyos", "popos", "q4os", "bazzite"):
+        raise ValueError("Unsupported repair role")
+    # Trusted canonical fixed semantics, not new inference or copied executable
+    # bytes. The original was independently checked against this AST contract.
+    return (
+        f"def assess_{role}_lifecycle(evidence: dict) -> dict:\n"
+        "    gates = (\n"
+        + "".join(f'        "{gate}",\n' for gate in GATES)
+        + "    )\n"
+        "    missing = sorted([name for name in gates if evidence.get(name) is not True])\n"
+        "    return {\n"
+        f'        "backend": "{role}",\n'
+        '        "missingGates": missing,\n'
+        '        "installationAuthorized": False,\n'
+        '        "releaseEligible": False,\n'
+        "    }\n"
+    )
+
+
+def repair_report(root, role, base, number, head, *, execute):
+    repair_identity(number, head)
+    if git(root, "rev-parse", "HEAD") != base or not SHA.fullmatch(base):
+        raise ValueError("Wrong repair checkout")
+    addition = repair_addition(role)
+    validate_addition(role, addition, execute=execute)
+    before, after = expected_source(root, role, addition, formatted_repair=True)
+    return {
+        "role": role, "base": base, "task": TASKS[role][2],
+        "target": TASKS[role][0], "scope": "lifecycle",
+        "producer": "trusted-fixed-lifecycle-repair-v1",
+        "repair_pr": number, "repair_head": head,
+        "source_sha256": sha256(before), "candidate_sha256": sha256(after),
+        "addition_sha256": sha256(addition.encode()),
+    }
+
+
+def generate_repair(root, evidence_dir, role, base, number, head):
+    report = repair_report(root, role, base, number, head, execute=True)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    (evidence_dir / "addition.py").write_bytes(repair_addition(role).encode())
+    (evidence_dir / "report.json").write_text(
+        json.dumps(report, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+
+
+def expected_source(root: Path, role: str, addition: str, *, scope: str = "lifecycle",
+                    formatted_repair: bool = False) -> tuple[bytes, bytes]:
     path = root / TASKS[role][0]
     original = path.read_bytes()
     if len(original) > 25000 or b"\r" in original:
@@ -513,19 +658,32 @@ def expected_source(root: Path, role: str, addition: str, *, scope: str = "lifec
     function_name = SCOPE2B_FN if scope == SCOPE2B_ID else f"assess_{role}_lifecycle"
     if f"def {function_name}(".encode() in original:
         raise ValueError("Feature already implemented")
-    proposed = original.rstrip(b"\n") + b"\n\n" + addition.rstrip().encode("utf-8") + b"\n"
+    separator = b"\n\n\n" if formatted_repair else b"\n\n"
+    proposed = original.rstrip(b"\n") + separator + addition.rstrip().encode("utf-8") + b"\n"
     if len(proposed) > 32000:
         raise ValueError("Proposed source too large")
     return original, proposed
 
 
 def verify(root: Path, evidence_dir: Path, role: str, base: str, *, execute: bool,
-           scope: str = "lifecycle") -> dict:
+           scope: str = "lifecycle", repair_pr=None, repair_head=None) -> dict:
     if role not in TASKS or not SHA.fullmatch(base) or git(root, "rev-parse", "HEAD") != base:
         raise ValueError("Wrong immutable source checkout")
     report = json.loads((evidence_dir / "report.json").read_text(encoding="utf-8"))
     addition_raw = (evidence_dir / "addition.py").read_bytes()
     addition = addition_raw.decode("utf-8")
+    if repair_identity(repair_pr, repair_head):
+        if scope != "lifecycle":
+            raise ValueError("Repair cannot expand scope")
+        expected = repair_report(root, role, base, repair_pr, repair_head, execute=execute)
+        if report != expected or addition_raw != repair_addition(role).encode():
+            raise ValueError("Repair artifact differs from trusted canonical source")
+        return report
+    composition = report.get("composition")
+    if composition not in (None, "opencode-python-v1") or (composition is not None and scope != "lifecycle"):
+        raise ValueError("Unexpected model composition")
+    if any(k in report for k in ("producer", "repair_pr", "repair_head")):
+        raise ValueError("Unexpected repair evidence in model path")
     expected_task = SCOPE2B_TASK if scope == SCOPE2B_ID else TASKS[role][2]
     if scope not in ("lifecycle", SCOPE2B_ID):
         raise ValueError("Unapproved source scope")
@@ -542,7 +700,8 @@ def verify(root: Path, evidence_dir: Path, role: str, base: str, *, execute: boo
         report.get("addition_sha256") != sha256(addition_raw)):
         raise ValueError("Untrusted source/report identity")
     validate_addition(role, addition, execute=execute, scope=scope)
-    before, after = expected_source(root, role, addition, scope=scope)
+    before, after = expected_source(root, role, addition, scope=scope,
+                                    formatted_repair=composition == "opencode-python-v1")
     if (report.get("source_sha256") != sha256(before) or
         report.get("candidate_sha256") != sha256(after)):
         raise ValueError("Model artifact/source digest mismatch")
@@ -788,16 +947,54 @@ def safe_forward_draft_base(root: Path, role: str, old: str, current: str) -> bo
             return False
     return True
 
-def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str = "lifecycle") -> None:
+def create_successor_ref(root: Path, role: str, base: str) -> None:
+    """Create an absent ref only; an existing ref is never overwritten."""
+    branch = origin_branch(role, base)
+    ref = "refs/heads/" + branch
+    # Empty expected value is a compare-and-create lease, NOT permission
+    # to replace an existing ref, even if that update is fast-forward.
+    result = subprocess.run(
+        ["git", "-C", str(root), "push", "--porcelain",
+         f"--force-with-lease={ref}:", "origin", f"HEAD:{ref}"],
+        check=True, capture_output=True, text=True, timeout=60,
+    )
+    # Git can report success for an already-identical ref. Require actual
+    # creation, not an up-to-date no-op, before attempting PR publication.
+    statuses = [line.split("\t") for line in result.stdout.splitlines()
+                if "\t" in line]
+    if (len(statuses) != 1 or len(statuses[0]) != 3
+            or statuses[0][0] != "*"
+            or statuses[0][1].split(":")[-1] != ref
+            or statuses[0][2] != "[new branch]"):
+        raise RuntimeError("Successor ref was not exclusively created")
+
+
+def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str = "lifecycle",
+            repair_pr=None, repair_head=None) -> None:
     if os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true":
         raise RuntimeError("GASLUX_AUTONOMY_PAUSED: model Draft publisher blocked")
     if os.getenv("GITHUB_REPOSITORY") != REPO or os.getenv("GITHUB_REF") != "refs/heads/main":
         raise ValueError("Only trusted default-branch Actions may publish")
     # Static-only checks: never execute model text in a token-bearing job.
-    verify(root, evidence_dir, role, base, execute=False, scope=scope)
+    is_repair = repair_identity(repair_pr, repair_head)
+    verified = verify(root, evidence_dir, role, base, execute=False, scope=scope,
+                      repair_pr=repair_pr, repair_head=repair_head)
+    if is_repair:
+        # Recheck with the workflow token, not the publication App identity.
+        read_token = os.environ.get("GASLUX_REPAIR_READ_TOKEN")
+        publish_token = os.environ.get("GH_TOKEN")
+        if not read_token or not publish_token:
+            raise RuntimeError("Repair provenance token missing")
+        try:
+            os.environ["GH_TOKEN"] = read_token
+            picked = repair_plan(root, base, number=repair_pr, head=repair_head)
+        finally:
+            os.environ["GH_TOKEN"] = publish_token
+        if not picked or picked["role"] != role:
+            raise RuntimeError("Repair candidate no longer eligible")
     git(root, "fetch", "origin", "refs/heads/dev:refs/remotes/origin/dev")
     live = git(root, "rev-parse", "refs/remotes/origin/dev")
-    if not safe_forward_draft_base(root, role, base, live):
+    if (is_repair and live != base) or not safe_forward_draft_base(root, role, base, live):
         print(json.dumps({"status": "stale_or_relevant_dev_change", "role": role}))
         return
     if scope == SCOPE2B_ID:
@@ -823,7 +1020,7 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
     # Safe forward-only changes are included by ancestry, but this review PR
     # is still always Draft. No model text runs with publication credentials.
     git(root, "checkout", "-b", branch, live)
-    _, proposed = expected_source(root, role, addition, scope=scope)
+    _, proposed = expected_source(root, role, addition, scope=scope, formatted_repair=is_repair or verified.get("composition") == "opencode-python-v1")
     (root / TASKS[role][0]).write_bytes(proposed)
     if git(root, "diff", "--name-only") != TASKS[role][0]:
         raise ValueError("Unexpected changed product path")
@@ -837,7 +1034,10 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
     subprocess.run(["git", "-C", str(root), "commit", "-m", commit_subject], check=True)
     # No implicit token is available in any model-inference or test runner.
     subprocess.run(["gh", "auth", "setup-git"], check=True)
-    subprocess.run(["git", "-C", str(root), "push", "origin", f"HEAD:refs/heads/{branch}"], check=True)
+    if is_repair:
+        create_successor_ref(root, role, base)
+    else:
+        subprocess.run(["git", "-C", str(root), "push", "origin", f"HEAD:refs/heads/{branch}"], check=True)
     body = (f"Unprivileged Qwen3.5 9B proposal for {role}, pinned base {base}.\n\n"
             "Pure read-only lifecycle evidence helper appended to real backend source. "
             "Static AST scope and independent isolated acceptance checked; the PR is a "
@@ -858,6 +1058,14 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
     title = (f"feat(mint): pinned ISO descriptor preflight from task #{SCOPE2B_ISSUE}"
              if scope == SCOPE2B_ID else
              f"feat({role}): autonomous lifecycle evidence proposal")
+    if is_repair:
+        title = f"fix({role}): refresh stale lifecycle candidate #{repair_pr}"
+        body = (
+            f"Trusted deterministic successor of #{repair_pr}, old HEAD {repair_head}, "
+            f"current dev {base}. Fixed non-writer lifecycle contract; no new model "
+            "inference or inherited CI/approval. Fresh regression checks required. "
+            "Original PR retained for evidence; no automatic merge, installation or release."
+        )
     subprocess.run(["gh", "pr", "create", "--repo", REPO, "--draft", "--base", "dev",
                     "--head", branch, "--title", title, "--body", body], check=True)
 
@@ -870,20 +1078,33 @@ def main() -> None:
     cli.add_argument("--role", choices=tuple(TASKS))
     cli.add_argument("--scope", choices=("lifecycle", SCOPE2B_ID), default="lifecycle")
     cli.add_argument("--base")
+    cli.add_argument("--enable-stale-repair", action="store_true")
+    cli.add_argument("--repair-pr", type=int)
+    cli.add_argument("--repair-head")
     args = cli.parse_args()
     root = args.repo.resolve(strict=True)
     if args.action == "plan":
-        print(json.dumps(plan(root), sort_keys=True))
+        row = plan(root)
+        if args.enable_stale_repair and row["status"] == "blocked":
+            row = repair_plan(root, row["base"]) or row
+        print(json.dumps(row, sort_keys=True))
         return
     if not args.role or not args.base:
         cli.error("Pinned role/base SHA required")
     if args.action == "generate":
-        generate(root, args.evidence, args.role, args.base, scope=args.scope)
+        if repair_identity(args.repair_pr, args.repair_head):
+            if args.scope != "lifecycle":
+                cli.error("Invalid repair scope")
+            generate_repair(root, args.evidence, args.role, args.base, args.repair_pr, args.repair_head)
+        else:
+            generate(root, args.evidence, args.role, args.base, scope=args.scope)
     elif args.action == "verify":
         print(json.dumps(verify(root, args.evidence, args.role, args.base,
-                                execute=True, scope=args.scope), sort_keys=True))
+                                execute=True, scope=args.scope, repair_pr=args.repair_pr,
+                                repair_head=args.repair_head), sort_keys=True))
     else:
-        publish(root, args.evidence, args.role, args.base, scope=args.scope)
+        publish(root, args.evidence, args.role, args.base, scope=args.scope,
+                repair_pr=args.repair_pr, repair_head=args.repair_head)
 
 
 if __name__ == "__main__":

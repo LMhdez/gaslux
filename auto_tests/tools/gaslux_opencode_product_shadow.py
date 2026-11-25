@@ -161,7 +161,7 @@ def style_check(tree, dependencies, role, work):
 def factory_contract(repo, role, base, task, addition, expected, directory):
     # Exercise the existing independent verifier's exact report/byte contract
     # without exporting a publishable artifact or enabling the publisher.
-    artifact = {"scope": "lifecycle", "role": role, "base": base,
+    artifact = {"scope": "lifecycle", "composition": "opencode-python-v1", "role": role, "base": base,
                 "target": factory.TASKS[role][0], "task": factory.TASKS[role][2],
                 "model": factory.MODEL, "model_digest": factory.MODEL_DIGEST,
                 "addition_sha256": factory.sha256(addition.encode()),
@@ -176,7 +176,7 @@ def factory_contract(repo, role, base, task, addition, expected, directory):
 
 
 def apply_candidate(tree, role, task, addition):
-    original, proposed = factory.expected_source(tree, role, addition)
+    original, proposed = factory.expected_source(tree, role, addition, formatted_repair=True)
     if factory.sha256(original) != task["source_sha256"]:
         raise ValueError("SHADOW_SOURCE_CHANGED")
     broker.validate_source(role, addition)
@@ -217,7 +217,7 @@ def repair_feedback(round_report, addition):
 
 
 def run_round(binary, repo, base, dependencies, role, context, round_root, task, feedback,
-              remaining):
+              remaining, selected_artifacts=None):
     import gaslux_opencode_iterative as iterative
     tree, tests, verification = (round_root / n for n in ("tree", "tests", "verification"))
     for path in (tree, tests, verification):
@@ -258,11 +258,14 @@ def run_round(binary, repo, base, dependencies, role, context, round_root, task,
         row["failure"] = "SHADOW_CANDIDATE_RED"
         return row, repair_feedback(row, addition)
     row["accepted"] = True
+    if selected_artifacts is not None:
+        selected_artifacts.append((broker.read_bounded(verification / "addition.py", broker.MAX_SOURCE),
+                                   broker.read_bounded(verification / "report.json", 32768)))
     row["stage"] = None
     return row, None
 
 
-def evaluate(binary, repo, base, dependencies, role, context):
+def evaluate(binary, repo, base, dependencies, role, context, *, selected_artifacts=None):
     started = time.monotonic()
     deadline = started + PRODUCT_BUDGET_SECONDS
     report = {"kind": "opencode_exact_dev_shadow_v2", "base": base, "role": role,
@@ -299,7 +302,7 @@ def evaluate(binary, repo, base, dependencies, role, context):
                 round_root.mkdir(mode=0o700)
                 report["stage"] = "product_round"
                 row, feedback = run_round(binary, repo, base, dependencies, role, context,
-                                          round_root, task, feedback, remaining)
+                                          round_root, task, feedback, remaining, selected_artifacts)
                 report["rounds"].append(row)
                 report["product_regressions_run"] |= row["product_regressions_run"]
                 report["stage"] = row["stage"]
