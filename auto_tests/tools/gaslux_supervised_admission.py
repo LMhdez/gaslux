@@ -130,8 +130,9 @@ def inspect(number, role, scope, head, reviewer=None, owner=None):
 def inventory():
     raw = os.getenv("GASLUX_SAFETY_REVIEWER_ID", "")
     reviewer = int(raw) if re.fullmatch(r"[1-9][0-9]{0,18}", raw) else None
-    owners = admission.parse_owner_ids(os.getenv("GASLUX_BACKEND_OWNER_IDS", ""),
-                                      allowed_roles=factory.TASKS)
+    owners = admission.parse_owner_ids(
+        os.getenv("GASLUX_SUPERVISED_OWNER_IDS") or os.getenv("GASLUX_BACKEND_OWNER_IDS", ""),
+        allowed_roles=factory.TASKS)
     try:
         candidates = discover()
         return {"schema": "gaslux-supervised-admission-v1", "inventory_verified": True,
