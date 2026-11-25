@@ -125,6 +125,25 @@ def native_events(raw, observations=None):
         if name not in ("skill", *REQUIRED) or type(state) is not dict:
             raise ValueError("UNEXPECTED_TOOL")
         if state.get("status") != "completed":
+            if observations is not None:
+                status = state.get("status")
+                error = state.get("error")
+                # Only reviewed tool names, fixed status and categories.
+                detail = "OTHER"
+                if type(error) is str:
+                    lower = error.lower()
+                    detail = next((label for needle, label in (
+                        ("timed out", "TIMEOUT"), ("timeout", "TIMEOUT"),
+                        ("permission", "PERMISSION"), ("denied", "PERMISSION"),
+                        ("rejected by bounded workspace", "BROKER_REJECTED"),
+                        ("not found", "NOT_FOUND"), ("abort", "ABORTED"),
+                        ("invalid", "INVALID_ARGUMENTS"),
+                    ) if needle in lower), "OTHER")
+                observations["failed_native_tool"] = {
+                    "name": name,
+                    "status": status if status in ("error", "pending", "running") else "OTHER",
+                    "category": detail,
+                }
             raise ValueError("TOOL_FAILURE")
         if name == "skill":
             inp, output = state.get("input"), state.get("output")
