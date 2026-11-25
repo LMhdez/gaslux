@@ -192,3 +192,128 @@ fixtures/role scope only, not the live PR inventory. The earlier technical
 verdict on 04da81ce5be9fe8478d886377fcd495f6944640e remains historical:
 fresh CI and independent review are required before integrating the new
 HEAD. #417 remains unchanged. Do not activate by bypassing main protection.
+
+
+## Safety-to-Factory repair routing (2026-11-24)
+
+The existing Factory triage job previously treated every existing bot PR
+as pending, even if its generated parent was no longer current dev.
+The follow-on to #421 adds an explicit bounded stale-candidate route to
+that same job, before normal missing-gate triage when generation is
+blocked. It recomputes admission from authenticated live API responses,
+not an uploaded candidate report or model text. Only exact-scope,
+CI-provenance-verified, non-objected stale candidates can produce a repair
+request. Unknown scope, failed CI, objections or uncertain inventory
+cannot initiate this route.
+
+One issue at most per invocation, using the existing issues:write token
+and existing serialized Factory runtime group. The dedup identity is
+PR number plus candidate HEAD, not the advancing dev base; even a closed
+canonical issue prevents another for that identity. Dedup checks exact
+repository, title, canonical first-line marker and Actions bot login plus
+numeric ID 41898282. Revalidate the candidate and dev, then reread
+inventory and issue history before publishing. This is bounded
+best-effort dedup, not an atomic GitHub unique constraint; a later
+revision can make an issue historical, never authoritative.
+
+Only actions:read and checks:read are added to the existing triage job.
+No App key, contents:write or pull-requests:write is added. The issue
+explicitly requires checking existing code, preserving historical evidence
+and using the applicable Factory/Safety gates before proposing a fresh
+candidate. It does not dispatch arbitrary model code, rewrite or close
+a PR, transfer CI, approve, merge, install or release. Automatic repair
+execution/publication and independent review remain separate steps.
+
+Dependency: exact #421 HEAD 910e403fcf4e3a568e7b404b8c897d9dea6bbb51
+passed CI 45496299321 (27 Integrator + 22 Admission tests). This
+composition must receive its own CI/review. #419 also edits the Factory
+workflow; reconcile exact changes and test the resulting tree before
+main activation. Do not assume the new runtime job has executed merely
+because PR tests passed.
+
+
+## Bounded deterministic stale-repair execution (2026-11-25)
+
+The successor path is now implemented in the existing Factory select,
+model, safety and publish_draft jobs. Only when the normal planner is
+blocked can it select a stale, exact-scope, non-objected and
+CI-provenance-verified candidate. Require forward-only dev ancestry,
+unchanged source and regression-suite blob IDs, absent lifecycle helper
+on current dev, exactly one same-repository open PR for that role,
+no previous PR on the successor branch and an absent successor ref.
+Current dev and the old candidate HEAD are pinned.
+
+For this fixed eight-gate non-writer helper only, generate canonical
+trusted Python rather than invoke Qwen again. Its distinct producer
+record binds candidate number/head, current base and exact artifact
+hashes; do not represent it as new model inference. Apply canonical
+Ruff spacing. The existing unprivileged product regression and separate
+Safety job must pass before the existing publisher runs. Publisher
+verifies exact canonical bytes without execution, repeats the live
+eligibility checks with the workflow credential (not the publication
+App credential), and requires dev still equal the tested base.
+The workflow credential in the publisher job retains its existing
+write scopes; the new API recheck makes GET requests only. Added
+permissions are actions/checks/issues read, not new write scopes.
+
+The successor is deliberately a new Draft linked to the historical PR;
+old PR and all evidence remain untouched. Two open role candidates
+block further repair generation, and a previously used successor branch
+cannot be reused. No automatic close, force-push, merge, VM writer or
+release; GitHub ref/PR creation is not an atomic transaction. Failed
+publication or an orphaned ref requires reconciliation, not blind retry.
+A changed source/test or any Safety hold is escalated rather than
+automatically rewritten. The existing issue route remains for blocked
+stale repairs. A formatted single-commit append is admitted only with
+the same strict fixed AST and all existing checks.
+
+Actual source and regression-test blob comparison on 2026-11-25:
+#395 Zorin and #400 Bazzite have unchanged relevant blobs between
+5c34b16651f120816fd0b13b566da3815678179b and
+d89f1547c50787e4640164e34bfd1863134e2908.
+Historical HEAD CI and job identities were inspected through GitHub API;
+no formal reviews on those candidates were observed. This is a lead,
+not a merge decision. No old approval or CI transfers to a successor.
+
+Contract CI on intermediate cd21ad96a89698ed8b3ad54c581de254dbac53f1:
+45572159732 (27+22 tests) and 45572159930 (32+19+15 tests) SUCCESS.
+The additional repair_live_probe job is confined to the same-repo
+#423 feature branch PR and uses read-only permissions, without App
+credentials or publication; it checks real live selection and patched
+source regressions, not production execution. Run 45572245481 on
+5ad367fdb58b5a262c626b999522b523ac8ff3dc was still in progress at
+the recorded observation. Final composition needs fresh CI and review.
+A green probe does not prove actual publication or merge.
+#417/#421 remain at their prior heads, #419 workflow overlap still
+requires reconciliation. Independent review/actual main gates are not
+waived by this implementation or by the user's engineering delegation.
+
+
+### Actual historical successor collision (2026-11-25, 08:16 UTC)
+
+Final prior HEAD cc7665c6046f07ace4147a9704406fd17742b920:
+45572334845 (27+22 PASS), 45572334893 (32+19+15 PASS).
+The real probe selected no candidate; product tests skipped. Its green
+job status was NOT a repaired product or successful publication.
+Direct API lookup established that both proposed successor branch names
+already exist on current dev d89f1547:
+
+- Zorin #409, closed/unmerged HEAD a72fad6f1411b2eb1aa55f20a413d51707ce4152,
+  historical duplicate of #395, failed read-only contracts (formatting).
+- Bazzite #415, closed/unmerged HEAD 2031d599ec65fb8b4a9ddb1bb4318ea90d3ca306,
+  historical duplicate of #400, failed read-only contracts (formatting).
+
+Both closure decisions explicitly preserve the older PR and history.
+Do not create another equivalent PR or reopen these automatically based
+on that text. Reconcile historical successors through independently
+reviewed exact-head changes; no previous failure or approval transfers.
+The runtime selector still refuses any successor history or existing ref.
+The new diagnostic records specific reasons and, after passing the
+same stale-candidate/CI/scope/ancestry/source+test gates, supplies a
+build-only plan to the read-only probe. This exercises real canonical
+repair and regressions without bypassing the history guard. It labels
+history-blocked success separately from publication eligibility and
+never attempts publication or merge. New exact HEAD CI required.
+#419 has an unresolved OpenCode containment/event-audit finding and
+failed current CI; do not combine its unapproved changes to claim a
+fully autonomous cycle. No changes to #417/#421 or old closed PRs.

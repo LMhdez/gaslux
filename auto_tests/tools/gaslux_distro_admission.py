@@ -178,7 +178,12 @@ def candidate_append(pr, role, sha, path):
         raise ValueError("Branch identity mismatch")
     one_path_commit(original, generated, path)
     before = source_at(path, original)
-    first = exact_append(before, source_at(path, generated), role)
+    generated_source = source_at(path, generated)
+    # New deterministic successors already use canonical Ruff spacing. The
+    # alternate separator is admitted only for a one-commit fixed helper.
+    formatted_single = count == 1 and generated_source.startswith(
+        before.rstrip(b"\n") + b"\n\n\n" + f"def assess_{role}_lifecycle(".encode())
+    first = exact_append(before, generated_source, role, formatted=formatted_single)
     require_fixed_lifecycle(role, first)
     repair_actor = None
     if count == 2:

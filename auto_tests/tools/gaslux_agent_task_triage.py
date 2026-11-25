@@ -314,13 +314,125 @@ def sync(root: Path, *, dry_run: bool = False) -> dict:
             "issue": created["number"]}
 
 
+# The existing issue publisher is reused; no PR/code/merge authority.
+REPAIR_KEY = re.compile(
+    r"<!-- GASLUX-STALE-CANDIDATE-V1:([1-9][0-9]{0,5}):([0-9a-f]{40}) -->"
+)
+
+
+def repair_eligible(row, number, role, head):
+    return (
+        type(row) is dict and row.get("pr") == number and row.get("role") == role
+        and row.get("head") == head and isinstance(row.get("base"), str)
+        and SHA.fullmatch(row["base"]) is not None
+        and row.get("exact_scope_verified") is True
+        and row.get("current_base_verified") is False
+        and row.get("ci_verified") is True
+        and row.get("ci_workflow_provenance_verified") is True
+        and row.get("technical_objection") is False
+        and row.get("merge_authorized") is False
+        and row.get("release_eligible") is False
+        and row.get("next_action") == "REFRESH_CANDIDATE_BASE"
+    )
+
+
+def repair_issue_payload(number, head, base, role):
+    if (type(number) is not int or not 1 <= number <= 999999
+            or not isinstance(head, str) or not SHA.fullmatch(head)
+            or not isinstance(base, str) or not SHA.fullmatch(base)
+            or role not in ("zorin", "bazzite", "cachyos", "popos", "q4os")):
+        raise ValueError("Invalid repair identity")
+    return {
+        "title": f"[GASLUX-REPAIR] #{number} stale candidate base",
+        "body": (
+            f"<!-- GASLUX-STALE-CANDIDATE-V1:{number}:{head} -->\n"
+            "Automatically routed by trusted Safety/Integrator triage. "
+            "NEEDS_SCOPE_REVIEW; not a code or merge authorization.\n\n"
+            f"- Backend: {role}; candidate: #{number}; exact HEAD: {head}\n"
+            f"- Observed dev: {base}\n"
+            "- Compare original parent to current dev, preserve the old PR and "
+            "any unique evidence; check if its helper is already integrated.\n"
+            "- If still needed, prepare a fresh exact-scope proposal only after "
+            "the applicable existing Factory/Safety gates. Re-run CI on its "
+            "new HEAD; previous CI cannot transfer.\n"
+            "- No automatic close, rebase, force-push, installation, disk writes, "
+            "approval, merge or release. Resolve this task in the same issue; "
+            "a changed dev alone must not create another issue.\n"
+        ),
+    }
+
+
+def repair_keys(issues):
+    keys = set()
+    for issue in issues:
+        if type(issue) is not dict:
+            raise ValueError("Malformed issue history")
+        user = issue.get("user") or {}
+        body = issue.get("body") or ""
+        if (issue.get("repository_url") != API or "pull_request" in issue
+                or user.get("login") != TRUSTED_TASK_BOT
+                or type(user.get("id")) is not int or user["id"] != 41898282
+                or not isinstance(body, str)):
+            continue
+        first, sep, _ = body.partition("\n")
+        match = REPAIR_KEY.fullmatch(first)
+        if sep and match and issue.get("title") == (
+                f"[GASLUX-REPAIR] #{match[1]} stale candidate base"):
+            keys.add((int(match[1]), match[2]))
+    return keys
+
+
+def sync_admission_repair(*, dry_run=False):
+    """Recompute current Safety result; never consume untrusted report artifacts."""
+    if (os.getenv("GITHUB_REPOSITORY") != REPO
+            or os.getenv("GITHUB_REF") != "refs/heads/main"
+            or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true"
+            or os.getenv("GITHUB_EVENT_NAME") not in ("push", "schedule", "workflow_dispatch")):
+        raise RuntimeError("Trusted unpaused main event required")
+    import gaslux_distro_admission as admission
+    candidates = admission.discover_candidates()
+    tracked = repair_keys(all_issues())
+    for number, (role, head) in candidates.items():
+        if (number, head) in tracked:
+            continue
+        row = admission.inspect(number, role, None, expected_head=head)
+        if not repair_eligible(row, number, role, head):
+            continue
+        payload = repair_issue_payload(number, head, row["base"], role)
+        if dry_run:
+            return {"status": "repair_dry_run", "pr": number, "head": head}
+        # Recompute rather than trust the earlier assessment, then check live
+        # dev and dedup again. The ordinary issue API is the only write route.
+        fresh = admission.inspect(number, role, None, expected_head=head)
+        if not repair_eligible(fresh, number, role, head) or fresh["base"] != row["base"]:
+            return {"status": "repair_retry", "pr": number}
+        if (number, head) in repair_keys(all_issues()):
+            return {"status": "repair_already_queued", "pr": number}
+        if api("GET", "/git/ref/heads/dev").get("object", {}).get("sha") != row["base"]:
+            return {"status": "repair_retry", "pr": number}
+        if admission.discover_candidates().get(number) != (role, head):
+            return {"status": "repair_retry", "pr": number}
+        created = api("POST", "/issues", payload)
+        if (type(created) is not dict or type(created.get("number")) is not int
+                or created["number"] <= 0):
+            raise RuntimeError("GitHub did not confirm repair issue")
+        return {"status": "repair_issue_created", "pr": number, "head": head,
+                "issue": created["number"]}
+    return {"status": "no_repair_action"}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--with-admission-repair", action="store_true")
     args = parser.parse_args()
-    print(json.dumps(sync(args.repo.resolve(strict=True), dry_run=args.dry_run),
-                     sort_keys=True))
+    result = sync_admission_repair(dry_run=args.dry_run) if args.with_admission_repair else {
+        "status": "no_repair_action"
+    }
+    if result["status"] == "no_repair_action":
+        result = sync(args.repo.resolve(strict=True), dry_run=args.dry_run)
+    print(json.dumps(result, sort_keys=True))
 
 
 if __name__ == "__main__":
