@@ -371,7 +371,9 @@ class IntegratorContractTests(unittest.TestCase):
         for title in ("GASLUX-CLOCK/auto", "GASLUX-CLOCK/mint",
                       "GASLUX-CLOCK/zorin"):
             with self.subTest(title=title), tempfile.TemporaryDirectory() as tmp:
-                self.calls.clear()
+                # Each event exercises a distinct unmerged candidate; the previous
+                # simulated squash merge closed its PR and advanced dev.
+                self.setUp()
                 event_path = Path(tmp) / "event.json"
                 event_path.write_text(json.dumps({"workflow_run": {
                     "name": title,
