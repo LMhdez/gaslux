@@ -752,6 +752,94 @@ def independent_owner_review():
     return {"status": "idle"}
 
 
+def audit_completed_integrations():
+    """Read-only reconstruction of actual merged candidate receipts.
+
+    A green fixture, draft, missing approval, or successful workflow alone
+    cannot be reported as a completed engineering integration.
+    """
+    live = admission.api("GET", "/git/ref/heads/dev")["object"]["sha"]
+    if not admission.valid_sha(live):
+        raise ValueError("Invalid audit dev ref")
+    reviewer, owners = configured_reviewers()
+    prs = admission.api("GET", "/pulls?state=closed&base=dev&sort=updated&direction=desc&per_page=50")
+    if not isinstance(prs, list) or len(prs) > 50:
+        raise ValueError("Invalid closed PR audit page")
+    findings = []
+    for summary in prs:
+        ref = summary.get("head", {}).get("ref", "")
+        match = BRANCH.fullmatch(ref) if isinstance(ref, str) else None
+        dm = DYNAMIC_BRANCH.fullmatch(ref) if isinstance(ref, str) else None
+        if not (match or dm) or not admission.publisher_ok(summary.get("user") or {}):
+            continue
+        n = summary["number"]
+        if type(n) is not int or not 1 <= n <= 1000000:
+            raise ValueError("Invalid closed PR number")
+        if dm:
+            role, scope = dm.group(1), DYNAMIC_SCOPE
+        else:
+            kind, role = match.groups()
+            scope = factory.SUPERVISED_TEST_SCOPE if kind == "test" else factory.SUPERVISED_MEDIA_SCOPE
+        pr = admission.api("GET", f"/pulls/{n}")
+        head, merged = pr["head"]["sha"], pr.get("merge_commit_sha")
+        row = {"pr": n, "role": role, "scope": scope, "head": head,
+               "status": "CLOSED_WITHOUT_VERIFIED_MERGE", "integration_verified": False,
+               "release_eligible": False}
+        findings.append(row)
+        if (pr.get("merged") is not True or pr.get("state") != "closed"
+                or pr.get("number") != n or pr["base"]["ref"] != "dev"
+                or pr["head"]["repo"]["full_name"] != admission.REPO
+                or pr["base"]["repo"]["full_name"] != admission.REPO
+                or not admission.publisher_ok(pr.get("user") or {})
+                or not all(admission.valid_sha(x) for x in (head, merged))):
+            continue
+        try:
+            base = canonical_scope(pr, role, scope, head)
+            if admission.single_parent(merged) != base:
+                raise ValueError("Wrong integrated parent")
+            a = admission.api("GET", f"/git/commits/{head}")["tree"]["sha"]
+            b = admission.api("GET", f"/git/commits/{merged}")["tree"]["sha"]
+            if not admission.valid_sha(a) or a != b:
+                raise ValueError("Wrong integrated tree")
+            if live != merged:
+                relation = admission.api("GET", f"/compare/{merged}...{live}")
+                if (relation.get("status") != "ahead" or relation.get("behind_by") != 0
+                        or relation.get("merge_base_commit", {}).get("sha") != merged):
+                    raise ValueError("Integrated commit not in live dev")
+            reviews = admission.complete_page(admission.api("GET", f"/pulls/{n}/reviews?per_page=100"))
+            author = pr["user"]["id"]
+            owner = owners.get(role)
+            if not (admission.review_ok(reviews, reviewer, author, head, base)
+                    and admission.owner_review_ok(reviews, owner, reviewer, author, None,
+                                                  role, head, base, supervised=True)
+                    and admission.ci_workflow_provenance(head, role, supervised=True)
+                    and admission.checks_ok(admission.api("GET", f"/commits/{head}/check-runs?per_page=100"),
+                                             head, role)):
+                raise ValueError("Exact review or CI no longer verifiable")
+            if scope in PRODUCT_SCOPES and not vm_acceptance_verified(
+                    reviews, role, head, base, author, reviewer, owner):
+                raise ValueError("Independent VM evidence not verified")
+            comments = admission.complete_page(admission.api("GET", f"/issues/{n}/comments?per_page=100"))
+            if any(marker in str(c.get("body", "")).upper() for c in comments for marker in
+                   ("SAFETY_DENIED", "BLOCKED_SAFETY", "DO_NOT_MERGE", "SAFETY HOLD", "SECURITY HOLD")):
+                raise ValueError("Unresolved technical objection")
+            row.update(status="EXACT_INTEGRATION_VERIFIED", integration_verified=True,
+                       reviewed_base=base, merge_sha=merged, tree_sha=a,
+                       independent_reviews_verified=True, exact_ci_verified=True,
+                       vm_acceptance_verified=scope in PRODUCT_SCOPES)
+        except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError, SyntaxError):
+            row["status"] = "MERGED_BUT_EVIDENCE_INCOMPLETE"
+    if admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != live:
+        raise ValueError("Audit base changed; retry")
+    return {"schema": "gaslux-operational-integration-audit-v1", "read_only": True,
+            "live_dev": live, "bounded_recent_closed_prs": len(prs),
+            "findings": findings,
+            "verified_integrations": sum(r["integration_verified"] for r in findings),
+            "verified_product_integrations": sum(r["integration_verified"] and
+                                                r["scope"] in PRODUCT_SCOPES for r in findings),
+            "release_eligible": False}
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     modes = parser.add_mutually_exclusive_group()
@@ -759,8 +847,10 @@ if __name__ == "__main__":
     modes.add_argument("--integrate-product", action="store_true")
     modes.add_argument("--independent-safety", action="store_true")
     modes.add_argument("--independent-owner", action="store_true")
+    modes.add_argument("--audit-completed-integrations", action="store_true")
     args = parser.parse_args()
-    result = (independent_owner_review() if args.independent_owner else
+    result = (audit_completed_integrations() if args.audit_completed_integrations else
+              independent_owner_review() if args.independent_owner else
               independent_safety_review() if args.independent_safety else
               integrate_one(product=True) if args.integrate_product else
               integrate_one() if args.integrate_test else inventory())
