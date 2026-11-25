@@ -293,5 +293,107 @@ class IndependentSafetyTests(unittest.TestCase):
                 self.assertEqual(writes, [], scenario)
 
 
+class FullVmAcceptanceTests(unittest.TestCase):
+    def test_independent_complete_platform_evidence_only(self):
+        env = {"GASLUX_VM_OBSERVER_ID": "789", "GASLUX_VM_ACCEPTANCE_WORKFLOW_ID": "1234"}
+        digest = "e" * 64
+        for scenario in ("valid", "missing_platform", "wrong_head", "shared_identity",
+                         "wrong_workflow", "workflow_changed", "expired", "wrong_digest",
+                         "live_only", "stale_review", "foreign_repo", "bad_job"):
+            platforms = gate.VM_PLATFORMS
+            if scenario == "missing_platform":
+                platforms = platforms[:-1]
+            marker = "\n".join(
+                f"GASLUX-VM-V1 role=mint platform={platform} head={HEAD if scenario != 'wrong_head' else BASE} "
+                f"base={BASE} run={10 + i} artifact={20 + i} sha256={digest}"
+                for i, platform in enumerate(platforms))
+            reviews = [{"user": {"id": 789}, "state": "DISMISSED" if scenario == "stale_review" else "APPROVED",
+                        "commit_id": HEAD, "body": marker}]
+            def api(method, route):
+                self.assertEqual(method, "GET")
+                if route == "/actions/workflows/1234":
+                    return {"id": 1234, "state": "active",
+                            "path": ".github/workflows/gaslux-agent-lifecycle-research.yml" if scenario == "wrong_workflow"
+                            else ".github/workflows/gaslux-full-vm-acceptance.yml"}
+                if route == "/git/ref/heads/main":
+                    return {"object": {"sha": BASE}}
+                run = int(route.split("/")[3])
+                platform = gate.VM_PLATFORMS[run - 10]
+                if "/jobs?" in route:
+                    return {"total_count": 1, "jobs": [{
+                        "name": "official_mint_live_guest" if scenario == "live_only" else f"full-installed-lifecycle (mint, {platform})",
+                        "head_sha": HEAD, "run_id": run, "run_attempt": 1, "status": "completed",
+                        "conclusion": "failure" if scenario == "bad_job" else "success"}]}
+                if "/artifacts?" in route:
+                    return {"total_count": 1, "artifacts": [{
+                        "id": run + 10, "name": f"gaslux-full-vm-mint-{platform}",
+                        "expired": scenario == "expired", "size_in_bytes": 100,
+                        "digest": "sha256:" + ("d" * 64 if scenario == "wrong_digest" else digest)}]}
+                return {"id": run, "workflow_id": 1234, "head_sha": HEAD,
+                        "event": "pull_request", "repository": {"id": A.REPOSITORY_ID},
+                        "head_repository": {"id": 1 if scenario == "foreign_repo" else A.REPOSITORY_ID},
+                        "status": "completed", "conclusion": "success", "run_attempt": 1}
+            with patch.dict(os.environ, env), patch.object(A, "api", side_effect=api), \
+                 patch.object(A, "source_at", side_effect=lambda p, ref: b"changed" if scenario == "workflow_changed" and ref == HEAD else b"trusted"):
+                self.assertEqual(gate.vm_acceptance_verified(reviews, "mint", HEAD, BASE, 41898282,
+                                 789 if scenario == "shared_identity" else 123, 456),
+                                 scenario == "valid", scenario)
+
+    def test_product_merge_requires_every_gate_and_never_authorizes_other_scope(self):
+        row = SupervisedIntegrationTests().receipt()
+        row.update(scope=F.SUPERVISED_MEDIA_SCOPE, next_action="PRODUCT_INTEGRATION_ELIGIBLE",
+                   full_vm_acceptance_verified=True)
+        self.assertTrue(gate.eligible_product(row))
+        self.assertFalse(gate.eligible_test(row))
+        for key, value in row.items():
+            if value is True:
+                self.assertFalse(gate.eligible_product({**row, key: False}), key)
+        self.assertFalse(gate.eligible_product({**row, "scope": "lifecycle"}))
+        self.assertFalse(gate.eligible_product({**row, "technical_objection": True}))
+
+
+class IndependentOwnerTests(unittest.TestCase):
+    def test_independent_owner_exact_head_no_self_review(self):
+        env = {"GITHUB_REPOSITORY": A.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule", "GASLUX_AUTONOMY_PAUSED": "",
+               "GH_TOKEN": "fixture-only"}
+        row = {"backend_owner_verified": False, "technical_objection": False,
+               "base": BASE, **{key: True for key in (
+                   "exact_scope_verified", "current_base_verified",
+                   "ci_workflow_provenance_verified", "ci_verified")}}
+        for scenario in ("valid", "same_safety", "wrong_role", "product_without_vm", "drift"):
+            writes = []
+            def api(method, route, body=None):
+                if method == "POST":
+                    writes.append(body)
+                    return {"id": 10, "user": {"id": 456}, "commit_id": HEAD, "state": "APPROVED"}
+                if route == "/pulls/500":
+                    return {"user": {"id": 41898282}, "head": {"sha": HEAD},
+                            "base": {"sha": BASE}, "state": "open"}
+                if route.endswith("/reviews?per_page=100"):
+                    return []
+                if route == "/git/ref/heads/dev":
+                    return {"object": {"sha": BASE}}
+                self.fail(route)
+            actor = type("Response", (), {"stdout": '{"id": 456}'})()
+            owners = {ROLE: 999, "zorin": 456} if scenario == "wrong_role" else {ROLE: 456}
+            scope = F.SUPERVISED_MEDIA_SCOPE if scenario == "product_without_vm" else SCOPE
+            with patch.dict(os.environ, env), patch.object(gate, "configured_reviewers", return_value=(456 if scenario == "same_safety" else 123, owners)), \
+                 patch.object(gate.subprocess, "run", return_value=actor), \
+                 patch.object(gate, "discover", return_value={500: (ROLE, scope, HEAD)}), \
+                 patch.object(gate, "inspect", side_effect=[row, {} if scenario == "drift" else row]), \
+                 patch.object(gate, "vm_acceptance_verified", return_value=False), patch.object(A, "api", side_effect=api):
+                if scenario == "same_safety":
+                    with self.assertRaises(ValueError):
+                        gate.independent_owner_review()
+                else:
+                    result = gate.independent_owner_review()
+                    self.assertEqual(result["status"] == "owner_reviewed", scenario == "valid")
+            self.assertEqual(len(writes), int(scenario == "valid"))
+            if writes:
+                self.assertEqual(writes[0]["body"].splitlines()[0],
+                                 f"GASLUX-BACKEND-OWNER-V1 role={ROLE} head={HEAD} base={BASE}")
+
+
 if __name__ == "__main__":
     unittest.main()
