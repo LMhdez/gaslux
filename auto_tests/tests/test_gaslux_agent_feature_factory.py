@@ -831,7 +831,12 @@ class DeterministicRepairTests(unittest.TestCase):
                          patch.object(admission, "api", side_effect=get), \
                          patch.object(factory.subprocess, "run", return_value=subprocess.CompletedProcess(
                              [], 0 if scenario == "ref_exists" else 1, "", "HTTP 404")):
-                        plan = factory.repair_plan(root, self.BASE)
+                        diagnostics = []
+                        plan = factory.repair_plan(root, self.BASE, diagnostics=diagnostics)
+                    if scenario == "history":
+                        self.assertEqual(diagnostics[0]["reason"], "SUCCESSOR_PR_HISTORY_EXISTS")
+                        self.assertEqual(diagnostics[0]["build_only_plan"]["repair_pr"], 395)
+                        self.assertIsNone(plan)
                     if scenario == "valid":
                         self.assertEqual(plan["repair_pr"], 395)
                         self.assertEqual(plan["repair_head"], self.HEAD)
