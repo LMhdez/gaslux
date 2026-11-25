@@ -546,6 +546,93 @@ def integrate_one(*, product=False):
     return {"status": "idle"}
 
 
+def dynamic_safety_findings(number, role, head):
+    """Recompute structural Safety facts from the live exact candidate.
+
+    No candidate code is executed. Test success or a restricted AST is not
+    a semantic proof that a new API can safely control installation.
+    """
+    pr = admission.api("GET", f"/pulls/{number}")
+    base = admission.api("GET", "/git/ref/heads/dev")["object"]["sha"]
+    author = pr.get("user") or {}
+    if (pr.get("state") != "open" or pr.get("number") != number
+            or not admission.publisher_ok(author)
+            or pr["head"]["sha"] != head or pr["base"]["sha"] != base
+            or pr["base"]["ref"] != "dev"
+            or pr["head"]["repo"]["full_name"] != admission.REPO
+            or pr["base"]["repo"]["full_name"] != admission.REPO
+            or not admission.valid_sha(base)):
+        raise ValueError("Dynamic Safety identity mismatch")
+    parent = dynamic_scope(pr, role, head)
+    if parent != base:
+        raise ValueError("Dynamic Safety stale parent")
+    source = factory.TASKS[role][0]
+    before, after = admission.source_at(source, base), admission.source_at(source, head)
+    prefix = before.rstrip(b"\n") + b"\n\n\n"
+    addition = after[len(prefix):].decode("utf-8")
+    fn = ast.parse(addition).body[0]
+    dynamic.validate_function(fn.name, addition)
+    # Report safety-sensitive names as review leads, not evidence of an exploit.
+    sensitive = re.compile(r"authoriz|permission|allow|release|install|disk|partition|boot|recover|rollback|write|sign|verify|trust", re.I)
+    signals = set()
+    for node in ast.walk(fn):
+        value = (node.id if isinstance(node, ast.Name) else
+                 node.arg if isinstance(node, ast.arg) else
+                 node.value if isinstance(node, ast.Constant) and isinstance(node.value, str)
+                 else None)
+        if value and sensitive.search(value):
+            signals.add(str(value)[:80])
+    if sensitive.search(fn.name):
+        signals.add(fn.name)
+    return {"schema": "gaslux-dynamic-safety-v1", "pr": number, "head": head,
+            "base": base, "role": role, "symbol": fn.name,
+            "candidate_sha256": factory.sha256(after),
+            "source_prefix_preserved": True, "restricted_ast_verified": True,
+            "safety_sensitive_names": sorted(signals)[:20],
+            "semantic_approval": False, "merge_authorized": False,
+            "status": "SEMANTIC_AND_VM_REVIEW_REQUIRED"}
+
+
+def independent_dynamic_assessment(reviewer, owners):
+    """Publish a bounded technical finding with the independent Safety actor."""
+    for number, (role, scope, head) in sorted(discover().items()):
+        if scope != DYNAMIC_SCOPE:
+            continue
+        row = inspect(number, role, scope, head, reviewer, owners.get(role), allow_ready=True)
+        if (row.get("technical_objection") is not False
+                or row.get("safety_review_verified") is True
+                or not all(row.get(k) is True for k in (
+                    "exact_scope_verified", "current_base_verified",
+                    "ci_workflow_provenance_verified", "ci_verified"))):
+            continue
+        base = row["base"]
+        pr = admission.api("GET", f"/pulls/{number}")
+        if pr["user"]["id"] == reviewer:
+            continue
+        marker = f"GASLUX-DYNAMIC-SAFETY-V1 head={head} base={base}"
+        reviews = admission.complete_page(admission.api("GET", f"/pulls/{number}/reviews?per_page=100"))
+        if any((r.get("user") or {}).get("id") == reviewer and
+               (r.get("state") != "COMMENTED" or
+                str(r.get("body", "")).splitlines()[:1] == [marker])
+               for r in reviews):
+            continue
+        findings = dynamic_safety_findings(number, role, head)
+        if (findings["base"] != base or
+                inspect(number, role, scope, head, reviewer, owners.get(role), allow_ready=True) != row):
+            return {"status": "dynamic_assessment_drift", "pr": number}
+        # COMMENT is intentionally not APPROVE. A test-demanded helper can
+        # affect a safety-sensitive caller even when its AST is side-effect free.
+        result = admission.api("POST", f"/pulls/{number}/reviews", {
+            "commit_id": head, "event": "COMMENT",
+            "body": marker + "\n\n" + json.dumps(findings, sort_keys=True)})
+        if (result.get("user", {}).get("id") != reviewer
+                or result.get("commit_id") != head or result.get("state") != "COMMENTED"):
+            raise RuntimeError("GitHub did not confirm dynamic Safety finding")
+        return {"status": "dynamic_assessed", "pr": number, "head": head,
+                "base": base, "review_id": result.get("id"), "semantic_approval": False}
+    return {"status": "idle"}
+
+
 def independent_safety_review():
     """Separate credential and exact canonical review; never approve product writers."""
     if (os.getenv("GITHUB_REPOSITORY") != admission.REPO
@@ -606,7 +693,7 @@ def independent_safety_review():
             raise RuntimeError("GitHub did not confirm independent review")
         return {"status": "reviewed", "pr": number, "head": head, "base": base,
                 "reviewer": reviewer, "review_id": result.get("id")}
-    return {"status": "idle"}
+    return independent_dynamic_assessment(reviewer, owners)
 
 
 def independent_owner_review():
