@@ -346,6 +346,10 @@ query {
         isAdminEnforced
         requiresStatusChecks
         requiresStrictStatusChecks
+        requiredApprovingReviewCount
+        dismissesStaleReviews
+        requireLastPushApproval
+        requiresConversationResolution
         requiredStatusCheckContexts
         allowsForcePushes
         allowsDeletions
@@ -361,45 +365,6 @@ query {
   }
 }
 """
-
-
-def read_ruleset_detail(rid):
-    """Only this fixed GET may use a separate administration:read credential.
-
-    GitHub hides bypass_actors from ordinary repository read credentials.
-    A separately provisioned, repository-scoped read-only App installation
-    token can reveal the field. Never replace the actual merge credential
-    or use this token for a mutation, even if it is accidentally over-scoped.
-    """
-    if type(rid) is not int or rid <= 0:
-        raise ValueError("Invalid ruleset identity")
-    route = f"/rulesets/{rid}?includes_parents=false"
-    detail = admission.api("GET", route)
-    if "bypass_actors" in detail:
-        return detail
-    token = os.getenv("GASLUX_POLICY_READ_TOKEN")
-    if not token:
-        return detail
-    # Do not change os.environ or pass policy credentials to gh or git.
-    import urllib.request
-    req = urllib.request.Request(
-        f"https://api.github.com/repos/{admission.REPO}" + route,
-        method="GET", headers={"Authorization": "Bearer " + token,
-                               "Accept": "application/vnd.github+json",
-                               "X-GitHub-Api-Version": "2022-11-28"})
-    with urllib.request.urlopen(req, timeout=20) as response:
-        if response.geturl() != req.full_url:
-            raise ValueError("Unexpected policy endpoint")
-        raw = response.read(262145)
-    if len(raw) > 262144:
-        raise ValueError("Oversized ruleset response")
-    verified = json.loads(raw)
-    # Both identities must observe the same active policy; the policy reader
-    # contributes only the otherwise-hidden bypass list.
-    for field in ("id", "source_type", "source", "target", "enforcement", "conditions", "rules"):
-        if field not in detail or field not in verified or detail[field] != verified[field]:
-            raise ValueError("Policy reader disagrees with merge identity")
-    return verified
 
 
 def strict_ruleset_protected(base):
@@ -432,7 +397,7 @@ def strict_ruleset_protected(base):
             if not {"deletion", "non_fast_forward", "pull_request",
                     "required_status_checks"} <= kinds:
                 continue
-            detail = read_ruleset_detail(rid)
+            detail = admission.api("GET", f"/rulesets/{rid}?includes_parents=false")
             if (detail.get("id") != rid or detail.get("source_type") != "Repository"
                     or detail.get("source") != admission.REPO
                     or detail.get("target") != "branch" or detail.get("enforcement") != "active"
@@ -451,6 +416,13 @@ def strict_ruleset_protected(base):
             # Do not accept a ruleset that restricts all updates, even PR merges.
             if "update" in by_type:
                 continue
+            reviews = by_type["pull_request"].get("parameters", {})
+            if (type(reviews.get("required_approving_review_count")) is not int
+                    or reviews["required_approving_review_count"] < 2
+                    or any(reviews.get(key) is not True for key in (
+                        "dismiss_stale_reviews_on_push", "require_last_push_approval",
+                        "required_review_thread_resolution"))):
+                continue
             params = by_type["required_status_checks"]["parameters"]
             checks = params["required_status_checks"]
             if (params.get("strict_required_status_checks_policy") is not True
@@ -459,8 +431,7 @@ def strict_ruleset_protected(base):
                     or not all(isinstance(x, dict) and isinstance(x.get("context"), str)
                                and x["context"].strip() for x in checks)
                     or not admission.COMMON_CHECKS <= {x["context"] for x in checks}
-                    or (os.getenv("GASLUX_POLICY_READ_TOKEN") and
-                        any(x.get("integration_id") != 15368 for x in checks))):
+                    or any(x.get("integration_id") != 15368 for x in checks)):
                 continue
             # Recheck the exact base, not an inferred merge base. The GitHub
             # server enforces the strict rule at merge time.
@@ -475,7 +446,9 @@ def strict_dev_protected(base):
 
     Unknown, missing, unreadable or bypassable policy is not merge authority.
     The safety argument assumes trusted admins do not disable the rules during
-    integration; the server rejects concurrent ordinary updates to dev.
+    integration; the server rejects concurrent ordinary updates to dev and
+    enforces independent review count, stale dismissal and conversation resolution.
+    Exact role/HEAD review checks remain separate application gates.
     """
     try:
         if not admission.valid_sha(base):
@@ -505,13 +478,17 @@ def strict_dev_protected(base):
             and ref["name"] == "dev" and ref["prefix"] == "refs/heads/"
             and ref["target"]["oid"] == base
             and all(rule[k] is True for k in (
-                "isAdminEnforced", "requiresStatusChecks", "requiresStrictStatusChecks"))
+                "isAdminEnforced", "requiresStatusChecks", "requiresStrictStatusChecks",
+                "dismissesStaleReviews", "requireLastPushApproval", "requiresConversationResolution"))
+            and type(rule["requiredApprovingReviewCount"]) is int
+            and rule["requiredApprovingReviewCount"] >= 2
             and all(rule[k] is False and effective[k] is False for k in (
                 "allowsForcePushes", "allowsDeletions"))
             and all(type(rule[k]["totalCount"]) is int and rule[k]["totalCount"] == 0
                     for k in ("bypassPullRequestAllowances", "bypassForcePushAllowances"))
             and type(checks) is list and 0 < len(checks) <= 100
             and all(type(x) is str and x.strip() for x in checks)
+            and admission.COMMON_CHECKS <= set(checks)
             and type(enforced) is list and set(checks) <= set(enforced)
         )
     except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError, AttributeError):
