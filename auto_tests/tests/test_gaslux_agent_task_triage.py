@@ -539,5 +539,46 @@ class ImplementationDiscoveryTests(unittest.TestCase):
             self.assertEqual(triage.discover_missing_implementations(root), [])
 
 
+class HistoricalRoutingTests(unittest.TestCase):
+    def test_unique_history_routed_once_and_no_mutation_of_pr(self):
+        import gaslux_agent_reconcile as rec
+        import gaslux_distro_admission as admission
+        env = {"GITHUB_REPOSITORY": triage.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule", "GASLUX_AUTONOMY_PAUSED": "false"}
+        head, base = "a" * 40, "b" * 40
+        row = {"status": "UNIQUE_COMMITS_REQUIRE_RECONCILIATION", "pr": 42,
+               "head": head, "base": base, "target": "dev", "unique_head_commits": 3}
+        repo = {"full_name": triage.REPO}
+        pr = {"state": "open", "head": {"sha": head, "repo": repo},
+              "base": {"ref": "dev", "sha": base, "repo": repo}}
+        title = "[GASLUX-RECONCILE] #42: preserve unique changes"
+        issue = {"user": {"id": 41898282, "login": "github-actions[bot]"},
+                 "repository_url": triage.API, "title": title,
+                 "body": f"<!-- GASLUX-HISTORICAL-RECONCILE-V1:42:{head} -->"}
+        for scenario in ("valid", "dry", "duplicate", "drift", "integrated"):
+            writes = []
+            def read(method, route):
+                self.assertEqual(method, "GET")
+                if route == "/pulls/42":
+                    return pr
+                if route.startswith("/compare/"):
+                    return {"behind_by": 3}
+                if route == "/git/ref/heads/dev":
+                    return {"object": {"sha": "c" * 40 if scenario == "drift" else base}}
+                self.fail(route)
+            def write(method, route, payload):
+                self.assertEqual((method, route), ("POST", "/issues"))
+                writes.append(payload)
+                return {"number": 501}
+            item = dict(row, status="ANCESTRY_PRESENT_REVIEW_CLOSURE") if scenario == "integrated" else row
+            with patch.dict("os.environ", env, clear=True), \
+                 patch.object(rec, "historical_inventory", return_value={"findings": [item]}), \
+                 patch.object(triage, "all_issues", return_value=[issue] if scenario == "duplicate" else []), \
+                 patch.object(admission, "api", side_effect=read), patch.object(triage, "api", side_effect=write):
+                result = triage.sync_historical_reconciliation(dry_run=scenario == "dry")
+            self.assertEqual(result["status"] == "historical_reconciliation_routed", scenario == "valid")
+            self.assertEqual(len(writes), int(scenario == "valid"))
+
+
 if __name__ == "__main__":
     unittest.main()
