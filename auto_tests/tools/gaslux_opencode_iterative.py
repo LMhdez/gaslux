@@ -25,7 +25,10 @@ JOURNAL_FAILURES = frozenset({
     "NATIVE_EVENT_JOURNAL_MISMATCH", "READ_BINDING", "TEST_BINDING",
     "EDIT_BINDING", "EDIT_BYTES", "UNKNOWN_ACTION", "RED_EDIT_PASS_REQUIRED",
     "INDEPENDENT_RECHECK", "OUTSIDE_MUTATED", "MCP_RED_EDIT_PASS_INCOMPLETE",
-    "MODEL_CONTEXT_NOT_APPLIED",
+    "MODEL_CONTEXT_NOT_APPLIED", "EVENT_LIMIT", "CLI_ERROR", "EVENT_SHAPE",
+    "UNEXPECTED_TOOL", "TOOL_FAILURE", "SKILL_WITNESS", "NATIVE_SKILL_REQUIRED",
+    "UNPRIVILEGED_RUNNER_REQUIRED", "BOUNDARY_CLEANUP_FAILED", "NAMESPACE_WITNESS_MISSING",
+    "PROXY_COMPLETION_REQUIRED", "EXTERNAL_BROKER_EXIT_FAILED",
 })
 
 
@@ -77,15 +80,20 @@ def configure(work, control, role, outside, context):
     return state
 
 
-def native_events(raw):
+def native_events(raw, observations=None):
     if len(raw) > trial.MAX_EVENTS:
         raise ValueError("EVENT_LIMIT")
     observed = []
     skills = []
+    counts = {}
+    if observations is not None:
+        observations.update({"native_operations": observed, "native_skills": skills, "event_counts": counts})
     for line in raw.splitlines():
         if not line.strip():
             continue
         row = trial.decode_event(line)
+        kind = row["type"]
+        counts[kind] = counts.get(kind, 0) + 1
         if row["type"] == "error":
             raise ValueError("CLI_ERROR")
         if row["type"] != "tool_use":
@@ -170,7 +178,7 @@ def verify_journal(state, events, role):
 
 def run(binary, role, context):
     start = time.monotonic()
-    report = {"experiment": "opencode-native-iterative-v1", "role": role,
+    report = {"experiment": "opencode-native-iterative-v2-isolated", "role": role,
               "model": factory.MODEL, "model_digest": factory.MODEL_DIGEST,
               "opencode_version": trial.VERSION, "context_requested": context,
               "accepted": False, "native_skills": [], "native_operations": [],
@@ -180,20 +188,6 @@ def run(binary, role, context):
     try:
         with tempfile.TemporaryDirectory(prefix="gaslux-iterative-") as temp:
             root = Path(temp)
-            work, control = root / "agent", root / "control"
-            work.mkdir(mode=0o700)
-            control.mkdir(mode=0o700)
-            outside = root / "outside-sentinel"
-            broker.write_new(outside, SENTINEL)
-            state = configure(work, control, role, outside, context)
-            home = work / "home"
-            home.mkdir(mode=0o700)
-            env = {"PATH": "/usr/local/bin:/usr/bin:/bin", "HOME": str(home),
-                   "XDG_CONFIG_HOME": str(home / "config"), "XDG_CACHE_HOME": str(home / "cache"),
-                   "XDG_DATA_HOME": str(home / "data"), "XDG_STATE_HOME": str(home / "state"),
-                   "OPENCODE_DISABLE_AUTOUPDATE": "true", "OPENCODE_DISABLE_DEFAULT_PLUGINS": "true",
-                   "OPENCODE_DISABLE_CLAUDE_CODE": "true", "OPENCODE_DISABLE_EXTERNAL_SKILLS": "true",
-                   "OPENCODE_CONFIG": str(work / "opencode.json"), "CI": "true", "TERM": "dumb"}
             prompt = ("Use native skill gaslux-history-reuse first. Then call gaslux_workspace_inspect_task "
                       "and gaslux_workspace_read_candidate. Run gaslux_workspace_run_tests on the defective "
                       "initial function and observe RED. Use gaslux_workspace_replace_candidate with the "
@@ -201,13 +195,10 @@ def run(binary, role, context):
                       "If RED, read current candidate, correct and test; at most three edits. "
                       "Stop after PASS. No shell, arbitrary paths, web, product changes or publishing. "
                       "All task rules are in inspect_task; historical IDs are leads only.")
-            code, raw, _ = trial.bounded_process(
-                [str(binary), "run", "--format", "json", "--agent", "gaslux-lab",
-                 "--model", trial.MODEL, prompt], work, env, timeout=MAX_TIMEOUT)
-            if code:
-                raise trial.TrialFailure("CLI_NONZERO")
-            events, skills = native_events(raw)
+            from gaslux_opencode_isolated_runtime import run as isolated_run
+            state, events, skills = isolated_run(binary, root, role, context, prompt, report)
             report["native_skills"], report["native_operations"] = skills, events
+            report["failure_stage"] = "candidate_validation"
             snapshot = trial.model_snapshot()
             report["ollama_loaded_model"] = snapshot
             # Requested configuration alone is not an effective context witness.
@@ -215,14 +206,16 @@ def run(binary, role, context):
                 raise ValueError("MODEL_CONTEXT_NOT_APPLIED")
             if "replace_candidate" not in events:
                 raise ValueError("MCP_RED_EDIT_PASS_INCOMPLETE")
-            if broker.read_bounded(outside, 64) != SENTINEL:
-                raise ValueError("OUTSIDE_MUTATED")
             report.update(verify_journal(state, events, role))
             report["broker_os_sandbox_verified"] = True
+            report["opencode_os_sandbox_verified"] = True
+            report["failure_stage"] = None
             report["accepted"] = True
     except (ValueError, TypeError, KeyError, SyntaxError, OSError, RuntimeError) as error:
         # Only fixed class/category, never raw model output, paths or stderr.
         report["failure"] = fixed_failure(error)
+        if isinstance(error, trial.TrialFailure) and error.detail:
+            report["failure_detail"] = error.detail
     report["elapsed_seconds"] = round(time.monotonic() - start, 2)
     return report
 

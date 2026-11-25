@@ -37,6 +37,7 @@ on:
       - auto_tests/tools/gaslux_opencode_iterative.py
       - auto_tests/tools/gaslux_opencode_parent_boundary.py
       - auto_tests/tools/gaslux_opencode_model_proxy.py
+      - auto_tests/tools/gaslux_opencode_isolated_runtime.py
       - auto_tests/tests/test_gaslux_opencode_workspace.py
   pull_request:
     paths:
@@ -64,6 +65,7 @@ on:
       - auto_tests/tools/gaslux_opencode_iterative.py
       - auto_tests/tools/gaslux_opencode_parent_boundary.py
       - auto_tests/tools/gaslux_opencode_model_proxy.py
+      - auto_tests/tools/gaslux_opencode_isolated_runtime.py
       - auto_tests/tests/test_gaslux_opencode_workspace.py
 
 permissions:
@@ -203,16 +205,8 @@ jobs:
         id: workspace_admission
         if: ${{ !cancelled() && steps.inference_setup.conclusion == 'success' }}
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_workspace.py -v
-      - name: Native skill plus MCP investigation edit and RED-to-PASS tests
-        if: ${{ !cancelled() && steps.workspace_admission.conclusion == 'success' }}
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p evidence/opencode-iterative
-          python3 -B auto_tests/tools/gaslux_opencode_iterative.py \
-            --binary "$GASLUX_OPENCODE_BIN" --role mint --context 16384 \
-            --report evidence/opencode-iterative/report.json
       - name: Verify independent broker and isolated synthetic parent boundary
+        id: parent_admission
         if: ${{ !cancelled() && steps.workspace_admission.conclusion == 'success' }}
         shell: bash
         run: |
@@ -235,6 +229,15 @@ jobs:
           mkdir -p evidence/opencode-iterative
           python3 -B auto_tests/tools/gaslux_opencode_parent_boundary.py \
             --report evidence/opencode-iterative/parent-boundary.json
+      - name: Native skill plus MCP investigation edit and RED-to-PASS tests
+        if: ${{ !cancelled() && steps.parent_admission.conclusion == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/opencode-iterative
+          python3 -B auto_tests/tools/gaslux_opencode_iterative.py \
+            --binary "$GASLUX_OPENCODE_BIN" --role mint --context 16384 \
+            --report evidence/opencode-iterative/report.json
       - name: Retain iterative lab report only (never a Factory candidate)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02

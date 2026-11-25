@@ -331,6 +331,42 @@ class WorkspaceTests(unittest.TestCase):
                          "HOST_FILE_EXPOSED")
         self.assertEqual(parent.classify_failure(b"SECRET_SENTINEL"), "PARENT_CLIENT_FAILED")
 
+    def test_real_parent_config_has_only_five_named_tools_and_two_fixed_destinations(self):
+        import gaslux_opencode_isolated_runtime as runtime
+        with tempfile.TemporaryDirectory() as tmp:
+            config = runtime.isolated_config(Path(tmp), i.trial.COMPACT_CONTEXT)
+            self.assertEqual(config["permission"]["*"], "deny")
+            self.assertEqual(set(config["permission"]) - {"*", "skill"}, set(i.REQUIRED))
+            self.assertEqual(config["mcp"]["gaslux_workspace"]["command"],
+                             ["/usr/bin/python3", "-I", "-B", "/opt/relay.py", "mcp"])
+            self.assertEqual(config["provider"]["ollama"]["options"]["baseURL"],
+                             "http://127.0.0.1:11435/v1")
+            self.assertEqual(config["skills"]["paths"], ["/scratch/.opencode/skills"])
+
+    def test_real_proxy_completion_fails_closed(self):
+        import gaslux_opencode_isolated_runtime as runtime
+        valid = {"calls": 5, "forwarded": 5, "completed": 5, "denied": 0}
+        self.assertTrue(runtime.proxy_complete(valid))
+        for change in ({"denied": 1}, {"completed": 4}, {"forwarded": 4},
+                       {"calls": 0, "forwarded": 0, "completed": 0}, {"calls": True}):
+            self.assertFalse(runtime.proxy_complete({**valid, **change}))
+
+    def test_native_failure_retains_only_validated_partial_operations(self):
+        skill = {"type": "tool_use", "part": {"tool": "skill", "state": {
+            "status": "completed", "input": {"name": i.trial.SKILL},
+            "output": '<skill_content name="' + i.trial.SKILL + '">'}}}
+        tool = {"type": "tool_use", "part": {"tool": i.PREFIX + "inspect_task",
+                                             "state": {"status": "completed"}}}
+        report = {}
+        raw = "\n".join(json.dumps(x) for x in (skill, tool,
+                  {"type": "tool_use", "part": {"tool": "UNTRUSTED_SENTINEL",
+                                               "state": {"status": "completed"}}})).encode()
+        with self.assertRaises(ValueError):
+            i.native_events(raw, report)
+        self.assertEqual(report["native_operations"], ["inspect_task"])
+        self.assertEqual(report["native_skills"], [i.trial.SKILL])
+        self.assertNotIn("UNTRUSTED_SENTINEL", json.dumps(report))
+
     def test_verified_journal_and_independent_final_recheck(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)
