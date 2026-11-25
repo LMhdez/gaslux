@@ -167,6 +167,79 @@ def eligible_test(row):
     )
 
 
+# REST merge only pins the PR head. Require GitHub to enforce strict
+# up-to-date checks on dev itself; a client-side GET is not a base lock.
+STRICT_DEV_QUERY = """
+query {
+  repository(owner: "LMhdez", name: "gaslux") {
+    nameWithOwner
+    ref(qualifiedName: "refs/heads/dev") {
+      name
+      prefix
+      target { oid }
+      branchProtectionRule {
+        isAdminEnforced
+        requiresStatusChecks
+        requiresStrictStatusChecks
+        requiredStatusCheckContexts
+        allowsForcePushes
+        allowsDeletions
+        bypassPullRequestAllowances(first: 1) { totalCount }
+        bypassForcePushAllowances(first: 1) { totalCount }
+      }
+      refUpdateRule {
+        requiredStatusCheckContexts
+        allowsForcePushes
+        allowsDeletions
+      }
+    }
+  }
+}
+"""
+
+
+def strict_dev_protected(base):
+    """Read effective server policy with the same token used to merge.
+
+    Unknown, missing, unreadable or bypassable policy is not merge authority.
+    The safety argument assumes trusted admins do not disable the rules during
+    integration; the server rejects concurrent ordinary updates to dev.
+    """
+    try:
+        if not admission.valid_sha(base):
+            return False
+        raw = subprocess.run(
+            ["gh", "api", "graphql", "-f", "query=" + STRICT_DEV_QUERY],
+            check=True, timeout=30, capture_output=True,
+        ).stdout
+        if len(raw) > 65536:
+            return False
+        data = json.loads(raw)
+        if data.get("errors"):
+            return False
+        repo = data["data"]["repository"]
+        ref = repo["ref"]
+        rule, effective = ref["branchProtectionRule"], ref["refUpdateRule"]
+        checks = rule["requiredStatusCheckContexts"]
+        enforced = effective["requiredStatusCheckContexts"]
+        return (
+            repo["nameWithOwner"] == admission.REPO
+            and ref["name"] == "dev" and ref["prefix"] == "refs/heads/"
+            and ref["target"]["oid"] == base
+            and all(rule[k] is True for k in (
+                "isAdminEnforced", "requiresStatusChecks", "requiresStrictStatusChecks"))
+            and all(rule[k] is False and effective[k] is False for k in (
+                "allowsForcePushes", "allowsDeletions"))
+            and all(type(rule[k]["totalCount"]) is int and rule[k]["totalCount"] == 0
+                    for k in ("bypassPullRequestAllowances", "bypassForcePushAllowances"))
+            and type(checks) is list and 0 < len(checks) <= 100
+            and all(type(x) is str and x.strip() for x in checks)
+            and type(enforced) is list and set(checks) <= set(enforced)
+        )
+    except (OSError, subprocess.SubprocessError, ValueError, TypeError, KeyError, AttributeError):
+        return False
+
+
 def integrate_one():
     """Trusted-main-only bounded integration, never executes candidate code."""
     if (os.getenv("GITHUB_REPOSITORY") != admission.REPO
@@ -182,6 +255,8 @@ def integrate_one():
         if not eligible_test(row):
             continue
         base = row["base"]
+        if not strict_dev_protected(base):
+            return {"status": "strict_base_protection_required", "pr": number, "head": head}
         pr = admission.api("GET", f"/pulls/{number}")
         if pr["head"]["sha"] != head or pr["base"]["sha"] != base:
             raise ValueError("Candidate drift before ready")
@@ -197,14 +272,24 @@ def integrate_one():
                 or pr["head"]["sha"] != head or pr["base"]["sha"] != base
                 or admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != base):
             return {"status": "waiting_for_github", "pr": number, "head": head}
-        # GitHub enforces its branch rules and the candidate HEAD precondition.
-        # REST does not supply an atomic base-SHA precondition.
+        if not strict_dev_protected(base):
+            return {"status": "strict_base_protection_required", "pr": number, "head": head}
+        # Do not retry with an updated base or bypass protection. A concurrent
+        # dev advance makes the exact single-parent head out of date; GitHub's
+        # strict rule must reject this request at merge time.
         result = admission.api("PUT", f"/pulls/{number}/merge",
                                {"sha": head, "merge_method": "squash"})
         if result.get("merged") is not True or not admission.valid_sha(result.get("sha")):
             raise RuntimeError("GitHub did not confirm merge")
+        if admission.single_parent(result["sha"]) != base:
+            raise RuntimeError("Merged commit parent differs from reviewed base; investigate")
+        merged_tree = admission.api("GET", f"/git/commits/{result['sha']}")["tree"]["sha"]
+        reviewed_tree = admission.api("GET", f"/git/commits/{head}")["tree"]["sha"]
+        if not admission.valid_sha(merged_tree) or merged_tree != reviewed_tree:
+            raise RuntimeError("Merged tree differs from reviewed tree; investigate")
         return {"status": "merged", "pr": number, "head": head,
-                "reviewed_base": base, "merge_sha": result["sha"]}
+                "reviewed_base": base, "merge_sha": result["sha"],
+                "strict_base_protection_verified": True, "reviewed_tree_verified": True}
     return {"status": "idle"}
 
 
