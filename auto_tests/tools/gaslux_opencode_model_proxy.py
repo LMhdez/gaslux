@@ -47,7 +47,7 @@ def reject_constant(_):
     raise ValueError("NON_JSON_CONSTANT")
 
 
-def validate_request(raw):
+def validate_request(raw, *, compact_tools=False):
     if not 0 < len(raw) <= MAX_REQUEST:
         raise ValueError("REQUEST_SIZE")
     row = json.loads(raw, object_pairs_hook=unique_object, parse_constant=reject_constant)
@@ -126,6 +126,13 @@ def validate_request(raw):
               or type(choice["function"]["name"]) is not str
               or choice["function"]["name"] not in ALLOWED_TOOLS):
             raise ValueError("TOOL_CHOICE_SCOPE")
+    if compact_tools:
+        # Fixed inference profile for the isolated lifecycle agent only.
+        # Ollama's OpenAI-compatible endpoint maps "none" to disabled thinking
+        # for Boolean-thinking models; no client can raise this budget.
+        row["reasoning_effort"] = "none"
+        row["temperature"] = 0
+        row["parallel_tool_calls"] = False
     return json.dumps(row, ensure_ascii=True, allow_nan=False, separators=(",", ":")).encode()
 
 
@@ -210,14 +217,41 @@ def validate_response(content_type, raw):
         raise ValueError("SSE_MISSING_DONE")
 
 
+REQUEST_FAILURES = frozenset({
+    "REQUEST_SIZE", "REQUEST_SCOPE", "MESSAGE_COUNT", "MESSAGE_ROLE",
+    "MESSAGE_SCOPE", "MESSAGE_CONTENT", "HISTORY_TOOL_CALLS",
+    "HISTORY_TOOL_CALL_SCOPE", "HISTORY_TOOL_ARGUMENTS", "HISTORY_TOOL_RESULT_SCOPE",
+    "OUTPUT_LIMIT", "STREAM_TYPE", "TOOLS_SCOPE", "TOOL_CHOICE_SCOPE",
+    "INCOMPLETE_REQUEST", "DUPLICATE_JSON_KEY", "NON_JSON_CONSTANT",
+})
+RESPONSE_FAILURES = frozenset({
+    "RESPONSE_SIZE", "RESPONSE_OBJECT", "RESPONSE_CHOICES", "RESPONSE_CHOICE_INDEX",
+    "RESPONSE_CHOICE_PART", "RESPONSE_FINISH_REASON", "RESPONSE_NOT_FINISHED",
+    "RESPONSE_CONTENT_TYPE", "SSE_INCOMPLETE_EVENT", "SSE_AFTER_DONE", "SSE_FIELD",
+    "SSE_PREMATURE_DONE", "SSE_AFTER_FINISH", "SSE_MISSING_DONE", "RESPONSE_LIMIT",
+    "RESPONSE_TRUNCATED", "DUPLICATE_JSON_KEY", "NON_JSON_CONSTANT",
+})
+
+
+def fixed_category(error, allowed, fallback):
+    if type(error) is ValueError and len(error.args) == 1:
+        value = error.args[0]
+        if type(value) is str and value in allowed:
+            return value
+    return fallback
+
+
 class ModelServer(socketserver.UnixStreamServer):
     # A serial server deliberately prevents parallel inference through this
     # capability. Requests and responses are never logged or retained.
-    def __init__(self, path, handler):
+    def __init__(self, path, handler, *, compact_tools=False):
         self.calls = 0
         self.forwarded = 0
         self.completed = 0
         self.denied = 0
+        self.compact_tools = compact_tools
+        self.denial_categories = {}
+        self.inference_seconds = []
         self.deadline = time.monotonic() + 1200
         super().__init__(str(path), handler)
 
@@ -226,9 +260,14 @@ class ModelServer(socketserver.UnixStreamServer):
         conn.settimeout(TIMEOUT)
         return conn, addr
 
+    def record_denial(self, category):
+        self.denied += 1
+        # Categories are fixed below; never use arbitrary exception text.
+        self.denial_categories[category] = self.denial_categories.get(category, 0) + 1
+
     def handle_error(self, request, client_address):
         # Do not emit request text, model output or host paths.
-        self.denied += 1
+        self.record_denial("SERVER_TRANSPORT")
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -239,15 +278,20 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *_):
         pass
 
-    def deny(self, status=400):
-        self.server.denied += 1
+    def deny(self, status=400, category="REQUEST_INVALID"):
+        self.server.record_denial(category)
         self.close_connection = True
-        self.send_response(status)
-        self.send_header("Content-Length", "0")
-        self.end_headers()
+        try:
+            self.send_response(status)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        except OSError:
+            # Client disconnect after a rejected response is not a second
+            # inference denial. Preserve the original rejection category.
+            pass
 
     def do_GET(self):
-        self.deny(403)
+        self.deny(403, "METHOD_FORBIDDEN")
 
     do_HEAD = do_GET
     do_PUT = do_GET
@@ -259,10 +303,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_POST(self):
         self.server.calls += 1
         if self.server.calls > MAX_CALLS or time.monotonic() >= self.server.deadline:
-            self.deny(429)
+            self.deny(429, "CALL_OR_SESSION_BUDGET")
             return
         if self.path != PATH:
-            self.deny(403)
+            self.deny(403, "PATH_FORBIDDEN")
             return
         if (self.headers.get_all("Transfer-Encoding") or self.headers.get_all("Expect")
                 or self.headers.get_all("Content-Encoding")
@@ -283,35 +327,39 @@ class Handler(BaseHTTPRequestHandler):
             raw = self.rfile.read(size)
             if len(raw) != size:
                 raise ValueError("INCOMPLETE_REQUEST")
-            body = validate_request(raw)
-        except (ValueError, TypeError, UnicodeError, RecursionError, OSError):
-            self.deny()
+            body = validate_request(raw, compact_tools=self.server.compact_tools)
+        except (ValueError, TypeError, UnicodeError, RecursionError, OSError) as error:
+            self.deny(category=fixed_category(error, REQUEST_FAILURES, "REQUEST_PARSE"))
             return
         # Fixed destination, fixed path, no incoming headers/URLs/credentials.
         upstream = http.client.HTTPConnection("127.0.0.1", 11434, timeout=TIMEOUT)
         started = False
+        began = time.monotonic()
+        stage = "UPSTREAM_REQUEST"
         try:
             upstream.request("POST", PATH, body=body, headers={
                 "Content-Type": "application/json", "Accept": "application/json, text/event-stream",
                 "Connection": "close",
             })
             self.server.forwarded += 1
+            stage = "UPSTREAM_HEADERS"
             with upstream.getresponse() as response:
                 if response.status != 200:
-                    self.deny(502)
+                    self.deny(502, "UPSTREAM_HTTP_STATUS")
                     return
                 content_type = response.headers.get_content_type()
                 if content_type not in ("application/json", "text/event-stream"):
-                    self.deny(502)
+                    self.deny(502, "UPSTREAM_CONTENT_TYPE")
                     return
                 declared = response.getheader("Content-Length")
                 if declared is not None and (not declared.isascii() or not declared.isdecimal()
                                              or len(declared) > 7
                                              or not 0 < int(declared) <= MAX_RESPONSE):
-                    self.deny(502)
+                    self.deny(502, "UPSTREAM_LENGTH")
                     return
                 # Buffer at most MAX_RESPONSE bytes. A partial protocol body
                 # must never be delivered as HTTP 200 or counted as completed.
+                stage = "UPSTREAM_BODY"
                 payload = bytearray()
                 deadline = min(self.server.deadline, time.monotonic() + TIMEOUT)
                 while True:
@@ -325,7 +373,9 @@ class Handler(BaseHTTPRequestHandler):
                         raise ValueError("RESPONSE_LIMIT")
                 if declared is not None and len(payload) != int(declared):
                     raise ValueError("RESPONSE_TRUNCATED")
+                stage = "RESPONSE_VALIDATION"
                 validate_response(content_type, bytes(payload))
+                stage = "CLIENT_DELIVERY"
                 self.close_connection = True
                 self.send_response(200)
                 self.send_header("Content-Type", content_type)
@@ -336,13 +386,16 @@ class Handler(BaseHTTPRequestHandler):
                 self.wfile.write(payload)
                 self.wfile.flush()
                 self.server.completed += 1
-        except (OSError, ValueError, UnicodeError, RecursionError, http.client.HTTPException):
+        except (OSError, ValueError, UnicodeError, RecursionError, http.client.HTTPException) as error:
+            category = (stage + "_TIMEOUT" if isinstance(error, TimeoutError)
+                        else fixed_category(error, RESPONSE_FAILURES, stage))
             if not started:
-                self.deny(502)
+                self.deny(502, category)
             else:
                 # A truncated stream is a failed request, never synthetic success.
-                self.server.denied += 1
+                self.server.record_denial(category)
         finally:
+            self.server.inference_seconds.append(round(time.monotonic() - began, 2))
             upstream.close()
 
 
