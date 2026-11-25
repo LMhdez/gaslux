@@ -1,4 +1,5 @@
 """Exact supervised append admission, separate from distro merge authority."""
+import os
 import sys
 from pathlib import Path
 import unittest
@@ -91,6 +92,85 @@ class SupervisedAdmissionTests(unittest.TestCase):
         with patch.object(A, "api", return_value=[PR] * 100):
             with self.assertRaises(ValueError):
                 gate.discover()
+
+
+class SupervisedIntegrationTests(unittest.TestCase):
+    def receipt(self):
+        return {"pr": 500, "role": ROLE, "scope": SCOPE, "head": HEAD, "base": BASE,
+                "next_action": "TEST_ONLY_INTEGRATION_ELIGIBLE",
+                "technical_objection": False, **{key: True for key in (
+                    "exact_scope_verified", "current_base_verified",
+                    "ci_workflow_provenance_verified", "ci_verified",
+                    "safety_review_verified", "backend_owner_verified")}}
+
+    def test_all_gates_and_only_test_scope(self):
+        row = self.receipt()
+        self.assertTrue(gate.eligible_test(row))
+        for key, value in row.items():
+            if value is True:
+                self.assertFalse(gate.eligible_test({**row, key: False}), key)
+        for delta in ({"scope": F.SUPERVISED_MEDIA_SCOPE}, {"technical_objection": True},
+                      {"technical_objection": None}, {"head": "bad"}, {"base": "bad"},
+                      {"next_action": "INDEPENDENT_SAFETY_REVIEW"}):
+            self.assertFalse(gate.eligible_test({**row, **delta}))
+
+    def test_trusted_merge_only_after_revalidation_and_github_ready(self):
+        env = {"GITHUB_REPOSITORY": A.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule", "GASLUX_AUTONOMY_PAUSED": ""}
+        for scenario in ("valid", "already_ready", "denied", "drift", "blocked",
+                         "base_drift", "media", "paused", "untrusted"):
+            row = self.receipt()
+            second = dict(row)
+            if scenario == "denied":
+                row["safety_review_verified"] = False
+            if scenario == "drift":
+                second["backend_owner_verified"] = False
+            ready = scenario == "already_ready"
+            writes = []
+
+            def api(method, route, body=None):
+                if method == "PUT":
+                    writes.append((route, body))
+                    return {"merged": True, "sha": "d" * 40}
+                self.assertEqual(method, "GET")
+                if route == "/pulls/500":
+                    return {"draft": not ready, "mergeable_state": "blocked" if scenario == "blocked" else "clean",
+                            "head": {"sha": HEAD}, "base": {"sha": BASE}}
+                if route == "/git/ref/heads/dev":
+                    return {"object": {"sha": "c" * 40 if scenario == "base_drift" else BASE}}
+                self.fail(route)
+
+            def mark_ready(*args, **kwargs):
+                nonlocal ready
+                ready = True
+
+            current = dict(env)
+            if scenario == "paused":
+                current["GASLUX_AUTONOMY_PAUSED"] = "true"
+            if scenario == "untrusted":
+                current["GITHUB_REF"] = "refs/heads/dev"
+            scope = F.SUPERVISED_MEDIA_SCOPE if scenario == "media" else SCOPE
+            with patch.dict(os.environ, current), \
+                 patch.object(gate, "discover", return_value={500: (ROLE, scope, HEAD)}), \
+                 patch.object(gate, "configured_reviewers", return_value=(1, {ROLE: 2})), \
+                 patch.object(gate, "inspect", side_effect=[row, second]), \
+                 patch.object(A, "api", side_effect=api), \
+                 patch.object(gate.subprocess, "run", side_effect=mark_ready) as mark:
+                if scenario in ("paused", "untrusted"):
+                    with self.assertRaises(ValueError):
+                        gate.integrate_one()
+                    mark.assert_not_called()
+                else:
+                    result = gate.integrate_one()
+                    if scenario in ("valid", "already_ready"):
+                        self.assertEqual(result["status"], "merged")
+                        self.assertEqual(writes, [("/pulls/500/merge", {"sha": HEAD, "merge_method": "squash"})])
+                    else:
+                        self.assertNotEqual(result["status"], "merged")
+                    if scenario in ("already_ready", "denied", "media"):
+                        mark.assert_not_called()
+            if scenario not in ("valid", "already_ready"):
+                self.assertEqual(writes, [], scenario)
 
 
 if __name__ == "__main__":
