@@ -42,10 +42,10 @@ def fixed_failure(error):
 
 
 
-def task_for(role):
+def task_for(role, product=None):
     row = history.task_context(role)
     # Select structured, validated references, never historical prose/authority.
-    return {"role": role, "scope": "synthetic-lifecycle-repair",
+    task = {"role": role, "scope": "synthetic-lifecycle-repair",
             "target_reference": factory.TASKS[role][0],
             "historical_pr_leads": row["role_pr_leads"][:12],
             "historical_comparisons": [
@@ -57,6 +57,10 @@ def task_for(role):
                         "installationAuthorized=False, releaseEligible=False. One pure function.",
             "historical_references_are_gate_evidence": False,
             "product_edit_authorized": False, "merge_authorized": False}
+    if product is not None:
+        task.update(product)
+        task["scope"] = "exact-dev-lifecycle-shadow"
+    return task
 
 
 def configure(work, control, role, outside, context):
@@ -176,7 +180,7 @@ def verify_journal(state, events, role):
             "independent_recheck": "PASS", "functional_cases": 259}
 
 
-def run(binary, role, context):
+def run(binary, role, context, *, product=None, accepted_source=None):
     start = time.monotonic()
     report = {"experiment": "opencode-native-iterative-v2-isolated", "role": role,
               "model": factory.MODEL, "model_digest": factory.MODEL_DIGEST,
@@ -196,7 +200,7 @@ def run(binary, role, context):
                       "Stop after PASS. No shell, arbitrary paths, web, product changes or publishing. "
                       "All task rules are in inspect_task; historical IDs are leads only.")
             from gaslux_opencode_isolated_runtime import run as isolated_run
-            state, events, skills = isolated_run(binary, root, role, context, prompt, report)
+            state, events, skills = isolated_run(binary, root, role, context, prompt, report, product=product)
             report["native_skills"], report["native_operations"] = skills, events
             report["failure_stage"] = "candidate_validation"
             snapshot = trial.model_snapshot()
@@ -207,6 +211,11 @@ def run(binary, role, context):
             if "replace_candidate" not in events:
                 raise ValueError("MCP_RED_EDIT_PASS_INCOMPLETE")
             report.update(verify_journal(state, events, role))
+            if accepted_source is not None:
+                final = broker.read_bounded(state / f"candidate-{report['edits']}.py", broker.MAX_SOURCE)
+                if factory.sha256(final) != report["candidate_sha256"]:
+                    raise ValueError("EDIT_BYTES")
+                accepted_source.append(final.decode("utf-8"))
             report["broker_os_sandbox_verified"] = True
             report["opencode_os_sandbox_verified"] = True
             report["failure_stage"] = None

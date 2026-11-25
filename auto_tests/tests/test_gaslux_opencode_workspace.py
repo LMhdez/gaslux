@@ -367,6 +367,43 @@ class WorkspaceTests(unittest.TestCase):
         self.assertEqual(report["native_skills"], [i.trial.SKILL])
         self.assertNotIn("UNTRUSTED_SENTINEL", json.dumps(report))
 
+    def test_product_shadow_binds_exact_source_and_never_mutates_checkout(self):
+        import gaslux_opencode_product_shadow as shadow
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Path(tmp)
+            target = tree / b.factory.TASKS["mint"][0]
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"# exact product source\n")
+            task = shadow.source_task(tree, "mint", "a" * 40)
+            self.assertFalse(task["product_edit_authorized"])
+            self.assertEqual(task["source_sha256"], b.factory.sha256(target.read_bytes()))
+            bad = {**task, "source_sha256": "0" * 64}
+            with self.assertRaisesRegex(ValueError, "SHADOW_SOURCE_CHANGED"):
+                shadow.apply_candidate(tree, "mint", bad, correct())
+            self.assertEqual(target.read_bytes(), b"# exact product source\n")
+            result = shadow.apply_candidate(tree, "mint", task, correct())
+            self.assertEqual(result["product_candidate_sha256"], b.factory.sha256(target.read_bytes()))
+            with self.assertRaisesRegex(ValueError, "SHADOW_SCOPE_ALREADY_IMPLEMENTED"):
+                shadow.source_task(tree, "mint", "a" * 40)
+
+    def test_shadow_rejects_archive_members_outside_contract(self):
+        import io
+        import tarfile
+        from types import SimpleNamespace
+        from unittest.mock import patch
+        import gaslux_opencode_product_shadow as shadow
+        with tempfile.TemporaryDirectory() as tmp:
+            for name in ("../escape", ".git/config", "unapproved.py"):
+                out = io.BytesIO()
+                with tarfile.open(fileobj=out, mode="w") as archive:
+                    member = tarfile.TarInfo(name)
+                    member.size = 1
+                    archive.addfile(member, io.BytesIO(b"x"))
+                with patch.object(b.factory, "git", return_value="a" * 40), \
+                     patch.object(shadow.subprocess, "run", return_value=SimpleNamespace(stdout=out.getvalue())):
+                    with self.assertRaises(ValueError):
+                        shadow.read_tree(Path(tmp), "a" * 40, Path(tmp))
+
     def test_verified_journal_and_independent_final_recheck(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)

@@ -139,7 +139,7 @@ def proxy_complete(stats):
             and stats["denied"] == 0 and 0 < stats["calls"] == stats["forwarded"] == stats["completed"])
 
 
-def run(binary, root, role, context, prompt, report):
+def run(binary, root, role, context, prompt, report, *, product=None):
     import gaslux_opencode_iterative as iterative
     import gaslux_opencode_model_proxy as proxy
     import gaslux_opencode_parent_boundary as boundary
@@ -155,7 +155,9 @@ def run(binary, root, role, context, prompt, report):
     outside = root / "outside-sentinel"
     broker.write_new(outside, iterative.SENTINEL)
     task = control / "task.json"
-    task_data = json.dumps(iterative.task_for(role), sort_keys=True).encode()
+    task_data = json.dumps(iterative.task_for(role, product), sort_keys=True).encode()
+    if len(task_data) > 32768:
+        raise ValueError("TASK_CONTEXT_LIMIT")
     broker.write_new(task, task_data)
     isolated_config(scratch, context)
     (scratch / "home").mkdir(mode=0o700)

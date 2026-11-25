@@ -38,6 +38,7 @@ on:
       - auto_tests/tools/gaslux_opencode_parent_boundary.py
       - auto_tests/tools/gaslux_opencode_model_proxy.py
       - auto_tests/tools/gaslux_opencode_isolated_runtime.py
+      - auto_tests/tools/gaslux_opencode_product_shadow.py
       - auto_tests/tests/test_gaslux_opencode_workspace.py
   pull_request:
     paths:
@@ -66,6 +67,7 @@ on:
       - auto_tests/tools/gaslux_opencode_parent_boundary.py
       - auto_tests/tools/gaslux_opencode_model_proxy.py
       - auto_tests/tools/gaslux_opencode_isolated_runtime.py
+      - auto_tests/tools/gaslux_opencode_product_shadow.py
       - auto_tests/tests/test_gaslux_opencode_workspace.py
 
 permissions:
@@ -229,15 +231,32 @@ jobs:
           mkdir -p evidence/opencode-iterative
           python3 -B auto_tests/tools/gaslux_opencode_parent_boundary.py \
             --report evidence/opencode-iterative/parent-boundary.json
-      - name: Native skill plus MCP investigation edit and RED-to-PASS tests
+      - name: Checkout actual dev for read-only shadow evaluation
         if: ${{ !cancelled() && steps.parent_admission.conclusion == 'success' }}
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          path: shadow-source
+          persist-credentials: false
+      - name: Prepare same pinned product regression dependencies
+        id: shadow_dependencies
+        if: ${{ !cancelled() && steps.parent_admission.conclusion == 'success' }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --target "$RUNNER_TEMP/gaslux-shadow-deps" \
+            'pytest==9.0.2' 'jsonschema==4.25.1' 'cryptography==44.0.3' 'ruff==0.17.6'
+      - name: Native skill plus MCP investigation edit and RED-to-PASS tests on actual dev shadow
+        if: ${{ !cancelled() && steps.shadow_dependencies.conclusion == 'success' }}
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p evidence/opencode-iterative
-          python3 -B auto_tests/tools/gaslux_opencode_iterative.py \
-            --binary "$GASLUX_OPENCODE_BIN" --role mint --context 16384 \
+          base=$(git -C shadow-source rev-parse HEAD)
+          python3 -B auto_tests/tools/gaslux_opencode_product_shadow.py \
+            --binary "$GASLUX_OPENCODE_BIN" --repo shadow-source --base "$base" \
+            --dependencies "$RUNNER_TEMP/gaslux-shadow-deps" --role zorin \
             --report evidence/opencode-iterative/report.json
+      # Real shadow above supersedes synthetic-only Mint model execution.
       - name: Retain iterative lab report only (never a Factory candidate)
         if: always()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
