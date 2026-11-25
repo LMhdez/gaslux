@@ -143,6 +143,56 @@ def decode_candidate(text):
     return addition
 
 
+
+# OpenCode 1.19.6 JSON stream: recognize only reviewed event envelopes.
+# Keep one validator for both experimental clients. An unknown event is not
+# telemetry: it could conceal an unreviewed tool invocation.
+EVENT_PART_TYPES = {"text": "text", "tool_use": "tool", "step_start": "step-start",
+                    "step_finish": "step-finish", "reasoning": "reasoning"}
+EVENT_TOOL_FIELDS = frozenset({"tool", "state", "callID", "callId", "toolName",
+                               "toolCallId", "tool_call_id", "tool_calls"})
+
+
+def decode_event(line):
+    def unique_keys(pairs):
+        obj = {}
+        for key, value in pairs:
+            if key in obj:
+                raise ValueError("duplicate event key")
+            obj[key] = value
+        return obj
+
+    def reject_constant(_):
+        raise ValueError("non-JSON constant")
+
+    try:
+        row = json.loads(line, object_pairs_hook=unique_keys, parse_constant=reject_constant)
+    except (ValueError, UnicodeError, RecursionError):
+        raise TrialFailure("EVENT_JSON_INVALID") from None
+    if type(row) is not dict:
+        raise TrialFailure("EVENT_SHAPE_INVALID")
+    kind = row.get("type")
+    if type(kind) is not str or kind not in (*EVENT_PART_TYPES, "error"):
+        raise TrialFailure("EVENT_TYPE_UNEXPECTED")
+    if EVENT_TOOL_FIELDS.intersection(row):
+        raise TrialFailure("EVENT_ENVELOPE_INVALID")
+    if kind == "error":
+        # An error always terminates the stream in either client.
+        return row
+    part = row.get("part")
+    if type(part) is not dict:
+        raise TrialFailure("EVENT_PART_INVALID")
+    # Older synthetic fixtures omit the inner type. If supplied, it must
+    # agree with the outer event. Never reinterpret one part as another.
+    if "type" in part and part["type"] != EVENT_PART_TYPES[kind]:
+        raise TrialFailure("EVENT_PART_TYPE_MISMATCH")
+    if kind != "tool_use" and EVENT_TOOL_FIELDS.intersection(part):
+        raise TrialFailure("UNEXPECTED_TOOL")
+    if kind in ("text", "reasoning") and type(part.get("text")) is not str:
+        raise TrialFailure("TEXT_EVENT_INVALID")
+    return row
+
+
 def parse_events(raw: bytes, observations=None):
     if len(raw) > MAX_EVENTS:
         raise TrialFailure("EVENT_STREAM_OVERSIZE")
@@ -164,15 +214,11 @@ def parse_events(raw: bytes, observations=None):
         if not line.strip():
             continue
         try:
-            row = json.loads(line)
-        except (ValueError, UnicodeError):
-            fail("EVENT_JSON_INVALID")
-        if type(row) is not dict:
-            fail("EVENT_SHAPE_INVALID")
-        kind = row.get("type")
-        known = ("text", "tool_use", "error", "step_start", "step_finish", "reasoning")
-        key = kind if kind in known else "other"
-        counts[key] = counts.get(key, 0) + 1
+            row = decode_event(line)
+        except TrialFailure as error:
+            fail(error.category, error.detail)
+        kind = row["type"]
+        counts[kind] = counts.get(kind, 0) + 1
         if kind == "error":
             error = row.get("error")
             name = error.get("name") if type(error) is dict else None

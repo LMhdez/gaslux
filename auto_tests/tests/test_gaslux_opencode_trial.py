@@ -57,6 +57,11 @@ class OpenCodeTrialTests(unittest.TestCase):
         malformed = [
             {"type": "unknown", "part": {"tool": "bash"}},
             {"type": "unknown", "part": {}},
+            {"type": "tool_result", "part": {"tool": "bash"}},
+            {"type": "reasoning", "part": {"text": "", "state": {"status": "completed"}}},
+            {"type": "text", "part": {"text": "", "callID": "forbidden"}},
+            {"type": "step_start", "part": None},
+            {"type": "reasoning", "part": {"type": "reasoning", "text": []}},
             {"part": {"tool": "bash"}},
             {"type": None, "part": {}},
             {"type": [], "part": {}},
@@ -77,6 +82,8 @@ class OpenCodeTrialTests(unittest.TestCase):
         for raw in (
             b'{"type":"unknown","type":"reasoning","part":{}}',
             b'{"type":"reasoning","part":{"tool":"bash","tool":"skill"}}',
+            b'{"type":"step_finish","part":{"tokens":{"input":NaN}}}',
+            b'{"type":"step_finish","part":{"type":"step-finish","type":"tool"}}',
         ):
             with self.assertRaises(trial.TrialFailure):
                 trial.parse_events(good + b"\n" + raw)

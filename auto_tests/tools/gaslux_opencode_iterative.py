@@ -68,10 +68,10 @@ def native_events(raw):
     for line in raw.splitlines():
         if not line.strip():
             continue
-        row = json.loads(line)
-        if type(row) is not dict or row.get("type") == "error":
+        row = trial.decode_event(line)
+        if row["type"] == "error":
             raise ValueError("CLI_ERROR")
-        if row.get("type") != "tool_use":
+        if row["type"] != "tool_use":
             continue
         part = row.get("part")
         if type(part) is not dict:
