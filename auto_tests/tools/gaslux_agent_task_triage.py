@@ -511,7 +511,7 @@ def discover_missing_implementations(root):
     return result
 
 
-def sync_implementation_gap(root, *, dry_run=False):
+def sync_implementation_gap(root, *, dry_run=False, eligible_reason=None):
     """Route one concrete source gap to the backend; never infer write authority."""
     if (os.getenv("GITHUB_REPOSITORY") != REPO
             or os.getenv("GITHUB_REF") != "refs/heads/main"
@@ -523,6 +523,12 @@ def sync_implementation_gap(root, *, dry_run=False):
     if not SHA.fullmatch(base) or api("GET", "/git/ref/heads/dev")["object"]["sha"] != base:
         raise ValueError("Unpinned source discovery")
     candidates = discover_missing_implementations(root)
+    if eligible_reason is not None:
+        if not dry_run or eligible_reason != "TEST_REQUIRES_MISSING_API":
+            raise ValueError("Invalid dynamic development selection")
+        candidates = [row for row in candidates if row["reason"] == eligible_reason]
+    if not candidates:
+        return {"status": "no_unclaimed_implementation_gap", "discovered": 0}
     def tracked(issues, marker, title):
         return any((i.get("user") or {}).get("id") == 41898282
                    and (i.get("user") or {}).get("login") == TRUSTED_TASK_BOT
