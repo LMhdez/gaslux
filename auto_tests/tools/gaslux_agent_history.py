@@ -241,7 +241,7 @@ def extended_reuse_context(role, root=ROOT):
                 "resolved_offline_at_review", "producer_blocker")
     seen, selected = set(), []
     for row in rows:
-        if (type(row) is not dict or row.get("role") not in ROLES
+        if (type(row) is not dict or row.get("role") not in (*ROLES, "shared")
                 or not positive_id(row.get("pr")) or not positive_id(row.get("comment"))
                 or type(row.get("review_sha")) is not str or not SHA.fullmatch(row["review_sha"])
                 or type(row.get("id")) is not str or not re.fullmatch(r"[A-Z0-9-]{1,64}", row["id"])
@@ -252,8 +252,8 @@ def extended_reuse_context(role, root=ROOT):
         if key in seen:
             raise ValueError("duplicate historical finding")
         seen.add(key)
-        if row["role"] == role:
-            selected.append({k: row[k] for k in ("pr", "id", "review_sha", "comment", "status")})
+        if row["role"] in (role, "shared"):
+            selected.append({k: row[k] for k in ("role", "pr", "id", "review_sha", "comment", "status")})
     selected.sort(key=lambda x: (x["status"] == "resolved_offline_at_review", x["pr"], x["id"]))
     return {"snapshot_dev": symbols["dev"], "backend_source": role_sources[role],
             **role_counts[role], "dev_python_shell_files": coverage["dev_files"],

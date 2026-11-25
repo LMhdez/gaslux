@@ -2,7 +2,7 @@
   "schema_version": 1,
   "kind": "historical_findings_discovery_only",
   "repository": "LMhdez/gaslux",
-  "observed_date": "2026-11-24",
+  "observed_date": "2026-11-25",
   "complete": false,
   "findings": [
     {
@@ -196,6 +196,134 @@
       "merge_authorized": false,
       "writer_authorized": false,
       "release_eligible": false
+    },
+    {
+      "role": "shared",
+      "id": "D-337-01",
+      "pr": 337,
+      "review_sha": "7e0d1a27aa16f012fae41e2979fc9791066a7ee7",
+      "comment": 7080704589,
+      "status": "resolved_offline_at_review",
+      "summary": "Partial positive pread incorrectly authenticated a prefix; exact byte coverage enforced, independent oracle replayed.",
+      "fix_pr": 337,
+      "fix_sha": "f1e082c37ab58887f942b1e9ab0a841cb4b2b02a",
+      "fix_comment": 7080967838,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "shared",
+      "id": "SAFETY2-346-01",
+      "pr": 346,
+      "review_sha": "9306d0fff8cc89794b83fe002ae133c110e641ae",
+      "comment": 7083769906,
+      "status": "resolved_offline_at_review",
+      "summary": "Descendant subprocess survived timeout; independent real-subprocess oracle confirmed corrected group cleanup.",
+      "fix_pr": 346,
+      "fix_sha": "49389810a46d43bee407304a237b912b2faebc07",
+      "fix_comment": 7083769906,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "shared",
+      "id": "F-361-01",
+      "pr": 361,
+      "review_sha": "b85df554e4b1a410f326f31303e4c59f00b85e2e",
+      "comment": 7082353359,
+      "status": "resolved_offline_at_review",
+      "summary": "Automation restored guest before invalid-source rejection; source gate moved before guest operations.",
+      "fix_pr": 361,
+      "fix_sha": "89d42150e4bb5b9d6077f0782ed96fce27dd29c1",
+      "fix_comment": 7082697059,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "shared",
+      "id": "F-361-02",
+      "pr": 361,
+      "review_sha": "b85df554e4b1a410f326f31303e4c59f00b85e2e",
+      "comment": 7082353359,
+      "status": "resolved_offline_at_review",
+      "summary": "Deployment audit counted non-executable PowerShell imports; here-string false closer regression corrected.",
+      "fix_pr": 361,
+      "fix_sha": "302f4f02e2968428bfd4c2e4bbf1d8e15582c0a7",
+      "fix_comment": 7082951550,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "cachyos",
+      "id": "CAT-314-O-PATH",
+      "pr": 314,
+      "review_sha": "f5efccd50507248ca447fa5883900d951289c551",
+      "comment": 7078980928,
+      "status": "remediation_reported_reaudit_required",
+      "summary": "Producer reproduced O_PATH misclassified as read-only; explicit rejection and regression added. Catalog ID assigned, not original Safety identifier.",
+      "fix_pr": 314,
+      "fix_sha": "f5efccd50507248ca447fa5883900d951289c551",
+      "fix_comment": 7078980928,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "cachyos",
+      "id": "CAT-335-BCD-ATTRIBUTION",
+      "pr": 335,
+      "review_sha": "71f11c94f73e671296c4f8661e4c1bb42d17d67c",
+      "comment": 7080421852,
+      "status": "producer_blocker",
+      "summary": "Historical BCD A/B final hashes differ despite equal changed offsets; process attribution and rollback unproven. Catalog ID assigned.",
+      "fix_pr": null,
+      "fix_sha": null,
+      "fix_comment": null,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "zorin",
+      "id": "CAT-333-HANDOFF-ORIGIN",
+      "pr": 333,
+      "review_sha": "421d1c84f832b9196783acaefdd5d74c0bbca803",
+      "comment": 7080579295,
+      "status": "producer_blocker",
+      "summary": "Technical approval only offline deny-only; plan/ISO/VM origin and actual Ubiquity/partman execution not authenticated. Catalog ID assigned.",
+      "fix_pr": null,
+      "fix_sha": null,
+      "fix_comment": null,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "bazzite",
+      "id": "BZD-BOOTC-SRPM-ELF-BINDING-01",
+      "pr": 357,
+      "review_sha": "e2cc1a4894e2365efa68e5b1957a19fafc02a97d",
+      "comment": 7081352892,
+      "status": "producer_blocker",
+      "summary": "SRPM source matches upstream but signature and source-to-ELF binding unproved; alongside route threatens shared ESP. Review requested.",
+      "fix_pr": null,
+      "fix_sha": null,
+      "fix_comment": null,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
     }
   ],
   "runs": [
@@ -282,6 +410,83 @@
       "conclusion": "success",
       "verification": "run_metadata",
       "formal_gate_verified": false
+    },
+    {
+      "run": 45033893644,
+      "sha": "b77933ee0eee4807689580d5bb002a65b3ea5d44",
+      "conclusion": "failure",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45035718212,
+      "sha": "245c72e7170772cb873aaef260316928ba54742d",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45037813419,
+      "sha": "b690cf3b7da0ec34b950e354a4b8af8bd94a70c0",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45056131189,
+      "sha": "f4f882565af2c8cf08b8b656122f9ef9c9dc01a2",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45046490577,
+      "sha": "33cc39d3f81d33578e5baff99f3b27751cb3ed6c",
+      "conclusion": "failure",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45049176083,
+      "sha": "302f4f02e2968428bfd4c2e4bbf1d8e15582c0a7",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45021184614,
+      "sha": "f5efccd50507248ca447fa5883900d951289c551",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 44900941635,
+      "sha": "78fceddb85649ce63b58459c75f4668db1446feb",
+      "conclusion": "failure",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45031774164,
+      "sha": "71f11c94f73e671296c4f8661e4c1bb42d17d67c",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45038563809,
+      "sha": "e2cc1a4894e2365efa68e5b1957a19fafc02a97d",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45031680869,
+      "sha": "421d1c84f832b9196783acaefdd5d74c0bbca803",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
     }
   ],
   "failure_correction_pairs": [
@@ -340,7 +545,39 @@
       "green": 45036376285,
       "scope": "bootc source prewrite deny-only; not runtime provenance",
       "source": "comment 7081050352"
+    },
+    {
+      "role": "shared",
+      "pr": 337,
+      "red": 45033893644,
+      "green": 45035718212,
+      "scope": "positive short pread prefix authentication; independent original oracle 2/2 + A-H 8/8 per Safety review",
+      "source": "comments 7080704589 and 7080967838"
+    },
+    {
+      "role": "shared",
+      "pr": 346,
+      "red": 45037813419,
+      "green": 45056131189,
+      "scope": "expected-RED oracle workflow itself SUCCESS (expected failure observed); corrected real subprocess cleanup GREEN; distinguish CI conclusion from defect oracle",
+      "source": "comment 7083769906"
+    },
+    {
+      "role": "shared",
+      "pr": 361,
+      "red": 45046490577,
+      "green": 45049176083,
+      "scope": "source provenance before guest effects and PowerShell import recognition; non-writer closure, not guest validation",
+      "source": "comments 7082353359, 7082697059, 7082951550"
+    },
+    {
+      "role": "cachyos",
+      "pr": 335,
+      "red": 44900941635,
+      "green": 45031774164,
+      "scope": "offline denial regressions only; BCD process attribution remains blocked, NOT a functional repair of genuine VM",
+      "source": "comment 7080421852"
     }
   ],
-  "limitations": "Selected findings and producer blockers; review status at recorded SHA only, not live closure or formal authenticated approval. Run metadata independently queried; causal statements from cited comments, not all logs rerun."
+  "limitations": "Selected findings and producer blockers; review status at recorded SHA only, not live closure or formal authenticated approval. Run metadata independently queried; causal statements from cited comments, not all logs rerun. Expanded selected catalog: shared findings apply to all six roles; CAT identifiers assigned for source reports lacking a formal finding ID. Technical historical closure is not live approval. Expected-RED harness can succeed while detecting a defect."
 }

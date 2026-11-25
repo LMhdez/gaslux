@@ -175,6 +175,15 @@ class HistoryTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 history.extended_reuse_context("mint", root)
 
+    def test_shared_historical_findings_reach_all_backends(self):
+        for role in history.ROLES:
+            selected = history.task_context(role)["reuse_inventory"]["historical_findings"]
+            shared = {f["id"] for f in selected if f["role"] == "shared"}
+            self.assertEqual(shared, {"D-337-01", "SAFETY2-346-01", "F-361-01", "F-361-02"})
+            self.assertTrue(all(f["role"] in (role, "shared") for f in selected))
+            self.assertTrue(all("summary" not in f for f in selected))
+            self.assertLessEqual(len(selected), 12)
+
     def test_skill_files_present(self):
         for name in history.SKILLS:
             path = history.ROOT / "docs/agent-skills" / name / "SKILL.md"
