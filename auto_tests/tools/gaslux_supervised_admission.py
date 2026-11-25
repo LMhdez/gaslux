@@ -367,6 +367,76 @@ query {
 """
 
 
+RULESET_BYPASS_QUERY = """
+query($id: ID!) {
+  node(id: $id) {
+    __typename
+    ... on RepositoryRuleset {
+      id
+      databaseId
+      enforcement
+      source { ... on Repository { nameWithOwner } }
+      bypassActors(first: 1) {
+        totalCount
+        nodes { id }
+        pageInfo { hasNextPage hasPreviousPage }
+      }
+    }
+  }
+}
+"""
+
+
+def ruleset_bypass_evidence(detail):
+    """Use an explicit live GraphQL connection if REST conceals bypass actors.
+
+    Do not infer an empty list from an omitted field, a null connection, a
+    permission error, or the current actor's own inability to bypass.
+    No alternate token, administrative permission or mutation is used.
+    """
+    if ("current_user_can_bypass" in detail
+            and detail["current_user_can_bypass"] != "never"):
+        return "nonempty"
+    if "bypass_actors" in detail:
+        return "rest_empty" if detail["bypass_actors"] == [] else "nonempty"
+    node_id, rid = detail.get("node_id"), detail.get("id")
+    if (type(rid) is not int or rid <= 0 or not isinstance(node_id, str)
+            or not re.fullmatch(r"[A-Za-z0-9_+/=-]{1,180}", node_id)):
+        return "unknown"
+    try:
+        raw = subprocess.run(["gh", "api", "graphql", "-f", "query=" + RULESET_BYPASS_QUERY,
+                              "-f", "id=" + node_id],
+                             check=True, timeout=30, capture_output=True).stdout
+        if len(raw) > 65536:
+            return "unknown"
+        data = json.loads(raw)
+        if data.get("errors"):
+            return "unknown"
+        node = data["data"]["node"]
+        if (node["__typename"] != "RepositoryRuleset" or node["id"] != node_id
+                or type(node["databaseId"]) is not int or node["databaseId"] != rid
+                or node["enforcement"] != "ACTIVE"
+                or node["source"]["nameWithOwner"] != admission.REPO):
+            return "unknown"
+        actors = node["bypassActors"]
+        if type(actors["totalCount"]) is not int:
+            return "unknown"
+        if actors["totalCount"] > 0:
+            return "nonempty"
+        if (actors["totalCount"] != 0 or actors["nodes"] != []
+                or actors["pageInfo"] != {"hasNextPage": False, "hasPreviousPage": False}):
+            return "unknown"
+        # Bind the second observation to the same complete REST policy and
+        # reject concurrent ruleset updates, including bypass-only changes.
+        fresh = admission.api("GET", f"/rulesets/{rid}?includes_parents=false")
+        if (not isinstance(detail.get("updated_at"), str) or not detail["updated_at"]
+                or fresh != detail):
+            return "unknown"
+        return "graphql_empty"
+    except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
+        return "unknown"
+
+
 def strict_ruleset_protected(base):
     """Accept only an active exact-dev repository ruleset with visible no-bypass policy.
 
@@ -401,7 +471,6 @@ def strict_ruleset_protected(base):
             if (detail.get("id") != rid or detail.get("source_type") != "Repository"
                     or detail.get("source") != admission.REPO
                     or detail.get("target") != "branch" or detail.get("enforcement") != "active"
-                    or detail.get("bypass_actors") != []
                     or detail.get("conditions") != {
                         "ref_name": {"include": ["refs/heads/dev"], "exclude": []}}):
                 continue
@@ -432,6 +501,8 @@ def strict_ruleset_protected(base):
                                and x["context"].strip() for x in checks)
                     or not admission.COMMON_CHECKS <= {x["context"] for x in checks}
                     or any(x.get("integration_id") != 15368 for x in checks)):
+                continue
+            if ruleset_bypass_evidence(detail) not in ("rest_empty", "graphql_empty"):
                 continue
             # Recheck the exact base, not an inferred merge base. The GitHub
             # server enforces the strict rule at merge time.
