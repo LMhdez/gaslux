@@ -216,13 +216,84 @@ def historical_inventory(*, slot=None):
             "refs": refs, "findings": findings}
 
 
+def historical_close_candidate(row):
+    """Only identical complete trees, ancestry, and no unresolved discussion."""
+    if (row.get("status") != "ANCESTRY_PRESENT_REVIEW_CLOSURE"
+            or row.get("target") not in ("dev", "main")
+            or row.get("draft") is not True or row.get("unique_head_commits") != 0):
+        return False
+    n, head, base, target = row["pr"], row["head"], row["base"], row["target"]
+    if type(n) is not int or not 1 <= n <= 1000000 or not all(
+            admission.valid_sha(s) for s in (head, base)):
+        return False
+    api = admission.api
+    pr = api("GET", f"/pulls/{n}")
+    if (pr.get("state") != "open" or pr.get("draft") is not True
+            or pr.get("merged") is not False or pr.get("requested_reviewers")
+            or pr.get("requested_teams")
+            or not admission.publisher_ok(pr.get("user") or {})
+            or pr["head"]["sha"] != head or pr["base"]["ref"] != target
+            or pr["head"]["repo"]["full_name"] != admission.REPO
+            or pr["base"]["repo"]["full_name"] != admission.REPO
+            or api("GET", f"/git/ref/heads/{target}")["object"]["sha"] != base):
+        return False
+    relation = api("GET", f"/compare/{head}...{base}")
+    if (relation.get("status") not in ("ahead", "identical")
+            or relation.get("behind_by") != 0
+            or relation.get("merge_base_commit", {}).get("sha") != head):
+        return False
+    a = api("GET", f"/git/commits/{head}")["tree"]["sha"]
+    b = api("GET", f"/git/commits/{base}")["tree"]["sha"]
+    if not admission.valid_sha(a) or a != b:
+        return False
+    # Unresolved historical findings may live in discussion rather than code.
+    # Any existing review, inline comment or issue comment defers closure.
+    for endpoint in (f"/pulls/{n}/reviews?per_page=100",
+                     f"/pulls/{n}/comments?per_page=100",
+                     f"/issues/{n}/comments?per_page=100"):
+        if admission.complete_page(api("GET", endpoint)):
+            return False
+    return True
+
+
+def close_integrated_history(*, execute=False):
+    if execute and (os.getenv("GITHUB_REPOSITORY") != admission.REPO
+                    or os.getenv("GITHUB_REF") != "refs/heads/main"
+                    or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
+                    or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true"):
+        raise RuntimeError("Untrusted or paused historical reconciliation")
+    report = historical_inventory()
+    for row in report["findings"]:
+        if not historical_close_candidate(row):
+            continue
+        n, head, base, target = row["pr"], row["head"], row["base"], row["target"]
+        receipt = {"pr": n, "head": head, "base": base, "target": target,
+                   "merge_authorized": False, "refs_deleted": False}
+        if not execute:
+            return {"status": "eligible_exact_history", **receipt}
+        if not historical_close_candidate(row):
+            return {"status": "history_drift_before_close", **receipt}
+        # REST close has no atomic expected-head argument. Never delete refs;
+        # verify metadata and report concurrency drift rather than conceal it.
+        api = admission.api
+        closed = api("PATCH", f"/pulls/{n}", {"state": "closed"})
+        if (closed.get("state") != "closed" or closed.get("merged") is not False
+                or closed.get("head", {}).get("sha") != head
+                or api("GET", f"/git/ref/heads/{target}")["object"]["sha"] != base):
+            raise RuntimeError("Historical closure drift; manual reconciliation required")
+        return {"status": "exact_history_closed", **receipt}
+    return {"status": "no_exact_history_closure", "merge_authorized": False}
+
+
 def main():
     cli = argparse.ArgumentParser()
     modes = cli.add_mutually_exclusive_group()
     modes.add_argument("--execute", action="store_true")
     modes.add_argument("--historical-inventory", action="store_true")
+    modes.add_argument("--close-integrated-history", action="store_true")
     args = cli.parse_args()
-    report = historical_inventory() if args.historical_inventory else reconcile(execute=args.execute)
+    report = (close_integrated_history(execute=True) if args.close_integrated_history else
+              historical_inventory() if args.historical_inventory else reconcile(execute=args.execute))
     print(json.dumps(report, sort_keys=True))
 
 
