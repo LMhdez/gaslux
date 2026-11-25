@@ -16,9 +16,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gaslux_agent_feature_factory as factory
 import gaslux_distro_admission as admission
 import gaslux_dynamic_development as dynamic
+import gaslux_multifile_development as multi
 
 DYNAMIC_SCOPE = "dynamic-test-demanded-api-v1"
-PRODUCT_SCOPES = (factory.SUPERVISED_MEDIA_SCOPE, DYNAMIC_SCOPE)
+MULTIFILE_SCOPE = "dynamic-multifile-api-v1"
+PRODUCT_SCOPES = (factory.SUPERVISED_MEDIA_SCOPE, DYNAMIC_SCOPE, MULTIFILE_SCOPE)
+MULTIFILE_BRANCH = re.compile(r"bot/gaslux-multi-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}-[0-9a-f]{12}")
 DYNAMIC_BRANCH = re.compile(r"bot/gaslux-dynamic-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}-[0-9a-f]{12}")
 
 BRANCH = re.compile(r"bot/gaslux-(test|pins)-(mint|zorin|cachyos|popos|q4os|bazzite)-[0-9a-f]{12}")
@@ -33,9 +36,12 @@ def discover():
         branch = head.get("ref")
         match = BRANCH.fullmatch(branch) if isinstance(branch, str) else None
         dynamic_match = DYNAMIC_BRANCH.fullmatch(branch) if isinstance(branch, str) else None
-        if not (match or dynamic_match) or (head.get("repo") or {}).get("full_name") != admission.REPO:
+        multi_match = MULTIFILE_BRANCH.fullmatch(branch) if isinstance(branch, str) else None
+        if not (match or dynamic_match or multi_match) or (head.get("repo") or {}).get("full_name") != admission.REPO:
             continue
-        if dynamic_match:
+        if multi_match:
+            role, scope = multi_match.group(1), MULTIFILE_SCOPE
+        elif dynamic_match:
             role, scope = dynamic_match.group(1), DYNAMIC_SCOPE
         else:
             kind, role = match.groups()
@@ -81,7 +87,68 @@ def dynamic_scope(pr, role, head):
     return parent
 
 
+def multifile_scope(pr, role, head):
+    if pr.get("commits") != 1:
+        raise ValueError("Multifile proposal must be one commit")
+    parent = admission.single_parent(head)
+    comparison = admission.api("GET", f"/compare/{parent}...{head}")
+    changed = admission.complete_page(comparison["files"])
+    if (comparison.get("status") != "ahead" or comparison.get("ahead_by") != 1
+            or comparison.get("behind_by") != 0 or comparison.get("total_commits") != 1
+            or comparison.get("merge_base_commit", {}).get("sha") != parent
+            or not 2 <= len(changed) <= multi.MAX_FILES):
+        raise ValueError("Unexpected multifile ancestry")
+    names = set()
+    for f in changed:
+        name = f.get("filename")
+        if (not isinstance(name, str) or
+                not re.fullmatch(r"assets/live/gaslux_[a-z0-9_]{1,75}\.py", name)
+                or f.get("status") != "modified" or f.get("previous_filename") is not None
+                or name in names):
+            raise ValueError("Unexpected multifile path")
+        names.add(name)
+    suite = "auto_tests/tests/" + factory.TASKS[role][1]
+    test = admission.source_at(suite, parent)
+    imports = {n.module for n in ast.parse(test).body
+               if isinstance(n, ast.ImportFrom) and n.level == 0
+               and multi.MODULE.fullmatch(n.module or "")}
+    if not 2 <= len(imports) <= 32 or not names <= {multi.module_path(n) for n in imports}:
+        raise ValueError("Multifile test witness missing")
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        path = root / suite
+        path.parent.mkdir(parents=True)
+        path.write_bytes(test)
+        for module in sorted(imports):
+            name = multi.module_path(module)
+            path = root / name
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(admission.source_at(name, parent))
+        tasks = [t for t in multi.discover(root) if t["role"] == role
+                 and {e["path"] for e in t["entries"]} == names]
+        if len(tasks) != 1:
+            raise ValueError("Multifile mission cannot be reconstructed")
+        task = tasks[0]
+        branch = f"bot/gaslux-multi-{role}-{task['key'][6:18]}-{parent[:12]}"
+        if pr["head"]["ref"] != branch:
+            raise ValueError("Multifile branch mismatch")
+        proposed = {}
+        for name in names:
+            before = (root / name).read_bytes()
+            after = admission.source_at(name, head)
+            prefix = before.rstrip(b"\n") + b"\n\n\n"
+            if not after.startswith(prefix):
+                raise ValueError("Multifile source prefix modified")
+            proposed[name] = after[len(prefix):].decode()
+        exact = multi.reconstruct(root, task, proposed)
+        if any(admission.source_at(name, head) != data for name, data in exact.items()):
+            raise ValueError("Multifile bytes mismatch")
+    return parent
+
+
 def canonical_scope(pr, role, scope, head):
+    if scope == MULTIFILE_SCOPE:
+        return multifile_scope(pr, role, head)
     if scope == DYNAMIC_SCOPE:
         return dynamic_scope(pr, role, head)
     if pr.get("commits") != 1:
@@ -221,7 +288,7 @@ def inspect(number, role, scope, head, reviewer=None, owner=None, *, allow_ready
            "merge_authorized": False,
            "release_eligible": False, "next_action": "VERIFY_SUPERVISED_SCOPE"}
     try:
-        if not admission.valid_sha(head) or role not in factory.TASKS or scope not in (*factory.SUPERVISED_SCOPES, DYNAMIC_SCOPE):
+        if not admission.valid_sha(head) or role not in factory.TASKS or scope not in (*factory.SUPERVISED_SCOPES, DYNAMIC_SCOPE, MULTIFILE_SCOPE):
             raise ValueError("Unknown supervised scope")
         pr = admission.api("GET", f"/pulls/{number}")
         base = admission.api("GET", "/git/ref/heads/dev")["object"]["sha"]
@@ -791,12 +858,15 @@ def audit_completed_integrations():
         ref = summary.get("head", {}).get("ref", "")
         match = BRANCH.fullmatch(ref) if isinstance(ref, str) else None
         dm = DYNAMIC_BRANCH.fullmatch(ref) if isinstance(ref, str) else None
-        if not (match or dm) or not admission.publisher_ok(summary.get("user") or {}):
+        mm = MULTIFILE_BRANCH.fullmatch(ref) if isinstance(ref, str) else None
+        if not (match or dm or mm) or not admission.publisher_ok(summary.get("user") or {}):
             continue
         n = summary["number"]
         if type(n) is not int or not 1 <= n <= 1000000:
             raise ValueError("Invalid closed PR number")
-        if dm:
+        if mm:
+            role, scope = mm.group(1), MULTIFILE_SCOPE
+        elif dm:
             role, scope = dm.group(1), DYNAMIC_SCOPE
         else:
             kind, role = match.groups()
