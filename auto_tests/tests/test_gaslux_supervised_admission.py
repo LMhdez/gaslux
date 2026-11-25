@@ -395,5 +395,60 @@ class IndependentOwnerTests(unittest.TestCase):
                                  f"GASLUX-BACKEND-OWNER-V1 role={ROLE} head={HEAD} base={BASE}")
 
 
+class DynamicAdmissionTests(unittest.TestCase):
+    def test_dynamic_scope_reconstructed_without_pr_body(self):
+        role = "zorin"
+        source, suite, _ = F.TASKS[role]
+        before = b"def present(x):\n    return x\n"
+        generated = "def missing(x):\n    return x + 1\n"
+        test = f"from {Path(source).stem} import missing\n\ndef test_required():\n    assert missing(1) == 2\n".encode()
+        key = F.sha256(f"{source}:missing".encode())
+        branch = f"bot/gaslux-dynamic-{role}-{key[:12]}-{BASE[:12]}"
+        after = gate.dynamic.candidate_bytes(before, "missing", generated)
+        for scenario in ("valid", "wrong_branch", "wrong_bytes", "no_witness", "two_commits"):
+            pr = {"commits": 2 if scenario == "two_commits" else 1,
+                  "head": {"ref": branch if scenario != "wrong_branch" else branch[:-1] + "c"}}
+            def read(path, ref):
+                if path == source:
+                    return before if ref == BASE else after + (b"\nimport os\n" if scenario == "wrong_bytes" else b"")
+                return b"def test_unrelated():\n    pass\n" if scenario == "no_witness" else test
+            with patch.object(A, "single_parent", return_value=BASE), \
+                 patch.object(A, "one_path_commit"), patch.object(A, "source_at", side_effect=read):
+                if scenario == "valid":
+                    self.assertEqual(gate.dynamic_scope(pr, role, HEAD), BASE)
+                else:
+                    with self.assertRaises(ValueError):
+                        gate.dynamic_scope(pr, role, HEAD)
+
+    def test_dynamic_requires_all_semantic_and_vm_gates(self):
+        row = SupervisedIntegrationTests().receipt()
+        row.update(scope=gate.DYNAMIC_SCOPE, next_action="PRODUCT_INTEGRATION_ELIGIBLE",
+                   full_vm_acceptance_verified=True)
+        self.assertTrue(gate.eligible_product(row))
+        self.assertFalse(gate.eligible_test(row))
+        for name in ("safety_review_verified", "backend_owner_verified", "full_vm_acceptance_verified",
+                     "exact_scope_verified", "ci_verified", "current_base_verified"):
+            self.assertFalse(gate.eligible_product({**row, name: False}))
+
+    def test_dynamic_discovery_does_not_auto_approve_semantics(self):
+        role = "zorin"
+        ref = f"bot/gaslux-dynamic-{role}-{'b' * 12}-{'a' * 12}"
+        repo = {"full_name": A.REPO}
+        pr = {"number": 500, "head": {"ref": ref, "sha": HEAD, "repo": repo},
+              "base": {"ref": "dev", "repo": repo}}
+        with patch.object(A, "api", return_value=[pr]):
+            self.assertEqual(gate.discover(), {500: (role, gate.DYNAMIC_SCOPE, HEAD)})
+        env = {"GITHUB_REPOSITORY": A.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule", "GASLUX_AUTONOMY_PAUSED": "",
+               "GH_TOKEN": "fixture"}
+        with patch.dict(os.environ, env), \
+             patch.object(gate, "configured_reviewers", return_value=(123, {role: 456})), \
+             patch.object(gate.subprocess, "run", return_value=type("Response", (), {"stdout": '{"id": 123}'})()), \
+             patch.object(gate, "discover", return_value={500: (role, gate.DYNAMIC_SCOPE, HEAD)}), \
+             patch.object(gate, "inspect") as inspect:
+            self.assertEqual(gate.independent_safety_review()["status"], "idle")
+            inspect.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
