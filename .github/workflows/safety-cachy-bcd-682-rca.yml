@@ -1,0 +1,49 @@
+name: Safety CachyOS BCD-682 independent offline RCA
+
+on:
+  push:
+    branches:
+      - test/safety-cachy-bcd-682-independent-rca-20261122
+    paths:
+      - auto_tests/tests/test_cachy_bcd_682_independent_rca.py
+      - docs/CACHY_BCD_682_INDEPENDENT_RCA.md
+      - .github/workflows/safety-cachy-bcd-682-rca.yml
+  pull_request:
+    paths:
+      - auto_tests/tests/test_cachy_bcd_682_independent_rca.py
+      - docs/CACHY_BCD_682_INDEPENDENT_RCA.md
+      - .github/workflows/safety-cachy-bcd-682-rca.yml
+
+permissions:
+  contents: read
+
+jobs:
+  offline-causal-denial:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          persist-credentials: false
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683
+        with:
+          repository: LMhdez/gaslux
+          ref: 7d55bd4a81007dc60df7c2252bb11ca623a2a423
+          path: pinned-cachy-314
+          persist-credentials: false
+      - name: Verify exact historical implementation pinned
+        run: |
+          set -Eeuo pipefail
+          test "$(git -C pinned-cachy-314 rev-parse HEAD)" = 7d55bd4a81007dc60df7c2252bb11ca623a2a423
+          test -f pinned-cachy-314/auto_tests/tools/windows_cachyos_postpacstrap_windows.py
+          test -f pinned-cachy-314/auto_tests/tools/windows_cachyos_bcd_ab_control.py
+          python -m pip install pytest==9.0.2 ruff==0.13.3
+      - name: Offline exact modules and test-only causal-denial cases
+        env:
+          GASLUX_CACHY314_ROOT: pinned-cachy-314
+        run: |
+          set -Eeuo pipefail
+          python -m compileall -q auto_tests/tests/test_cachy_bcd_682_independent_rca.py
+          python -m ruff check --isolated auto_tests/tests/test_cachy_bcd_682_independent_rca.py
+          python -m ruff format --check --isolated auto_tests/tests/test_cachy_bcd_682_independent_rca.py
+          python -m pytest -q auto_tests/tests/test_cachy_bcd_682_independent_rca.py
