@@ -40,6 +40,7 @@ TASKS = {
 # scope requires independent Safety review before its code is merged to main.
 # Issue #404 remains a task request, not an executable authorization itself.
 SCOPE2B_ID = "mint-iso-pins-v1"
+SUPERVISED_TEST_SCOPE = "supervised-lifecycle-tests-v1"
 SCOPE2B_ISSUE = 404
 SCOPE2B_FN = "match_mint_223_iso_descriptor"
 SCOPE2B_TARGET = TASKS["mint"][0]
@@ -647,12 +648,158 @@ def generate_repair(root, evidence_dir, role, base, number, head):
         json.dumps(report, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 
 
+def supervised_test_branch(role, base):
+    if role not in TASKS or not SHA.fullmatch(base):
+        raise ValueError("Invalid supervised regression identity")
+    return f"bot/gaslux-test-{role}-{base[:12]}"
+
+
+def scope_target(role, scope):
+    if scope == SUPERVISED_TEST_SCOPE:
+        return "auto_tests/tests/" + TASKS[role][1]
+    return TASKS[role][0]
+
+
+def supervised_test_addition(role):
+    if role not in TASKS:
+        raise ValueError("Unknown supervised regression backend")
+    name = f"assess_{role}_lifecycle"
+    module = Path(TASKS[role][0]).stem
+    loader = (f"    fn = load_helper().{name}\n"
+              if role in ("mint", "cachyos") else
+              f"    from {module} import {name}\n\n    fn = {name}\n")
+    return (
+        f"def test_supervisor_{role}_lifecycle_truth_table():\n"
+        + loader
+        + "    gates = (\n"
+        + "".join(f'        "{gate}",\n' for gate in GATES)
+        + "    )\n"
+        "    for mask in range(1 << len(gates)):\n"
+        "        evidence = {gate: bool(mask & (1 << i)) for i, gate in enumerate(gates)}\n"
+        "        before = dict(evidence)\n"
+        "        result = fn(evidence)\n"
+        "        assert evidence == before\n"
+        "        assert result == {\n"
+        f'            "backend": "{role}",\n'
+        '            "missingGates": sorted(gate for gate in gates if not evidence[gate]),\n'
+        '            "installationAuthorized": False,\n'
+        '            "releaseEligible": False,\n'
+        "        }\n"
+        '        assert result["installationAuthorized"] is False\n'
+        '        assert result["releaseEligible"] is False\n'
+        '    for value in (None, 0, 1, "true", [], {}):\n'
+        "        result = fn(dict.fromkeys(gates, value))\n"
+        '        assert result["missingGates"] == sorted(gates)\n'
+        '        assert result["installationAuthorized"] is False\n'
+        '        assert result["releaseEligible"] is False\n'
+        "    assert fn({})[\"missingGates\"] == sorted(gates)\n"
+    )
+
+
+def supervised_gap(root, role):
+    """Static source/test discovery, not authority inferred from dev JSON."""
+    source, test, _ = TASKS[role]
+    product = root / source
+    suite = root / "auto_tests/tests" / test
+    if not product.is_file() or not suite.is_file():
+        return False
+    raw, tests = product.read_bytes(), suite.read_bytes()
+    if max(len(raw), len(tests)) > 25000 or b"\r" in raw + tests:
+        return False
+    name = f"assess_{role}_lifecycle"
+    tree = ast.parse(raw)
+    functions = [node for node in tree.body
+                 if isinstance(node, ast.FunctionDef) and node.name == name]
+    if len(functions) != 1:
+        return False
+    # Scope only an integrated helper with no existing direct regression
+    # reference; don't generate a duplicate test merely to get a PR.
+    if name.encode() in tests or f"test_supervisor_{role}_".encode() in tests:
+        return False
+    if role in ("mint", "cachyos"):
+        if not any(isinstance(n, ast.FunctionDef) and n.name == "load_helper"
+                   for n in ast.parse(tests).body):
+            return False
+    return True
+
+
+def supervised_test_plan(root, base, *, requested_role=None):
+    if git(root, "rev-parse", "HEAD") != base or not SHA.fullmatch(base):
+        raise ValueError("Wrong supervised source checkout")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import gaslux_distro_admission as admission
+    if admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != base:
+        return None
+    rows = admission.complete_page(admission.api(
+        "GET", "/pulls?state=open&base=dev&per_page=100"))
+    for role in TASKS:
+        if requested_role is not None and role != requested_role:
+            continue
+        if not supervised_gap(root, role):
+            continue
+        # Any same-repo open test proposal for the role blocks duplicates,
+        # independent of source revision or author-provided PR text.
+        prefix = f"bot/gaslux-test-{role}-"
+        if any(isinstance(p["head"].get("ref"), str)
+               and p["head"]["ref"].startswith(prefix)
+               and (p["head"].get("repo") or {}).get("full_name") == REPO
+               for p in rows):
+            continue
+        branch = supervised_test_branch(role, base)
+        if admission.complete_page(admission.api(
+                "GET", f"/pulls?state=all&head=LMhdez:{branch}&base=dev&per_page=100")):
+            continue
+        ref = subprocess.run(
+            ["gh", "api", f"repos/{REPO}/git/ref/heads/{branch}"],
+            text=True, capture_output=True, check=False, timeout=20)
+        if ref.returncode == 0:
+            continue
+        if "404" not in ref.stderr and "Not Found" not in ref.stderr:
+            raise RuntimeError("Cannot establish regression branch absence")
+        return {"status": "pending", "role": role, "base": base,
+                "scope": SUPERVISED_TEST_SCOPE,
+                "task": "Add missing persistent lifecycle helper regression",
+                "code_authorized": "canonical-test-only",
+                "installation_authorized": False, "release_eligible": False}
+    return None
+
+
+def supervised_test_report(root, role, base):
+    if git(root, "rev-parse", "HEAD") != base or not SHA.fullmatch(base):
+        raise ValueError("Wrong supervised test base")
+    if not supervised_gap(root, role):
+        raise ValueError("Regression gap no longer exists")
+    addition = supervised_test_addition(role)
+    before, after = expected_source(root, role, addition, scope=SUPERVISED_TEST_SCOPE)
+    return {
+        "role": role, "base": base, "scope": SUPERVISED_TEST_SCOPE,
+        "producer": "trusted-supervisor-regression-v1",
+        "task": "Add missing persistent lifecycle helper regression",
+        "target": scope_target(role, SUPERVISED_TEST_SCOPE),
+        "product_sha256": sha256((root / TASKS[role][0]).read_bytes()),
+        "source_sha256": sha256(before), "candidate_sha256": sha256(after),
+        "addition_sha256": sha256(addition.encode()),
+    }
+
+
+def generate_supervised_test(root, evidence_dir, role, base):
+    report = supervised_test_report(root, role, base)
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    (evidence_dir / "addition.py").write_bytes(supervised_test_addition(role).encode())
+    (evidence_dir / "report.json").write_text(
+        json.dumps(report, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+
+
 def expected_source(root: Path, role: str, addition: str, *, scope: str = "lifecycle",
                     formatted_repair: bool = False) -> tuple[bytes, bytes]:
-    path = root / TASKS[role][0]
+    path = root / scope_target(role, scope)
     original = path.read_bytes()
     if len(original) > 25000 or b"\r" in original:
         raise ValueError("Unexpected source file format")
+    if scope == SUPERVISED_TEST_SCOPE:
+        if addition != supervised_test_addition(role) or not supervised_gap(root, role):
+            raise ValueError("Unexpected supervised regression source")
+        return original, original.rstrip(b"\n") + b"\n\n\n" + addition.encode()
     if scope not in ("lifecycle", SCOPE2B_ID) or (scope == SCOPE2B_ID and role != "mint"):
         raise ValueError("Unexpected code scope")
     function_name = SCOPE2B_FN if scope == SCOPE2B_ID else f"assess_{role}_lifecycle"
@@ -678,6 +825,11 @@ def verify(root: Path, evidence_dir: Path, role: str, base: str, *, execute: boo
         expected = repair_report(root, role, base, repair_pr, repair_head, execute=execute)
         if report != expected or addition_raw != repair_addition(role).encode():
             raise ValueError("Repair artifact differs from trusted canonical source")
+        return report
+    if scope == SUPERVISED_TEST_SCOPE:
+        expected = supervised_test_report(root, role, base)
+        if report != expected or addition_raw != supervised_test_addition(role).encode():
+            raise ValueError("Supervised test artifact differs from trusted canonical bytes")
         return report
     if any(k in report for k in ("producer", "repair_pr", "repair_head")):
         raise ValueError("Unexpected repair evidence in model path")
@@ -943,9 +1095,10 @@ def safe_forward_draft_base(root: Path, role: str, old: str, current: str) -> bo
             return False
     return True
 
-def create_successor_ref(root: Path, role: str, base: str) -> None:
+def create_successor_ref(root: Path, role: str, base: str, *, scope="lifecycle") -> None:
     """Create an absent ref only; an existing ref is never overwritten."""
-    branch = origin_branch(role, base)
+    branch = (supervised_test_branch(role, base) if scope == SUPERVISED_TEST_SCOPE
+              else origin_branch(role, base))
     ref = "refs/heads/" + branch
     # Empty expected value is a compare-and-create lease, NOT permission
     # to replace an existing ref, even if that update is fast-forward.
@@ -975,7 +1128,8 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
     is_repair = repair_identity(repair_pr, repair_head)
     verify(root, evidence_dir, role, base, execute=False, scope=scope,
            repair_pr=repair_pr, repair_head=repair_head)
-    if is_repair:
+    is_supervised = scope == SUPERVISED_TEST_SCOPE
+    if is_repair or is_supervised:
         # Recheck with the workflow token, not the publication App identity.
         read_token = os.environ.get("GASLUX_REPAIR_READ_TOKEN")
         publish_token = os.environ.get("GH_TOKEN")
@@ -983,14 +1137,15 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
             raise RuntimeError("Repair provenance token missing")
         try:
             os.environ["GH_TOKEN"] = read_token
-            picked = repair_plan(root, base, number=repair_pr, head=repair_head)
+            picked = (supervised_test_plan(root, base, requested_role=role) if is_supervised
+                      else repair_plan(root, base, number=repair_pr, head=repair_head))
         finally:
             os.environ["GH_TOKEN"] = publish_token
         if not picked or picked["role"] != role:
             raise RuntimeError("Repair candidate no longer eligible")
     git(root, "fetch", "origin", "refs/heads/dev:refs/remotes/origin/dev")
     live = git(root, "rev-parse", "refs/remotes/origin/dev")
-    if (is_repair and live != base) or not safe_forward_draft_base(root, role, base, live):
+    if ((is_repair or is_supervised) and live != base) or not safe_forward_draft_base(root, role, base, live):
         print(json.dumps({"status": "stale_or_relevant_dev_change", "role": role}))
         return
     if scope == SCOPE2B_ID:
@@ -1010,6 +1165,8 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
                                   mint[0].get(k) != v for k, v in SCOPE2B_PINS.items())):
             raise ValueError("Mint release pins drifted; regenerate under new review")
         branch = scope2b_branch(base)
+    elif is_supervised:
+        branch = supervised_test_branch(role, base)
     else:
         branch = origin_branch(role, base)
     addition = (evidence_dir / "addition.py").read_text(encoding="utf-8")
@@ -1017,21 +1174,24 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
     # is still always Draft. No model text runs with publication credentials.
     git(root, "checkout", "-b", branch, live)
     _, proposed = expected_source(root, role, addition, scope=scope, formatted_repair=is_repair)
-    (root / TASKS[role][0]).write_bytes(proposed)
-    if git(root, "diff", "--name-only") != TASKS[role][0]:
+    target = scope_target(role, scope)
+    (root / target).write_bytes(proposed)
+    if git(root, "diff", "--name-only") != target:
         raise ValueError("Unexpected changed product path")
     subprocess.run(["git", "-C", str(root), "diff", "--check"], check=True)
-    git(root, "add", "--", TASKS[role][0])
+    git(root, "add", "--", target)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "github-actions[bot]"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], check=True)
     commit_subject = (f"feat({role}): check pinned Mint 22.3 ISO descriptor"
                       if scope == SCOPE2B_ID else
                       f"feat({role}): isolated lifecycle evidence proposal")
+    if is_supervised:
+        commit_subject = f"test({role}): persist lifecycle evidence truth-table regression"
     subprocess.run(["git", "-C", str(root), "commit", "-m", commit_subject], check=True)
     # No implicit token is available in any model-inference or test runner.
     subprocess.run(["gh", "auth", "setup-git"], check=True)
-    if is_repair:
-        create_successor_ref(root, role, base)
+    if is_repair or is_supervised:
+        create_successor_ref(root, role, base, scope=scope)
     else:
         subprocess.run(["git", "-C", str(root), "push", "origin", f"HEAD:refs/heads/{branch}"], check=True)
     body = (f"Unprivileged Qwen3.5 9B proposal for {role}, pinned base {base}.\n\n"
@@ -1062,6 +1222,15 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
             "inference or inherited CI/approval. Fresh regression checks required. "
             "Original PR retained for evidence; no automatic merge, installation or release."
         )
+    if is_supervised:
+        title = f"test({role}): persist lifecycle helper regression"
+        body = (
+            f"Autonomously discovered missing persistent regression on dev {base}. "
+            "Test-only canonical proposal; 256 truth-table combinations, non-boolean "
+            "and absent evidence; protected flags remain false. Existing product "
+            "suite passed in isolated runner. No new inference, product modification, "
+            "independent review attestation, merge, VM or release authority."
+        )
     subprocess.run(["gh", "pr", "create", "--repo", REPO, "--draft", "--base", "dev",
                     "--head", branch, "--title", title, "--body", body], check=True)
 
@@ -1072,9 +1241,10 @@ def main() -> None:
     cli.add_argument("--repo", type=Path, required=True)
     cli.add_argument("--evidence", type=Path, default=Path("evidence/feature-factory"))
     cli.add_argument("--role", choices=tuple(TASKS))
-    cli.add_argument("--scope", choices=("lifecycle", SCOPE2B_ID), default="lifecycle")
+    cli.add_argument("--scope", choices=("lifecycle", SCOPE2B_ID, SUPERVISED_TEST_SCOPE), default="lifecycle")
     cli.add_argument("--base")
     cli.add_argument("--enable-stale-repair", action="store_true")
+    cli.add_argument("--enable-supervised-tests", action="store_true")
     cli.add_argument("--repair-pr", type=int)
     cli.add_argument("--repair-head")
     args = cli.parse_args()
@@ -1083,6 +1253,8 @@ def main() -> None:
         row = plan(root)
         if args.enable_stale_repair and row["status"] == "blocked":
             row = repair_plan(root, row["base"]) or row
+        if args.enable_supervised_tests and row["status"] == "blocked":
+            row = supervised_test_plan(root, row["base"]) or row
         print(json.dumps(row, sort_keys=True))
         return
     if not args.role or not args.base:
@@ -1092,6 +1264,8 @@ def main() -> None:
             if args.scope != "lifecycle":
                 cli.error("Invalid repair scope")
             generate_repair(root, args.evidence, args.role, args.base, args.repair_pr, args.repair_head)
+        elif args.scope == SUPERVISED_TEST_SCOPE:
+            generate_supervised_test(root, args.evidence, args.role, args.base)
         else:
             generate(root, args.evidence, args.role, args.base, scope=args.scope)
     elif args.action == "verify":
