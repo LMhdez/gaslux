@@ -47,6 +47,13 @@ class IntegratorContractTests(unittest.TestCase):
         self.calls = []
         self.live = self.dev
         self.changed = []
+        self.merged = "d" * 40
+        self.tree = "e" * 40
+        self.merge_parent = self.dev
+        self.merge_tree = self.tree
+        policy = patch.object(integ, "strict_merge_policy", return_value=True)
+        self.policy = policy.start()
+        self.addCleanup(policy.stop)
 
     def api(self, method, path, body=None):
         self.calls.append((method, path, body))
@@ -57,7 +64,9 @@ class IntegratorContractTests(unittest.TestCase):
         if path == "/git/ref/heads/dev":
             return {"object": {"sha": self.live}}
         if path == "/git/commits/" + self.head:
-            return {"parents": [{"sha": self.dev}]}
+            return {"parents": [{"sha": self.dev}], "tree": {"sha": self.tree}}
+        if path == "/git/commits/" + self.merged:
+            return {"parents": [{"sha": self.merge_parent}], "tree": {"sha": self.merge_tree}}
         if path == f"/compare/{self.dev}...{self.live}":
             return {"status": "ahead", "merge_base_commit": {"sha": self.dev},
                     "ahead_by": 2, "total_commits": 2, "files": self.changed}
@@ -73,7 +82,9 @@ class IntegratorContractTests(unittest.TestCase):
         if path == "/commits/" + self.head + "/check-runs?per_page=100":
             return {"check_runs": []}
         if method == "PUT" and path == "/pulls/123/merge":
-            return {"merged": True, "sha": "c" * 40}
+            self.live = self.merged
+            self.pr.update(state="closed", merged=True, merge_commit_sha=self.merged)
+            return {"merged": True, "sha": self.merged}
         raise AssertionError((method, path))
 
     def test_live_compare_api_path_is_allowed_but_traversal_is_not(self):
@@ -293,6 +304,40 @@ class IntegratorContractTests(unittest.TestCase):
         self.assertEqual(writes[0][1], "/pulls/123/merge")
         self.assertEqual(writes[0][2]["sha"], self.head)
         self.assertEqual(writes[0][2]["merge_method"], "squash")
+
+    def test_legacy_merge_rejects_unknown_protection_and_stale_base(self):
+        env = {"GITHUB_REPOSITORY": integ.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule", "GASLUX_WINDOWS_ACCEPTANCE": "success",
+               "GASLUX_AUTONOMY_PAUSED": "false"}
+        with patch.dict(os.environ, env), patch.object(integ, "api", side_effect=self.api):
+            self.policy.return_value = False
+            result = integ.merge(123, self.head)
+            self.assertEqual(result["reason"], "strict_base_protection_required")
+            self.policy.return_value = True
+            self.live = "c" * 40
+            self.changed = [{"filename": "docs/CI_VM_EVIDENCE_INDEX.md", "status": "modified"}]
+            result = integ.merge(123, self.head)
+            self.assertEqual(result["reason"], "exact_base_required")
+            self.assertFalse(any(m != "GET" for m, _, _ in self.calls))
+
+    def test_legacy_merge_refuses_to_report_wrong_parent_or_tree(self):
+        env = {"GITHUB_REPOSITORY": integ.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule", "GASLUX_WINDOWS_ACCEPTANCE": "success",
+               "GASLUX_AUTONOMY_PAUSED": "false"}
+        for field in ("merge_parent", "merge_tree"):
+            with self.subTest(field=field), patch.dict(os.environ, env), \
+                    patch.object(integ, "api", side_effect=self.api):
+                self.live = self.dev
+                self.pr.update(state="open", draft=True, merged=False)
+                self.calls.clear()
+                old = getattr(self, field)
+                setattr(self, field, "f" * 40)
+                try:
+                    with self.assertRaisesRegex(RuntimeError, "Merged tree or parent"):
+                        integ.merge(123, self.head)
+                    self.assertEqual(sum(m == "PUT" for m, _, _ in self.calls), 1)
+                finally:
+                    setattr(self, field, old)
 
     def test_windows_acceptance_uses_exact_head_and_prebuilt_tests(self):
         yaml = (

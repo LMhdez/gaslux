@@ -214,6 +214,12 @@ def select() -> dict:
     return {"status": "idle"}
 
 
+def strict_merge_policy(base: str) -> bool:
+    """Share the same non-bypassable dev policy as supervised integration."""
+    from gaslux_supervised_admission import strict_dev_protected
+    return strict_dev_protected(base)
+
+
 def merge(number: int, expected: str) -> dict:
     if os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true":
         raise RuntimeError("GASLUX_AUTONOMY_PAUSED: dev merge blocked")
@@ -248,6 +254,12 @@ def merge(number: int, expected: str) -> dict:
             raise StaleProposal("dev changed while confirming candidate")
     except StaleProposal:
         return {"status": "retry", "reason": "dev_updated", "pr": number}
+    # A harmless historical advance is useful for inventory, not for merging
+    # an out-of-date candidate under an exact-base Windows acceptance receipt.
+    if checked["original_base"] != checked["base"]:
+        return {"status": "retry", "reason": "exact_base_required", "pr": number}
+    if not strict_merge_policy(checked["base"]):
+        return {"status": "blocked", "reason": "strict_base_protection_required", "pr": number}
     if api("GET", "/git/ref/heads/dev")["object"]["sha"] != checked["base"]:
         return {"status": "retry", "reason": "dev_updated", "pr": number}
     result = api("PUT", f"/pulls/{number}/merge", {
@@ -263,7 +275,32 @@ def merge(number: int, expected: str) -> dict:
     })
     if result.get("merged") is not True or not SHA.fullmatch(str(result.get("sha", ""))):
         raise RuntimeError("GitHub did not confirm dev merge")
-    return {"status": "merged", "pr": number, "sha": result["sha"], "task": checked["task"]}
+    merged = result["sha"]
+    actual = api("GET", f"/git/commits/{merged}")
+    reviewed = api("GET", f"/git/commits/{expected}")
+    tree = actual.get("tree", {}).get("sha")
+    if ([p.get("sha") for p in actual.get("parents", [])] != [checked["base"]]
+            or not isinstance(tree, str) or not SHA.fullmatch(tree)
+            or tree != reviewed.get("tree", {}).get("sha")):
+        raise RuntimeError("Merged tree or parent differs from reviewed candidate; investigate")
+    closed = api("GET", f"/pulls/{number}")
+    if (closed.get("state") != "closed" or closed.get("merged") is not True
+            or closed.get("merge_commit_sha") != merged
+            or closed.get("head", {}).get("sha") != expected
+            or closed.get("base", {}).get("ref") != "dev"):
+        raise RuntimeError("Post-merge PR closure not verified; investigate")
+    live = api("GET", "/git/ref/heads/dev")["object"]["sha"]
+    if not isinstance(live, str) or not SHA.fullmatch(live):
+        raise RuntimeError("Invalid post-merge dev")
+    if live != merged:
+        relation = api("GET", f"/compare/{merged}...{live}")
+        if (relation.get("status") != "ahead" or relation.get("behind_by") != 0
+                or relation.get("merge_base_commit", {}).get("sha") != merged):
+            raise RuntimeError("Merge not proven in live dev")
+    return {"status": "merged", "pr": number, "sha": merged, "task": checked["task"],
+            "reviewed_base": checked["base"], "reviewed_tree_verified": True,
+            "strict_base_protection_verified": True, "pr_closure_verified": True,
+            "dev_ancestry_verified": True, "release_eligible": False}
 
 
 def main():
