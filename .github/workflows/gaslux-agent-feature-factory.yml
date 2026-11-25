@@ -1257,10 +1257,9 @@ jobs:
       github.repository == 'LMhdez/gaslux' &&
       github.ref == 'refs/heads/main' &&
       vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
-      needs.select.outputs.blocked == 'true' &&
-      needs.select.outputs.dynamic_key == ''
+      needs.select.result == 'success'
     runs-on: ubuntu-24.04
-    timeout-minutes: 6
+    timeout-minutes: 10
     permissions:
       contents: read
       issues: write
@@ -1281,6 +1280,7 @@ jobs:
           path: source
           persist-credentials: false
       - name: Route stale Safety candidate or real missing gate, at most one scope-review issue
+        if: needs.select.outputs.blocked == 'true' && needs.select.outputs.dynamic_key == ''
         env:
           GH_TOKEN: ${{ github.token }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
@@ -1291,3 +1291,11 @@ jobs:
         run: |
           set -euo pipefail
           python3 -B trusted/auto_tests/tools/gaslux_agent_task_triage.py --repo source --with-admission-repair --with-implementation-discovery
+
+      - name: Route one unique historical PR without modifying its branch or review
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+        run: |
+          set -euo pipefail
+          python3 -B trusted/auto_tests/tools/gaslux_agent_task_triage.py --repo source --historical-reconciliation
