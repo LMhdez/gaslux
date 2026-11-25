@@ -22,6 +22,11 @@ MODEL_SOCKET = "/ipc/model.sock"
 MODEL_PORT = 11435
 MAX_RELAY = 8 * 1024 * 1024
 TIMEOUT = 1200
+SKILL_NAME = "gaslux-history-reuse"
+SKILL_DIR = "/scratch/.opencode/skills/" + SKILL_NAME
+SKILL_PATH = SKILL_DIR + "/SKILL.md"
+SKILL_PREFLIGHT_LIMIT = 128 * 1024
+SKILL_PREFLIGHT_TIMEOUT = 45
 
 
 def relay(source, sink, peer, *, timeout=TIMEOUT):
@@ -82,6 +87,61 @@ class BridgeServer(socketserver.TCPServer):
         self.failed += 1
 
 
+def preflight_command(argv, *, cwd="/scratch"):
+    # Fixed debug invocations, not agent commands. Disable MCP for these
+    # processes only so discovery cannot consume the real broker session.
+    env = dict(os.environ)
+    env["OPENCODE_CONFIG_CONTENT"] = json.dumps({
+        "mcp": {"gaslux_workspace": {"type": "local",
+            "command": ["/usr/bin/python3", "-I", "-B", "/opt/relay.py", "mcp"],
+            "enabled": False}},
+    })
+    try:
+        result = subprocess.run(argv, cwd=cwd, env=env, stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                timeout=SKILL_PREFLIGHT_TIMEOUT, check=False)
+    except (OSError, subprocess.TimeoutExpired):
+        raise RuntimeError("SKILL_PREFLIGHT_PROCESS_FAILED") from None
+    if (result.returncode != 0 or len(result.stdout) > SKILL_PREFLIGHT_LIMIT
+            or len(result.stderr) > SKILL_PREFLIGHT_LIMIT):
+        raise RuntimeError("SKILL_PREFLIGHT_PROCESS_FAILED")
+    return result.stdout
+
+
+def skill_preflight():
+    # OpenCode v1.19.6 SkillTool.execute calls Ripgrep.find. Without rg it
+    # attempts a network download. Require the existing read-only /usr mount.
+    binary = Path("/usr/bin/rg")
+    if not binary.is_file() or binary.is_symlink() or not os.access(binary, os.X_OK):
+        raise RuntimeError("SKILL_RIPGREP_MISSING")
+    version = preflight_command([str(binary), "--version"])
+    if not version.startswith(b"ripgrep "):
+        raise RuntimeError("SKILL_RIPGREP_INVALID")
+    path = Path(SKILL_PATH)
+    if not path.is_file() or path.is_symlink() or path.stat().st_size > 16384:
+        raise RuntimeError("SKILL_LOCAL_FILE_INVALID")
+    try:
+        body = path.read_text(encoding="utf-8").split("---", 2)[2].strip()
+        rows = json.loads(preflight_command(["/opt/opencode", "debug", "skill"]))
+    except (ValueError, TypeError, IndexError, OSError):
+        raise RuntimeError("SKILL_DISCOVERY_INVALID") from None
+    if type(rows) is not list or len(rows) > 8 or any(type(row) is not dict for row in rows):
+        raise RuntimeError("SKILL_DISCOVERY_INVALID")
+    matches = [row for row in rows if row.get("name") == SKILL_NAME]
+    if (len(matches) != 1 or matches[0].get("location") != SKILL_PATH
+            or type(matches[0].get("content")) is not str
+            or matches[0]["content"].strip() != body
+            or any(row.get("name") not in (SKILL_NAME, "customize-opencode") for row in rows)):
+        raise RuntimeError("SKILL_DISCOVERY_INVALID")
+    # Exercise the pinned CLI's native Ripgrep service in the exact directory.
+    listing = preflight_command(
+        ["/opt/opencode", "debug", "rg", "files", "--glob", "SKILL.md", "--limit", "10"],
+        cwd=SKILL_DIR)
+    if listing.strip() != b"SKILL.md":
+        raise RuntimeError("SKILL_NATIVE_RIPGREP_INVALID")
+    return True
+
+
 def namespace_launch(data, prompt):
     # Trusted read-only launcher runs in precisely the namespace used by OpenCode.
     for name, host in data["namespaces"].items():
@@ -98,6 +158,8 @@ def namespace_launch(data, prompt):
     else:
         conn.close()
         raise RuntimeError("HOST_OLLAMA_VISIBLE")
+    skill_preflight()
+    print("GASLUX_NATIVE_SKILL_PREFLIGHT_PASS", file=sys.stderr, flush=True)
     with BridgeServer(("127.0.0.1", MODEL_PORT), ModelBridge) as server:
         server.failed = 0
         thread = threading.Thread(target=server.serve_forever, daemon=True)
@@ -269,6 +331,7 @@ def run(binary, root, role, context, prompt, report, *, product=None, timeout=TI
                     raise ValueError("BOUNDARY_CLEANUP_FAILED")
             code, raw, stderr = result
             report["namespace_launcher_admitted"] = b"GASLUX_REAL_NAMESPACE_ADMITTED\n" in stderr.splitlines(keepends=True)
+            report["native_skill_preflight"] = b"GASLUX_NATIVE_SKILL_PREFLIGHT_PASS\n" in stderr.splitlines(keepends=True)
             report["failure_stage"] = "native_events"
             # Even on nonzero exit, retain only partial validated event metadata.
             report["cli_exit_code"] = code
@@ -281,6 +344,8 @@ def run(binary, root, role, context, prompt, report, *, product=None, timeout=TI
             events, skills = iterative.native_events(raw, report)
             if not report["namespace_launcher_admitted"]:
                 raise ValueError("NAMESPACE_WITNESS_MISSING")
+            if not report["native_skill_preflight"]:
+                raise ValueError("SKILL_PREFLIGHT_WITNESS_MISSING")
             if not proxy_complete(report["proxy"]):
                 raise ValueError("PROXY_COMPLETION_REQUIRED")
             if outcome != [True]:
