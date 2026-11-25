@@ -317,6 +317,52 @@ class WorkspaceTests(unittest.TestCase):
                 self.assertEqual(server.completed, sum(case[3] for case in cases))
                 self.assertEqual(server.denied, sum(not case[3] for case in cases))
 
+    def test_isolated_proxy_profile_is_fixed_and_does_not_relax_request_scope(self):
+        body = {"model": proxy.MODEL, "messages": [{"role": "user", "content": "fixture"}],
+                "reasoning_effort": "high", "temperature": 0.9, "parallel_tool_calls": True}
+        raw = json.dumps(body).encode()
+        self.assertEqual(json.loads(proxy.validate_request(raw)), {**body, "max_tokens": proxy.MAX_OUTPUT})
+        compact = json.loads(proxy.validate_request(raw, compact_tools=True))
+        self.assertEqual(compact, {**body, "max_tokens": proxy.MAX_OUTPUT,
+                                  "reasoning_effort": "none", "temperature": 0,
+                                  "parallel_tool_calls": False})
+        for change in ({"model": "other"}, {"max_tokens": proxy.MAX_OUTPUT + 1},
+                       {"tools": [{"type": "function", "function": {"name": "shell"}}]}):
+            with self.assertRaises(ValueError):
+                proxy.validate_request(json.dumps({**body, **change}).encode(), compact_tools=True)
+
+    def test_proxy_diagnostic_categories_and_no_double_count_on_disconnect(self):
+        from unittest.mock import MagicMock, patch
+        with tempfile.TemporaryDirectory() as tmp:
+            with proxy.ModelServer(Path(tmp) / "model.sock", proxy.Handler,
+                                   compact_tools=True) as server:
+                handler = object.__new__(proxy.Handler)
+                handler.server = server
+                handler.send_response = MagicMock(side_effect=BrokenPipeError)
+                handler.deny(502, "SSE_MISSING_DONE")
+                self.assertEqual(server.denied, 1)
+                self.assertEqual(server.denial_categories, {"SSE_MISSING_DONE": 1})
+                self.assertEqual(proxy.fixed_category(ValueError("SSE_MISSING_DONE"),
+                                                      proxy.RESPONSE_FAILURES, "OTHER"),
+                                 "SSE_MISSING_DONE")
+                self.assertEqual(proxy.fixed_category(ValueError("SECRET_SENTINEL"),
+                                                      proxy.RESPONSE_FAILURES, "OTHER"), "OTHER")
+                server.handle_error(None, None)
+                self.assertEqual(server.denied, 2)
+                self.assertEqual(server.denial_categories["SERVER_TRANSPORT"], 1)
+                self.assertNotIn("SECRET_SENTINEL", json.dumps(server.denial_categories))
+
+    def test_native_tool_failure_is_classified_without_raw_error_or_inputs(self):
+        report = {}
+        row = {"type": "tool_use", "part": {"tool": i.PREFIX + "run_tests", "state": {
+            "status": "error", "error": "timed out SECRET_SENTINEL",
+            "input": {"untrusted": "SECRET_SENTINEL"}}}}
+        with self.assertRaisesRegex(ValueError, "TOOL_FAILURE"):
+            i.native_events(json.dumps(row).encode(), report)
+        self.assertEqual(report["failed_native_tool"], {
+            "name": i.PREFIX + "run_tests", "status": "error", "category": "TIMEOUT"})
+        self.assertNotIn("SECRET_SENTINEL", json.dumps(report))
+
     def test_fixed_runtime_failure_categories(self):
         self.assertEqual(i.fixed_failure(ValueError("MCP_RED_EDIT_PASS_INCOMPLETE")),
                          "MCP_RED_EDIT_PASS_INCOMPLETE")
@@ -342,6 +388,11 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual(config["provider"]["ollama"]["options"]["baseURL"],
                              "http://127.0.0.1:11435/v1")
             self.assertEqual(config["skills"]["paths"], ["/scratch/.opencode/skills"])
+            self.assertEqual(config["provider"]["ollama"]["models"]["qwen3.5:9b"]["options"],
+                             {"reasoningEffort": "none"})
+            self.assertIn("one call at a time", config["agent"]["gaslux-lab"]["prompt"])
+            self.assertEqual({p.name for p in (Path(tmp) / ".opencode" / "skills").iterdir()},
+                             {i.trial.SKILL})
 
     def test_real_proxy_completion_fails_closed(self):
         import gaslux_opencode_isolated_runtime as runtime
