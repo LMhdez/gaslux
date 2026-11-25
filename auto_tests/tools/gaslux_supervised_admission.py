@@ -356,7 +356,7 @@ def independent_safety_review():
             return {"status": "review_drift", "pr": number}
         result = admission.api("POST", f"/pulls/{number}/reviews", {
             "commit_id": head, "event": "APPROVE",
-            "body": (f"GASLUX-SAFETY-V1 head={head} base={base}\\n"
+            "body": (f"GASLUX-SAFETY-V1 head={head} base={base}\n"
                      "Automated independent exact-byte canonical test review: "
                      "scope, current parent, trusted CI provenance and required checks verified. "
                      "No product writer, installation or release authority.")})
