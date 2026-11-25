@@ -261,10 +261,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ ! -x /usr/bin/bwrap ] || [ ! -f /usr/share/apparmor/extra-profiles/bwrap-userns-restrict ]; then
+          if [ ! -x /usr/bin/bwrap ] || [ ! -x /usr/bin/rg ] || [ ! -f /usr/share/apparmor/extra-profiles/bwrap-userns-restrict ]; then
             sudo timeout 180 apt-get update
-            sudo timeout 180 apt-get install -y --no-install-recommends bubblewrap apparmor-profiles
+            sudo timeout 180 apt-get install -y --no-install-recommends bubblewrap apparmor-profiles ripgrep
           fi
+          # The native skill tool needs local rg; downloading inside the sandbox is forbidden.
+          test -x /usr/bin/rg && test ! -L /usr/bin/rg
+          dpkg-query -S /usr/bin/rg | grep -q '^ripgrep:'
+          /usr/bin/rg --version
           # Ubuntu Noble's restrictive, bwrap-specific profile. Do not disable
           # AppArmor, change sysctl, replace a loaded profile or fall back.
           profile=/usr/share/apparmor/extra-profiles/bwrap-userns-restrict
@@ -753,10 +757,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          if [ ! -x /usr/bin/bwrap ] || [ ! -f /usr/share/apparmor/extra-profiles/bwrap-userns-restrict ]; then
+          if [ ! -x /usr/bin/bwrap ] || [ ! -x /usr/bin/rg ] || [ ! -f /usr/share/apparmor/extra-profiles/bwrap-userns-restrict ]; then
             sudo timeout 180 apt-get update
-            sudo timeout 180 apt-get install -y --no-install-recommends bubblewrap apparmor-profiles
+            sudo timeout 180 apt-get install -y --no-install-recommends bubblewrap apparmor-profiles ripgrep
           fi
+          # The native skill tool needs local rg; downloading inside the sandbox is forbidden.
+          test -x /usr/bin/rg && test ! -L /usr/bin/rg
+          dpkg-query -S /usr/bin/rg | grep -q '^ripgrep:'
+          /usr/bin/rg --version
           # Ubuntu Noble's restrictive, bwrap-specific profile. Do not disable
           # AppArmor, change sysctl, replace a loaded profile or fall back.
           profile=/usr/share/apparmor/extra-profiles/bwrap-userns-restrict
