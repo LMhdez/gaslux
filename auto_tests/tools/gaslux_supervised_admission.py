@@ -293,9 +293,70 @@ def integrate_one():
     return {"status": "idle"}
 
 
+def independent_safety_review():
+    """Separate credential and exact canonical test review; never approve product writers."""
+    if (os.getenv("GITHUB_REPOSITORY") != admission.REPO
+            or os.getenv("GITHUB_REF") != "refs/heads/main"
+            or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
+            or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true"):
+        raise ValueError("Untrusted Safety execution context")
+    reviewer, owners = configured_reviewers()
+    if reviewer is None or reviewer in admission.BOTS.values() or reviewer in owners.values():
+        return {"status": "independent_identity_required"}
+    if not os.getenv("GH_TOKEN"):
+        return {"status": "independent_credential_required"}
+    # The token must authenticate as the configured independent service account.
+    # Never fall back to github.token or to the publisher credential.
+    actor = json.loads(subprocess.run(
+        ["gh", "api", "user"], check=True, timeout=30, capture_output=True).stdout)
+    if type(actor.get("id")) is not int or actor["id"] != reviewer:
+        raise ValueError("Safety credential identity mismatch")
+    for number, (role, scope, head) in sorted(discover().items()):
+        if scope != factory.SUPERVISED_TEST_SCOPE:
+            continue
+        row = inspect(number, role, scope, head, reviewer, owners.get(role), allow_ready=True)
+        if (row.get("next_action") != "INDEPENDENT_SAFETY_REVIEW"
+                or row.get("technical_objection") is not False
+                or not all(row.get(k) is True for k in (
+                    "exact_scope_verified", "current_base_verified",
+                    "ci_workflow_provenance_verified", "ci_verified"))):
+            continue
+        base = row["base"]
+        pr = admission.api("GET", f"/pulls/{number}")
+        if (pr["user"]["id"] == reviewer or pr["head"]["sha"] != head
+                or pr["base"]["sha"] != base or pr.get("state") != "open"):
+            raise ValueError("Safety candidate identity drift")
+        # Prior stale or adverse reviews are not overwritten by automation.
+        reviews = admission.complete_page(admission.api(
+            "GET", f"/pulls/{number}/reviews?per_page=100"))
+        if any(item.get("user", {}).get("id") == reviewer
+               and item.get("state") != "COMMENTED" for item in reviews):
+            continue
+        if inspect(number, role, scope, head, reviewer, owners.get(role),
+                   allow_ready=True) != row:
+            return {"status": "review_drift", "pr": number}
+        if admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != base:
+            return {"status": "review_drift", "pr": number}
+        result = admission.api("POST", f"/pulls/{number}/reviews", {
+            "commit_id": head, "event": "APPROVE",
+            "body": (f"GASLUX-SAFETY-V1 head={head} base={base}\\n"
+                     "Automated independent exact-byte canonical test review: "
+                     "scope, current parent, trusted CI provenance and required checks verified. "
+                     "No product writer, installation or release authority.")})
+        if (result.get("user", {}).get("id") != reviewer
+                or result.get("commit_id") != head or result.get("state") != "APPROVED"):
+            raise RuntimeError("GitHub did not confirm independent review")
+        return {"status": "reviewed", "pr": number, "head": head, "base": base,
+                "reviewer": reviewer, "review_id": result.get("id")}
+    return {"status": "idle"}
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--integrate-test", action="store_true")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--integrate-test", action="store_true")
+    modes.add_argument("--independent-safety", action="store_true")
     args = parser.parse_args()
-    print(json.dumps(integrate_one() if args.integrate_test else inventory(),
-                     indent=2, sort_keys=True))
+    result = (independent_safety_review() if args.independent_safety else
+              integrate_one() if args.integrate_test else inventory())
+    print(json.dumps(result, indent=2, sort_keys=True))
