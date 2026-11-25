@@ -3,8 +3,8 @@
 
 A missing API demanded by a real test is not a grant to edit arbitrary files.
 The model supplies one pure function. All execution is inside the existing
-Bubblewrap product test boundary. Only untrusted review artifacts are exported;
-there is intentionally no publisher or merge authority for this scope.
+Bubblewrap product test boundary. Artifacts are independently replayed before a separate Draft-only publisher.
+There is intentionally no automatic approval or merge authority for this scope.
 """
 from __future__ import annotations
 
@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import tempfile
 
 import gaslux_agent_feature_factory as factory
@@ -184,20 +185,145 @@ def evaluate(repo, base, key, dependencies, evidence):
         return report
 
 
+def branch_for(task, base):
+    if (task["role"] not in factory.TASKS or not factory.SHA.fullmatch(base)
+            or not re.fullmatch(r"[0-9a-f]{64}", task["key"])):
+        raise ValueError("DYNAMIC_BRANCH_SCOPE")
+    return f"bot/gaslux-dynamic-{task['role']}-{task['key'][:12]}-{base[:12]}"
+
+
+def verify_artifact(repo, base, key, evidence, *, dependencies=None):
+    """Reconstruct exact candidate from pinned Git data, never trust report paths."""
+    if factory.git(repo, "rev-parse", "HEAD") != base or not factory.SHA.fullmatch(base):
+        raise ValueError("DYNAMIC_VERIFY_BASE")
+    with tempfile.TemporaryDirectory(prefix="gaslux-dynamic-verify-") as tmp:
+        work = Path(tmp)
+        tree = work / "product"
+        tree.mkdir()
+        shadow.read_tree(repo, base, tree)
+        task = select_task(tree, key)
+        generated = broker.read_bounded(evidence / "addition.py", MAX_FUNCTION).decode("utf-8")
+        report = json.loads(broker.read_bounded(evidence / "report.json", 32768))
+        target = tree / task["source"]
+        raw = broker.read_bounded(target, 25000)
+        candidate = candidate_bytes(raw, task["symbol"], generated)
+        expected = {"schema": "gaslux-dynamic-shadow-v1", "base": base, "role": task["role"],
+                    "key": key, "symbol": task["symbol"], "task": task,
+                    "status": "RED_GREEN_REVIEW_ARTIFACT", "accepted": True,
+                    "addition_sha256": factory.sha256(generated.encode()),
+                    "candidate_sha256": factory.sha256(candidate),
+                    "publish_authorized": False, "merge_authorized": False, "release_eligible": False}
+        if any(report.get(k) != v or type(report.get(k)) is not type(v) for k, v in expected.items()):
+            raise ValueError("DYNAMIC_ARTIFACT_MISMATCH")
+        receipt = {"schema": "gaslux-dynamic-replay-v1", "base": base, "key": key,
+                   "role": task["role"], "candidate_sha256": expected["candidate_sha256"],
+                   "addition_sha256": expected["addition_sha256"],
+                   "draft_only": True, "merge_authorized": False}
+        if dependencies is not None:
+            red = shadow.regression(tree, dependencies, task["role"], work)
+            if red["accepted"] or red["exit_code"] not in (1, 2) or red["failed"] + red["errors"] == 0:
+                raise ValueError("DYNAMIC_REPLAY_NO_RED")
+            target.write_bytes(candidate)
+            style = shadow.style_check(tree, dependencies, task["role"], work)
+            green = shadow.regression(tree, dependencies, task["role"], work)
+            if not style["accepted"] or not green["accepted"]:
+                raise ValueError("DYNAMIC_REPLAY_REJECTED")
+            receipt.update(red=red, green=green, style=style, replayed=True)
+        return task, candidate, receipt
+
+
+def publish_draft(repo, base, key, evidence, replay):
+    """Trusted main publisher, static verification only; no candidate execution."""
+    if (os.getenv("GITHUB_REPOSITORY") != factory.REPO
+            or os.getenv("GITHUB_REF") != "refs/heads/main"
+            or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
+            or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true"):
+        raise ValueError("DYNAMIC_UNTRUSTED_PUBLISHER")
+    task, candidate, expected = verify_artifact(repo, base, key, evidence)
+    actual = json.loads(broker.read_bounded(replay, 32768))
+    if (any(actual.get(k) != v or type(actual.get(k)) is not type(v) for k, v in expected.items())
+            or actual.get("replayed") is not True
+            or actual.get("green", {}).get("accepted") is not True
+            or actual.get("style", {}).get("accepted") is not True
+            or actual.get("red", {}).get("accepted") is not False):
+        raise ValueError("DYNAMIC_INDEPENDENT_REPLAY_REQUIRED")
+    token = os.getenv("GH_TOKEN")
+    reader = os.getenv("GASLUX_REPAIR_READ_TOKEN")
+    if not token or not reader:
+        raise ValueError("DYNAMIC_PUBLICATION_IDENTITY_REQUIRED")
+    try:
+        os.environ["GH_TOKEN"] = reader
+        picked = triage.sync_implementation_gap(repo, dry_run=True,
+                                                eligible_reason="TEST_REQUIRES_MISSING_API")
+    finally:
+        os.environ["GH_TOKEN"] = token
+    if picked.get("key") != key or picked.get("base") != base:
+        return {"status": "dynamic_scope_no_longer_eligible"}
+    branch = branch_for(task, base)
+    ref = "refs/heads/" + branch
+    subprocess.run(["gh", "auth", "setup-git"], check=True, timeout=30)
+    factory.git(repo, "fetch", "origin", "refs/heads/dev:refs/remotes/origin/dev")
+    if factory.git(repo, "rev-parse", "refs/remotes/origin/dev") != base:
+        return {"status": "dynamic_base_drift"}
+    factory.git(repo, "checkout", "-b", branch, base)
+    target = repo / task["source"]
+    if target.is_symlink() or target.resolve() != target.absolute():
+        raise ValueError("DYNAMIC_TARGET_LINK")
+    target.write_bytes(candidate)
+    if factory.git(repo, "diff", "--name-only") != task["source"]:
+        raise ValueError("DYNAMIC_OFF_SCOPE_DIFF")
+    factory.git(repo, "diff", "--check")
+    factory.git(repo, "add", "--", task["source"])
+    factory.git(repo, "config", "user.name", "github-actions[bot]")
+    factory.git(repo, "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com")
+    factory.git(repo, "-c", "core.hooksPath=/dev/null", "commit", "-m",
+                f"feat({task['role']}): implement test-demanded {task['symbol']}")
+    head = factory.git(repo, "rev-parse", "HEAD")
+    if factory.git(repo, "rev-parse", "HEAD^") != base:
+        raise ValueError("DYNAMIC_COMMIT_PARENT")
+    result = subprocess.run(["git", "-C", str(repo), "push", "--porcelain",
+                             f"--force-with-lease={ref}:", "origin", f"HEAD:{ref}"],
+                            check=True, capture_output=True, text=True, timeout=60)
+    statuses = [line.split("\t") for line in result.stdout.splitlines() if "\t" in line]
+    if (len(statuses) != 1 or len(statuses[0]) != 3 or statuses[0][0] != "*"
+            or statuses[0][1].split(":")[-1] != ref or statuses[0][2] != "[new branch]"):
+        raise RuntimeError("DYNAMIC_REF_NOT_EXCLUSIVELY_CREATED")
+    body = (f"GASLUX-DYNAMIC-V1 key={key} head={head} base={base}\n\n"
+            f"Discovered test-demanded API: {task['symbol']} ({task['role']}). "
+            "Independent isolated RED/GREEN replay and exact-byte reconstruction completed. "
+            "Requires semantic Safety review, backend owner, normal CI and applicable VM evidence. "
+            "No automatic approval, installation, merge or release authority.")
+    url = subprocess.check_output(["gh", "pr", "create", "--repo", factory.REPO, "--draft",
+                                   "--base", "dev", "--head", branch, "--title",
+                                   f"feat({task['role']}): implement {task['symbol']}", "--body", body],
+                                  text=True, timeout=60).strip()
+    return {"status": "draft_published", "head": head, "base": base, "key": key, "url": url}
+
+
 def main():
     p = argparse.ArgumentParser()
     for name in ("repo", "dependencies", "evidence"):
         p.add_argument("--" + name, required=True, type=Path)
     p.add_argument("--base", required=True)
     p.add_argument("--key", required=True)
+    p.add_argument("--mode", choices=("develop", "replay", "publish"), default="develop")
+    p.add_argument("--replay", type=Path)
     args = p.parse_args()
     if (os.getenv("GITHUB_REPOSITORY") != factory.REPO
             or os.getenv("GITHUB_REF") != "refs/heads/main"
             or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true"
-            or os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN")):
+            or (args.mode != "publish" and (os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN")))):
         raise ValueError("DYNAMIC_TRUSTED_TOKENLESS_WORKER_REQUIRED")
-    print(json.dumps(evaluate(args.repo, args.base, args.key, args.dependencies, args.evidence),
-                     sort_keys=True))
+    if args.mode == "develop":
+        result = evaluate(args.repo, args.base, args.key, args.dependencies, args.evidence)
+    elif args.mode == "replay":
+        _, _, result = verify_artifact(args.repo, args.base, args.key, args.evidence,
+                                       dependencies=args.dependencies)
+    else:
+        if args.replay is None:
+            raise ValueError("DYNAMIC_REPLAY_REQUIRED")
+        result = publish_draft(args.repo, args.base, args.key, args.evidence, args.replay)
+    print(json.dumps(result, sort_keys=True))
 
 
 if __name__ == "__main__":
