@@ -512,13 +512,16 @@ def repair_identity(number, head):
     return True
 
 
-def repair_plan(root, base, *, number=None, head=None):
+def repair_plan(root, base, *, number=None, head=None, diagnostics=None):
     """Recompute a narrow successor plan; no issue/artifact can grant authority."""
     # -I publisher deliberately imports only the trusted script directory.
     sys.path.insert(0, str(Path(__file__).resolve().parent))
     import gaslux_distro_admission as admission
     from gaslux_agent_task_triage import repair_eligible
     pinned = repair_identity(number, head)
+    def record(old, role, reason, **details):
+        if diagnostics is not None:
+            diagnostics.append({"pr": old, "role": role, "reason": reason, **details})
     if git(root, "rev-parse", "HEAD") != base or not SHA.fullmatch(base):
         raise ValueError("Wrong repair base")
     if admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != base:
@@ -541,18 +544,22 @@ def repair_plan(root, base, *, number=None, head=None):
                     and (b.get("repo") or {}).get("full_name") == REPO):
                 same_role.append(pr.get("number"))
         if same_role != [old]:
+            record(old, role, "ROLE_ALREADY_HAS_MULTIPLE_CANDIDATES")
             continue
         row = admission.inspect(old, role, None, expected_head=old_head)
         if not repair_eligible(row, old, role, old_head) or row["base"] != base:
+            record(old, role, "ADMISSION_NOT_ELIGIBLE", admission=row)
             continue
         pr = admission.api("GET", f"/pulls/{old}")
         if pr["head"]["sha"] != old_head:
+            record(old, role, "HEAD_CHANGED")
             continue
         source, test, task = TASKS[role]
         original, _ = admission.candidate_append(pr, role, old_head, source)
         ancestry = admission.api("GET", f"/compare/{original}...{base}")
         if (ancestry.get("status") != "ahead"
                 or ancestry.get("merge_base_commit", {}).get("sha") != original):
+            record(old, role, "NON_FORWARD_ANCESTRY")
             continue
         for path in (source, "auto_tests/tests/" + test):
             before = admission.api("GET", f"/contents/{path}?ref={original}")
@@ -560,19 +567,30 @@ def repair_plan(root, base, *, number=None, head=None):
             if (before.get("type") != "file" or now.get("type") != "file"
                     or not admission.valid_sha(before.get("sha"))
                     or before["sha"] != now.get("sha")):
+                record(old, role, "SOURCE_OR_TEST_CHANGED", path=path)
                 break
         else:
             if f"def assess_{role}_lifecycle(" in (root / source).read_text():
+                record(old, role, "ALREADY_IMPLEMENTED")
                 continue
             branch = origin_branch(role, base)
             history = admission.complete_page(admission.api(
                 "GET", f"/pulls?state=all&head=LMhdez:{branch}&base=dev&per_page=100"))
             if history:
+                # Historical successors are not reusable publication authority.
+                # Record a build-only plan after all source/safety checks, while
+                # leaving the runtime plan blocked. The probe has no write token.
+                record(old, role, "SUCCESSOR_PR_HISTORY_EXISTS",
+                       history=[{"number": h.get("number"), "state": h.get("state")}
+                                for h in history],
+                       build_only_plan={"role": role, "base": base, "scope": "lifecycle",
+                                        "repair_pr": old, "repair_head": old_head})
                 continue
             ref = subprocess.run(
                 ["gh", "api", f"repos/{REPO}/git/ref/heads/{branch}"],
                 text=True, capture_output=True, check=False, timeout=20)
             if ref.returncode == 0:
+                record(old, role, "SUCCESSOR_REF_EXISTS")
                 continue
             if "404" not in ref.stderr and "Not Found" not in ref.stderr:
                 raise RuntimeError("Cannot establish successor branch absence")
