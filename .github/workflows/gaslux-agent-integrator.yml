@@ -321,6 +321,18 @@ jobs:
                   assert row['merge_authorized'] is False
                   out.write(f"- #{row['pr']} {row['role']} / {row['scope']}: {row['next_action']}\n")
           PY
+      - name: Audit completed integrations from actual GitHub merge state
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+          GASLUX_VM_OBSERVER_ID: ${{ vars.GASLUX_VM_OBSERVER_ID }}
+          GASLUX_VM_ACCEPTANCE_WORKFLOW_ID: ${{ vars.GASLUX_VM_ACCEPTANCE_WORKFLOW_ID }}
+        run: |
+          set -euo pipefail
+          python3 -I auto_tests/tools/gaslux_supervised_admission.py --audit-completed-integrations > evidence/operational-integration-audit.json
+          cat evidence/operational-integration-audit.json
       - name: Inventory historical open PR ancestry in rotating bounded batches
         env:
           GH_TOKEN: ${{ github.token }}
@@ -336,6 +348,7 @@ jobs:
             evidence/distro-admission.json
             evidence/supervised-admission.json
             evidence/historical-reconciliation.json
+            evidence/operational-integration-audit.json
           if-no-files-found: error
           retention-days: 14
 
