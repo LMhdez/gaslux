@@ -904,5 +904,91 @@ class DeterministicRepairTests(unittest.TestCase):
         self.assertIn("needs.safety.result == 'success'", publisher)
 
 
+class SupervisedRegressionTests(unittest.TestCase):
+    BASE = "b" * 40
+
+    def fixture(self, root, role="mint"):
+        source, test, _ = factory.TASKS[role]
+        product = root / source
+        suite = root / "auto_tests/tests" / test
+        product.parent.mkdir(parents=True, exist_ok=True)
+        suite.parent.mkdir(parents=True, exist_ok=True)
+        product.write_text(valid(role))
+        suite.write_text("def load_helper():\n    pass\n")
+        return product, suite
+
+    def test_scope_from_actual_integrated_source_and_missing_regression(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            product, suite = self.fixture(root)
+            self.assertTrue(factory.supervised_gap(root, "mint"))
+            self.assertFalse(factory.supervised_gap(root, "zorin"))
+            original = suite.read_bytes()
+            evidence = root / "evidence"
+            with patch.object(factory, "git", return_value=self.BASE), \
+                 patch.object(factory, "call_model") as model:
+                factory.generate_supervised_test(root, evidence, "mint", self.BASE)
+                report = factory.verify(root, evidence, "mint", self.BASE,
+                                        execute=False, scope=factory.SUPERVISED_TEST_SCOPE)
+                model.assert_not_called()
+                self.assertEqual(report["target"], "auto_tests/tests/test_distribution_capabilities.py")
+                self.assertEqual(report["product_sha256"], factory.sha256(product.read_bytes()))
+                addition = (evidence / "addition.py").read_text()
+                before, after = factory.expected_source(
+                    root, "mint", addition, scope=factory.SUPERVISED_TEST_SCOPE)
+                self.assertEqual(before, original)
+                self.assertEqual(suite.read_bytes(), original)
+                self.assertIn(b"range(1 << len(gates))", after)
+                with self.assertRaises(ValueError):
+                    factory.verify(root, evidence, "mint", self.BASE, execute=False)
+                (evidence / "addition.py").write_text(addition.replace(" is False", " is True"))
+                with self.assertRaises(ValueError):
+                    factory.verify(root, evidence, "mint", self.BASE, execute=False,
+                                   scope=factory.SUPERVISED_TEST_SCOPE)
+                suite.write_bytes(after)
+                self.assertFalse(factory.supervised_gap(root, "mint"))
+                with self.assertRaises(ValueError):
+                    factory.supervised_test_report(root, "mint", self.BASE)
+
+    def test_dynamic_selection_and_historical_dedup(self):
+        import sys
+        sys.path.insert(0, str(SCRIPT.parent))
+        import gaslux_distro_admission as admission
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            for scenario in ("valid", "duplicate", "history", "ref", "drift"):
+                def api(method, route):
+                    self.assertEqual(method, "GET")
+                    if route == "/git/ref/heads/dev":
+                        return {"object": {"sha": "c" * 40 if scenario == "drift" else self.BASE}}
+                    if route == "/pulls?state=open&base=dev&per_page=100":
+                        return ([{"head": {"ref": "bot/gaslux-test-mint-123456789abc",
+                                          "repo": {"full_name": factory.REPO}}}]
+                                if scenario == "duplicate" else [])
+                    if route.startswith("/pulls?state=all"):
+                        return [{"number": 900, "state": "closed"}] if scenario == "history" else []
+                    self.fail(route)
+                with patch.object(factory, "git", return_value=self.BASE), \
+                     patch.object(admission, "api", side_effect=api), \
+                     patch.object(factory.subprocess, "run", return_value=subprocess.CompletedProcess(
+                         [], 0 if scenario == "ref" else 1, "", "HTTP 404")):
+                    result = factory.supervised_test_plan(root, self.BASE)
+                if scenario == "valid":
+                    self.assertEqual(result["role"], "mint")
+                    self.assertEqual(result["scope"], factory.SUPERVISED_TEST_SCOPE)
+                    self.assertIs(result["installation_authorized"], False)
+                    self.assertIs(result["release_eligible"], False)
+                else:
+                    self.assertIsNone(result)
+
+    def test_all_canonical_regression_templates_parse(self):
+        import ast
+        for role in factory.TASKS:
+            tree = ast.parse(factory.supervised_test_addition(role))
+            self.assertEqual(len(tree.body), 1)
+            self.assertEqual(tree.body[0].name, f"test_supervisor_{role}_lifecycle_truth_table")
+
+
 if __name__ == "__main__":
     unittest.main()
