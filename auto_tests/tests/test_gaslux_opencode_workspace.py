@@ -451,6 +451,41 @@ class WorkspaceTests(unittest.TestCase):
             os.close(rd)
             os.waitpid(pid, 0)
 
+    def test_product_repair_retries_only_observed_style_or_test_failure(self):
+        import gaslux_opencode_product_shadow as shadow
+        source = correct()
+        valid = {"stage": "style_and_factory_contract", "style": {"lint": 1, "format": 0}}
+        self.assertEqual(shadow.repair_feedback(valid, source)["category"], "STYLE_REJECTED")
+        red = {"stage": "candidate_regression", "candidate_regression": {"exit_code": 1, "failed": 2}}
+        self.assertEqual(shadow.repair_feedback(red, source)["category"], "REGRESSION_REJECTED")
+        for row in ({"stage": "native_iteration"},
+                    {"stage": "style_and_factory_contract", "style": {"lint": 2, "format": 0}},
+                    {"stage": "candidate_regression", "candidate_regression": {"exit_code": 1, "failed": 0}},
+                    {"stage": "candidate_regression", "candidate_regression": {"exit_code": 5, "failed": 0}}):
+            self.assertIsNone(shadow.repair_feedback(row, source))
+
+    def test_product_feedback_is_sha_bound_and_cannot_override_scope(self):
+        import gaslux_opencode_product_shadow as shadow
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            tree = Path(tmp)
+            target = tree / b.factory.TASKS["mint"][0]
+            target.parent.mkdir(parents=True)
+            target.write_bytes(b"# fixture\n")
+            task = shadow.source_task(tree, "mint", "a" * 40)
+            feedback = shadow.repair_feedback(
+                {"stage": "style_and_factory_contract", "style": {"lint": 1, "format": 0}}, correct())
+            with patch.object(i.history, "task_context", return_value={
+                    "role_pr_leads": [1], "historical_comparisons": []}):
+                row = i.task_for("mint", {**task, "repair_feedback": feedback})
+                self.assertEqual(row["repair_feedback"]["category"], "STYLE_REJECTED")
+                self.assertFalse(row["product_edit_authorized"])
+                with self.assertRaises(ValueError):
+                    i.task_for("mint", {**task, "repair_feedback": {**feedback,
+                                   "prior_addition_sha256": "0"*64}})
+                with self.assertRaises(ValueError):
+                    i.task_for("mint", {**task, "merge_authorized": True})
+
     def test_verified_journal_and_independent_final_recheck(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)

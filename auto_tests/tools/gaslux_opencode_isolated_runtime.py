@@ -139,13 +139,15 @@ def proxy_complete(stats):
             and stats["denied"] == 0 and 0 < stats["calls"] == stats["forwarded"] == stats["completed"])
 
 
-def run(binary, root, role, context, prompt, report, *, product=None):
+def run(binary, root, role, context, prompt, report, *, product=None, timeout=TIMEOUT):
     import gaslux_opencode_iterative as iterative
     import gaslux_opencode_model_proxy as proxy
     import gaslux_opencode_parent_boundary as boundary
     import gaslux_opencode_trial as trial
     import gaslux_opencode_workspace as broker
 
+    if type(timeout) is not int or not 1 <= timeout <= TIMEOUT:
+        raise ValueError("BOUNDARY_TIMEOUT_SCOPE")
     if os.geteuid() == 0:
         raise ValueError("UNPRIVILEGED_RUNNER_REQUIRED")
     boundary.namespace_preflight()
@@ -174,7 +176,7 @@ def run(binary, root, role, context, prompt, report, *, product=None):
         with proxy.ModelServer(model_endpoint, proxy.Handler) as model:
             model_endpoint.chmod(0o600)
             model.timeout = 0.25
-            model.deadline = time.monotonic() + TIMEOUT
+            model.deadline = time.monotonic() + timeout
 
             def serve_broker():
                 try:
@@ -192,7 +194,7 @@ def run(binary, root, role, context, prompt, report, *, product=None):
                                 cwd=control, close_fds=True, start_new_session=True,
                             ) as child:
                                 broker_process.append(child)
-                                outcome.append(child.wait(timeout=TIMEOUT) == 0)
+                                outcome.append(child.wait(timeout=timeout) == 0)
                         return
                 except (OSError, ValueError, subprocess.TimeoutExpired):
                     outcome.append(False)
@@ -232,7 +234,7 @@ def run(binary, root, role, context, prompt, report, *, product=None):
                 thread.start()
             result = None
             try:
-                result = trial.bounded_process(argv, scratch, {"PATH": "/usr/bin:/bin"}, timeout=TIMEOUT)
+                result = trial.bounded_process(argv, scratch, {"PATH": "/usr/bin:/bin"}, timeout=timeout)
             finally:
                 stop.set()
                 threads[0].join(5)
@@ -249,9 +251,14 @@ def run(binary, root, role, context, prompt, report, *, product=None):
             report["namespace_launcher_admitted"] = b"GASLUX_REAL_NAMESPACE_ADMITTED\n" in stderr.splitlines(keepends=True)
             report["failure_stage"] = "native_events"
             # Even on nonzero exit, retain only partial validated event metadata.
-            events, skills = iterative.native_events(raw, report)
+            report["cli_exit_code"] = code
             if code:
+                try:
+                    iterative.native_events(raw, report)
+                except (ValueError, TypeError, KeyError) as error:
+                    report["native_event_failure"] = iterative.fixed_failure(error)
                 raise trial.TrialFailure("CLI_NONZERO", detail=boundary.classify_failure(stderr))
+            events, skills = iterative.native_events(raw, report)
             if not report["namespace_launcher_admitted"]:
                 raise ValueError("NAMESPACE_WITNESS_MISSING")
             if not proxy_complete(report["proxy"]):
