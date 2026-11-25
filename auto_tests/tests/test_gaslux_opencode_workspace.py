@@ -404,6 +404,53 @@ class WorkspaceTests(unittest.TestCase):
                     with self.assertRaises(ValueError):
                         shadow.read_tree(Path(tmp), "a" * 40, Path(tmp))
 
+    def test_all_six_role_contracts(self):
+        for role in b.factory.TASKS:
+            with self.subTest(role=role):
+                self.assertEqual(b.exhaustive(role, correct(role)), 259)
+
+    def test_proxy_rejects_unknown_historical_tool_calls(self):
+        good = {"model": proxy.MODEL, "messages": [
+            {"role": "assistant", "content": "", "tool_calls": [
+                {"id": "call_1", "type": "function", "function": {
+                    "name": "gaslux_workspace_read_candidate", "arguments": "{}"}}]},
+            {"role": "tool", "tool_call_id": "call_1", "content": "fixture"}]}
+        self.assertEqual(json.loads(proxy.validate_request(json.dumps(good).encode()))["model"], proxy.MODEL)
+        import copy
+        for name, args, ident in (("bash", "{}", "call_1"),
+                                  ("skill", "[]", "call_1"),
+                                  ("skill", "{}", "unknown")):
+            row = copy.deepcopy(good)
+            row["messages"][0]["tool_calls"][0]["function"].update(name=name, arguments=args)
+            row["messages"][1]["tool_call_id"] = ident
+            with self.assertRaises(ValueError):
+                proxy.validate_request(json.dumps(row).encode())
+
+    def test_worker_closes_inherited_descriptors(self):
+        rd, wr = os.pipe()
+        extra = os.open("/dev/null", os.O_RDONLY)
+        pid = os.fork()
+        if pid == 0:
+            try:
+                b.close_worker_descriptors(wr)
+                for fd in (0, 1, 2, rd, extra):
+                    try:
+                        os.fstat(fd)
+                    except OSError:
+                        continue
+                    os.write(wr, b"FAIL")
+                    os._exit(1)
+                os.write(wr, b"PASS")
+            finally:
+                os._exit(0)
+        os.close(wr)
+        os.close(extra)
+        try:
+            self.assertEqual(os.read(rd, 16), b"PASS")
+        finally:
+            os.close(rd)
+            os.waitpid(pid, 0)
+
     def test_verified_journal_and_independent_final_recheck(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)

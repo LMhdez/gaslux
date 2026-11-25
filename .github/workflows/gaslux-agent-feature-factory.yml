@@ -7,9 +7,14 @@ on:
   workflow_dispatch:
     inputs:
       opencode_trial:
-        description: 'Run isolated OpenCode comparison only (no publishing)'
+        description: 'Run isolated OpenCode comparison and dev shadow only (no publishing)'
         type: boolean
         default: false
+      opencode_role:
+        description: 'Backend for explicit OpenCode dev shadow; never grants scope'
+        type: choice
+        default: zorin
+        options: [mint, zorin, cachyos, popos, q4os, bazzite]
   push:
     branches: [main]
     paths:
@@ -247,6 +252,8 @@ jobs:
             'pytest==9.0.2' 'jsonschema==4.25.1' 'cryptography==44.0.3' 'ruff==0.17.6'
       - name: Native skill plus MCP investigation edit and RED-to-PASS tests on actual dev shadow
         if: ${{ !cancelled() && steps.shadow_dependencies.conclusion == 'success' }}
+        env:
+          SHADOW_ROLE: ${{ github.event_name == 'workflow_dispatch' && inputs.opencode_role || 'zorin' }}
         shell: bash
         run: |
           set -euo pipefail
@@ -254,7 +261,7 @@ jobs:
           base=$(git -C shadow-source rev-parse HEAD)
           python3 -B auto_tests/tools/gaslux_opencode_product_shadow.py \
             --binary "$GASLUX_OPENCODE_BIN" --repo shadow-source --base "$base" \
-            --dependencies "$RUNNER_TEMP/gaslux-shadow-deps" --role zorin \
+            --dependencies "$RUNNER_TEMP/gaslux-shadow-deps" --role "$SHADOW_ROLE" \
             --report evidence/opencode-iterative/report.json
       # Real shadow above supersedes synthetic-only Mint model execution.
       - name: Retain iterative lab report only (never a Factory candidate)

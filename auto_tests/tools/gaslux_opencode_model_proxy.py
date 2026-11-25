@@ -56,6 +56,7 @@ def validate_request(raw):
     messages = row.get("messages")
     if type(messages) is not list or not 1 <= len(messages) <= 128:
         raise ValueError("MESSAGE_COUNT")
+    seen_calls = set()
     for msg in messages:
         if (type(msg) is not dict or msg.get("role") not in
                 ("system", "developer", "user", "assistant", "tool")):
@@ -71,6 +72,32 @@ def validate_request(raw):
                 for part in content
             ):
                 raise ValueError("MESSAGE_CONTENT")
+        if "tool_calls" in msg:
+            calls = msg["tool_calls"]
+            if msg["role"] != "assistant" or type(calls) is not list or len(calls) > 16:
+                raise ValueError("HISTORY_TOOL_CALLS")
+            for call in calls:
+                if (type(call) is not dict or set(call) != {"id", "type", "function"}
+                        or call["type"] != "function" or type(call["id"]) is not str
+                        or not 0 < len(call["id"]) <= 128 or call["id"] in seen_calls
+                        or type(call["function"]) is not dict
+                        or set(call["function"]) != {"name", "arguments"}
+                        or type(call["function"]["name"]) is not str
+                        or call["function"]["name"] not in ALLOWED_TOOLS
+                        or type(call["function"]["arguments"]) is not str
+                        or len(call["function"]["arguments"].encode("utf-8")) > 65536):
+                    raise ValueError("HISTORY_TOOL_CALL_SCOPE")
+                arguments = json.loads(call["function"]["arguments"], object_pairs_hook=unique_object,
+                                       parse_constant=reject_constant)
+                if type(arguments) is not dict:
+                    raise ValueError("HISTORY_TOOL_ARGUMENTS")
+                seen_calls.add(call["id"])
+        if msg["role"] == "tool":
+            ident = msg.get("tool_call_id")
+            if type(ident) is not str or ident not in seen_calls:
+                raise ValueError("HISTORY_TOOL_RESULT_SCOPE")
+        elif "tool_call_id" in msg:
+            raise ValueError("HISTORY_TOOL_RESULT_SCOPE")
     for key in ("max_tokens", "max_completion_tokens"):
         if key in row and (type(row[key]) is not int or not 1 <= row[key] <= MAX_OUTPUT):
             raise ValueError("OUTPUT_LIMIT")

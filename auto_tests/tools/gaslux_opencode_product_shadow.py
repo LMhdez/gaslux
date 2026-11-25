@@ -11,7 +11,6 @@ import io
 import json
 import os
 from pathlib import Path, PurePosixPath
-import stat
 import subprocess
 import tarfile
 import tempfile
@@ -73,7 +72,9 @@ def source_task(tree, role, base):
     return {"source_base": base, "source_sha256": factory.sha256(raw),
             "source_text": raw.decode("utf-8"),
             "product_replay": True, "product_edit_authorized": False,
-            "task": factory.TASKS[role][2]}
+            "task": factory.TASKS[role][2],
+            "style_contract": "Ruff: double quotes; gates tuple and return dict on separate lines, "
+                              "trailing commas, max 100 columns; one function only."}
 
 
 def regression(tree, dependencies, role, work):
@@ -96,6 +97,44 @@ def regression(tree, dependencies, role, work):
     matches = re.findall(rb"(?m)^(?:=+ )?([0-9]{1,6}) passed(?:[ ,].*)?$", stdout)
     count = int(matches[-1]) if matches else 0
     return {"passed": count, "exit_code": code, "accepted": code == 0 and count > 0}
+
+
+def style_check(tree, dependencies, role, work):
+    ruff = dependencies / "bin" / "ruff"
+    if not ruff.is_file() or ruff.is_symlink():
+        raise ValueError("SHADOW_RUFF_UNAVAILABLE")
+    prefix = boundary.sandbox_base() + [
+        "--ro-bind", str(tree), "/product", "--ro-bind", str(dependencies), "/deps",
+        "--bind", str(work), "/scratch", "--setenv", "HOME", "/scratch",
+        "--setenv", "XDG_CACHE_HOME", "/scratch", "--setenv", "PATH", "/usr/bin:/bin",
+        "--chdir", "/product", "/deps/bin/ruff"]
+    target = factory.TASKS[role][0]
+    results = {}
+    for label, args in (("lint", ["check", "--no-cache"]),
+                        ("format", ["format", "--check", "--no-cache"])):
+        code, _, _ = trial.bounded_process(
+            prefix + args + ["--config", "/product/auto_tests/pyproject.toml", target],
+            work, {"PATH": "/usr/bin:/bin"}, timeout=60)
+        results[label] = code == 0
+    results["accepted"] = all(results.values())
+    return results
+
+
+def factory_contract(repo, role, base, task, addition, expected, directory):
+    # Exercise the existing independent verifier's exact report/byte contract
+    # without exporting a publishable artifact or enabling the publisher.
+    artifact = {"scope": "lifecycle", "role": role, "base": base,
+                "target": factory.TASKS[role][0], "task": factory.TASKS[role][2],
+                "model": factory.MODEL, "model_digest": factory.MODEL_DIGEST,
+                "addition_sha256": factory.sha256(addition.encode()),
+                "source_sha256": task["source_sha256"],
+                "candidate_sha256": expected["product_candidate_sha256"]}
+    broker.write_new(directory / "addition.py", addition.encode())
+    broker.write_new(directory / "report.json", json.dumps(artifact, sort_keys=True).encode())
+    verified = factory.verify(repo, directory, role, base, execute=False, scope="lifecycle")
+    if verified != artifact:
+        raise ValueError("SHADOW_FACTORY_CONTRACT_MISMATCH")
+    return factory.sha256((directory / "report.json").read_bytes())
 
 
 def apply_candidate(tree, role, task, addition):
@@ -147,7 +186,18 @@ def evaluate(binary, repo, base, dependencies, role, context):
             if not iteration["accepted"] or len(selected) != 1:
                 raise ValueError("SHADOW_ITERATION_RED")
             report["stage"] = "candidate_regression"
-            report.update(apply_candidate(tree, role, task, selected[0]))
+            expected = apply_candidate(tree, role, task, selected[0])
+            report.update(expected)
+            report["stage"] = "style_and_factory_contract"
+            report["style"] = style_check(tree, dependencies, role, tests)
+            if not report["style"]["accepted"]:
+                raise ValueError("SHADOW_STYLE_RED")
+            verification = root / "verification"
+            verification.mkdir(mode=0o700)
+            report["factory_static_verification_sha256"] = factory_contract(
+                repo, role, base, task, selected[0], expected, verification)
+            report["factory_artifact_contract_verified"] = True
+            report["stage"] = "candidate_regression"
             candidate = regression(tree, dependencies, role, tests)
             report["candidate_regression"] = candidate
             report["product_regressions_run"] = True
@@ -161,7 +211,8 @@ def evaluate(binary, repo, base, dependencies, role, context):
                    "SHADOW_ARCHIVE_SCOPE", "SHADOW_ARCHIVE_TRUNCATED", "SHADOW_ARCHIVE_EMPTY",
                    "SHADOW_SCOPE_ALREADY_IMPLEMENTED_OR_INVALID", "SHADOW_TEST_DEPENDENCIES",
                    "SHADOW_SOURCE_CHANGED", "SHADOW_FUNCTIONAL_REJECTED", "SHADOW_READBACK",
-                   "SHADOW_BASELINE_RED", "SHADOW_ITERATION_RED", "SHADOW_CANDIDATE_RED"}
+                   "SHADOW_BASELINE_RED", "SHADOW_ITERATION_RED", "SHADOW_CANDIDATE_RED",
+                   "SHADOW_STYLE_RED", "SHADOW_RUFF_UNAVAILABLE", "SHADOW_FACTORY_CONTRACT_MISMATCH"}
         report["failure"] = str(error) if type(error) is ValueError and str(error) in allowed else type(error).__name__
     return report
 

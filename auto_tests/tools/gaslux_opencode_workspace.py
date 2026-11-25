@@ -157,6 +157,15 @@ def exhaustive(role, source):
     return cases
 
 
+def close_worker_descriptors(keep):
+    """Only the fixed result pipe survives; never inherit broker MCP sockets."""
+    maximum = resource.getrlimit(resource.RLIMIT_NOFILE)[0]
+    if maximum == resource.RLIM_INFINITY:
+        maximum = 1 << 20
+    os.closerange(0, keep)
+    os.closerange(keep + 1, int(maximum))
+
+
 def isolated_test(role, source, timeout=5):
     """Separate fork: no FS/TCP access, bounded CPU/memory/time; fixed status only."""
     validate_source(role, source)
@@ -166,6 +175,7 @@ def isolated_test(role, source, timeout=5):
         os.close(read_fd)
         result = b"WORKER_FAILURE"
         try:
+            close_worker_descriptors(write_fd)
             resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
             resource.setrlimit(resource.RLIMIT_CPU, (3, 3))
             resource.setrlimit(resource.RLIMIT_AS, (256 * 1024**2, 256 * 1024**2))
