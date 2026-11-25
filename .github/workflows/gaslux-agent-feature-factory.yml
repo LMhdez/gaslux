@@ -46,6 +46,8 @@ on:
       - auto_tests/tools/gaslux_opencode_product_shadow.py
       - auto_tests/tools/gaslux_opencode_factory_worker.py
       - auto_tests/tests/test_gaslux_opencode_workspace.py
+      - auto_tests/tools/gaslux_dynamic_development.py
+      - auto_tests/tests/test_gaslux_dynamic_development.py
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-feature-factory.yml
@@ -76,6 +78,8 @@ on:
       - auto_tests/tools/gaslux_opencode_product_shadow.py
       - auto_tests/tools/gaslux_opencode_factory_worker.py
       - auto_tests/tests/test_gaslux_opencode_workspace.py
+      - auto_tests/tools/gaslux_dynamic_development.py
+      - auto_tests/tests/test_gaslux_dynamic_development.py
 
 permissions:
   contents: read
@@ -109,6 +113,7 @@ jobs:
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_history_ast.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_trial.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_workspace.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_dynamic_development.py -v
 
       - name: Verify historical Python AST and reviewed witness differential
         if: github.event_name == 'pull_request' && (github.event.pull_request.number == 419 || github.event.pull_request.number == 426) && github.event.pull_request.head.repo.full_name == github.repository
@@ -569,6 +574,7 @@ jobs:
       repair_pr: ${{ steps.plan.outputs.repair_pr }}
       repair_head: ${{ steps.plan.outputs.repair_head }}
       worker: ${{ steps.plan.outputs.worker }}
+      dynamic_key: ${{ steps.plan.outputs.dynamic_key }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -607,6 +613,7 @@ jobs:
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
         run: |
           set -euo pipefail
           python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py plan --repo source --enable-stale-repair --enable-supervised-tests > /tmp/gaslux-feature-plan.json
@@ -627,6 +634,16 @@ jobs:
               out.write('repair_pr=' + str(row.get('repair_pr', '')) + '\n')
               out.write('repair_head=' + row.get('repair_head', '') + '\n')
               out.write('worker=' + route(row) + '\n')
+          if row['status'] == 'blocked':
+              from pathlib import Path
+              from gaslux_agent_task_triage import sync_implementation_gap
+              gap = sync_implementation_gap(Path('source'), dry_run=True,
+                                            eligible_reason='TEST_REQUIRES_MISSING_API')
+              if gap.get('status') == 'implementation_gap_dry_run':
+                  if gap['base'] != row['base']:
+                      raise SystemExit('Dynamic task base drift')
+                  with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+                      out.write('dynamic_key=' + gap['key'] + '\n')
           if row['status'] == 'blocked':
               with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
                   summary.write('### GASLUX: actual unsatisfied lifecycle gates (read-only)\n\n')
@@ -976,6 +993,127 @@ jobs:
           fi
           timeout 120 python3 -I trusted/auto_tests/tools/gaslux_agent_feature_factory.py publish \
             --repo source --role "$ROLE" --base "$BASE" --scope "$SCOPE" --evidence evidence/feature-factory "${repair[@]}"
+
+  dynamic_development:
+    needs: select
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      needs.select.outputs.blocked == 'true' &&
+      needs.select.outputs.dynamic_key != ''
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    permissions:
+      contents: read
+    env:
+      BASE: ${{ needs.select.outputs.base }}
+      DYNAMIC_KEY: ${{ needs.select.outputs.dynamic_key }}
+      GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_NUM_PARALLEL: '1'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.select.outputs.base }}
+          path: source
+          persist-credentials: false
+      - name: Validate dynamic AST and witness contracts
+        run: |
+          set -euo pipefail
+          test "$(git -C source rev-parse HEAD)" = "$BASE"
+          python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_dynamic_development.py -v
+      - name: Install hash-pinned unprivileged local inference engine
+        id: inference_setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/ollama/ollama/releases/download/v0.40.17/install.sh -o /tmp/ollama-install.sh
+          echo 'eb510679f45de4a914d99953cd3deaada5dc73f9d585014df99d704449dd7dcc  /tmp/ollama-install.sh' | sha256sum -c -
+          OLLAMA_VERSION=0.40.17 timeout 420 sh /tmp/ollama-install.sh
+          # The installer may start a systemd service with its own environment.
+          # Never silently reuse that server: OpenAI-compatible context settings
+          # are not the server's num_ctx.
+          if systemctl is-active --quiet ollama.service; then
+            sudo systemctl stop ollama.service
+          fi
+          if curl -fsS --max-time 2 http://127.0.0.1:11434/api/version >/dev/null 2>&1; then
+            echo "Unexpected existing Ollama listener"; exit 1
+          fi
+          OLLAMA_CONTEXT_LENGTH=16384 ollama serve > /tmp/ollama.log 2>&1 &
+          server_pid=$!
+          ready=false
+          for i in $(seq 1 50); do
+            kill -0 "$server_pid"
+            if curl -fsS --max-time 2 http://127.0.0.1:11434/api/version >/dev/null; then
+              ready=true; break
+            fi
+            sleep 2
+          done
+          test "$ready" = true
+          timeout 720 ollama pull qwen3.5:9b
+          python3 - <<'PY'
+          import json, urllib.request
+          tags = json.load(urllib.request.urlopen('http://127.0.0.1:11434/api/tags'))
+          model = next((x for x in tags.get('models', []) if x.get('name') == 'qwen3.5:9b'), None)
+          assert model and model.get('digest') == '56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
+          PY
+      - name: Mandatory isolated workspace regression tests
+        run: python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_opencode_workspace.py -v
+      - name: Verify independent broker and isolated synthetic parent boundary
+        id: parent_admission
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -x /usr/bin/bwrap ] || [ ! -x /usr/bin/rg ] || [ ! -f /usr/share/apparmor/extra-profiles/bwrap-userns-restrict ]; then
+            sudo timeout 180 apt-get update
+            sudo timeout 180 apt-get install -y --no-install-recommends bubblewrap apparmor-profiles ripgrep
+          fi
+          # The native skill tool needs local rg; downloading inside the sandbox is forbidden.
+          test -x /usr/bin/rg && test ! -L /usr/bin/rg
+          dpkg-query -S /usr/bin/rg | grep -q '^ripgrep:'
+          /usr/bin/rg --version
+          # Ubuntu Noble's restrictive, bwrap-specific profile. Do not disable
+          # AppArmor, change sysctl, replace a loaded profile or fall back.
+          profile=/usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+          if [ "$(cat /sys/module/apparmor/parameters/enabled)" = Y ]; then
+            test -f "$profile"
+            dpkg-query -S "$profile" | grep -q '^apparmor-profiles:'
+            loaded=$(sudo cat /sys/kernel/security/apparmor/profiles)
+            if ! printf '%s\n' "$loaded" | grep -Eq '^(bwrap-userns-restrict|bwrap|/usr/bin/bwrap) \('; then
+              sudo apparmor_parser -a "$profile"
+            fi
+          fi
+          mkdir -p evidence/opencode-iterative
+          python3 -B trusted/auto_tests/tools/gaslux_opencode_parent_boundary.py \
+            --report evidence/opencode-iterative/parent-boundary.json
+      - name: Install isolated product regression dependencies
+        run: |
+          python3 -m pip install --target "$RUNNER_TEMP/gaslux-shadow-deps" 'pytest==9.0.2' 'jsonschema==4.25.1' 'cryptography==44.0.3' 'ruff==0.17.6'
+      - name: Run bounded dynamic RED GREEN development without publication token
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 -B trusted/auto_tests/tools/gaslux_dynamic_development.py \
+            --repo source --base "$BASE" --key "$DYNAMIC_KEY" \
+            --dependencies "$RUNNER_TEMP/gaslux-shadow-deps" \
+            --evidence evidence/dynamic-candidate > evidence/dynamic-status.json
+          cat evidence/dynamic-status.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: gaslux-dynamic-shadow-review
+          path: |
+            evidence/dynamic-status.json
+            evidence/dynamic-candidate/
+          if-no-files-found: warn
+          retention-days: 7
 
   triage_missing_gates:
     needs: select
