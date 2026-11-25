@@ -313,3 +313,49 @@ jobs:
           path: evidence/duplicate-reconciliation.json
           if-no-files-found: warn
           retention-days: 14
+
+  integrate_supervised_tests:
+    needs: [trusted_integrator, reconcile_duplicates]
+    if: >-
+      always() && !cancelled() &&
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
+       github.event_name == 'push') &&
+      (needs.trusted_integrator.result == 'success' || needs.trusted_integrator.result == 'skipped') &&
+      needs.reconcile_duplicates.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    permissions:
+      contents: write
+      pull-requests: write
+      checks: read
+      actions: read
+      issues: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate bounded integration contracts without a token
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_supervised_admission.py -v
+      - name: Integrate at most one canonical independently approved test append into dev
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 -I auto_tests/tools/gaslux_supervised_admission.py --integrate-test > evidence/supervised-integration.json
+          cat evidence/supervised-integration.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: always()
+        with:
+          name: gaslux-supervised-integration
+          path: evidence/supervised-integration.json
+          if-no-files-found: warn
+          retention-days: 14
