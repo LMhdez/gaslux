@@ -102,6 +102,87 @@ def validate_request(raw):
     return json.dumps(row, ensure_ascii=True, allow_nan=False, separators=(",", ":")).encode()
 
 
+
+# OpenAI-compatible completion is more than EOF or Content-Length. Never
+# release a successful HTTP response until the bounded protocol body is valid.
+FINISH_REASONS = frozenset({"stop", "length", "tool_calls", "content_filter", "function_call"})
+
+
+def response_object(raw):
+    row = json.loads(raw.decode("utf-8"), object_pairs_hook=unique_object,
+                     parse_constant=reject_constant)
+    if type(row) is not dict or "error" in row:
+        raise ValueError("RESPONSE_OBJECT")
+    return row
+
+
+def response_choice(row, *, stream):
+    choices = row.get("choices")
+    if type(choices) is not list or len(choices) != 1 or type(choices[0]) is not dict:
+        raise ValueError("RESPONSE_CHOICES")
+    choice = choices[0]
+    if type(choice.get("index")) is not int or choice["index"] != 0:
+        raise ValueError("RESPONSE_CHOICE_INDEX")
+    part = choice.get("delta" if stream else "message")
+    if type(part) is not dict:
+        raise ValueError("RESPONSE_CHOICE_PART")
+    finish = choice.get("finish_reason")
+    if finish is not None and (type(finish) is not str or finish not in FINISH_REASONS):
+        raise ValueError("RESPONSE_FINISH_REASON")
+    return finish
+
+
+def validate_response(content_type, raw):
+    if not 0 < len(raw) <= MAX_RESPONSE:
+        raise ValueError("RESPONSE_SIZE")
+    if content_type == "application/json":
+        if response_choice(response_object(raw), stream=False) is None:
+            raise ValueError("RESPONSE_NOT_FINISHED")
+        return
+    if content_type != "text/event-stream":
+        raise ValueError("RESPONSE_CONTENT_TYPE")
+    # SSE line endings may be LF, CRLF, or CR. Require a complete blank-line
+    # event boundary, not an unterminated data line at EOF.
+    text = raw.decode("utf-8").replace("\r\n", "\n").replace("\r", "\n")
+    if not text.endswith("\n\n"):
+        raise ValueError("SSE_INCOMPLETE_EVENT")
+    finished = done = False
+    chunks = 0
+    for event in text.split("\n\n"):
+        if not event:
+            continue
+        if done:
+            raise ValueError("SSE_AFTER_DONE")
+        fields = []
+        for line in event.split("\n"):
+            if line.startswith(":"):
+                continue
+            if not line.startswith("data:"):
+                raise ValueError("SSE_FIELD")
+            value = line[5:]
+            fields.append(value[1:] if value.startswith(" ") else value)
+        if not fields:
+            continue
+        payload = "\n".join(fields)
+        if payload == "[DONE]":
+            if not finished or chunks == 0:
+                raise ValueError("SSE_PREMATURE_DONE")
+            done = True
+            continue
+        row = response_object(payload.encode("utf-8"))
+        # OpenAI stream_options.include_usage permits a final usage-only chunk.
+        if row.get("choices") == [] and finished and type(row.get("usage")) is dict:
+            continue
+        if finished:
+            raise ValueError("SSE_AFTER_FINISH")
+        finish = response_choice(row, stream=True)
+        chunks += 1
+        if finish is not None:
+            finished = True
+    if not done:
+        raise ValueError("SSE_MISSING_DONE")
+
+
 class ModelServer(socketserver.UnixStreamServer):
     # A serial server deliberately prevents parallel inference through this
     # capability. Requests and responses are never logged or retained.
@@ -202,29 +283,33 @@ class Handler(BaseHTTPRequestHandler):
                                              or not 0 < int(declared) <= MAX_RESPONSE):
                     self.deny(502)
                     return
-                self.close_connection = True
-                self.send_response(200)
-                self.send_header("Content-Type", content_type)
-                self.send_header("Connection", "close")
-                self.end_headers()
-                started = True
-                total = 0
+                # Buffer at most MAX_RESPONSE bytes. A partial protocol body
+                # must never be delivered as HTTP 200 or counted as completed.
+                payload = bytearray()
                 deadline = min(self.server.deadline, time.monotonic() + TIMEOUT)
                 while True:
                     if time.monotonic() >= deadline:
                         raise TimeoutError("RESPONSE_DEADLINE")
-                    data = response.read1(min(65536, MAX_RESPONSE + 1 - total))
+                    data = response.read1(min(65536, MAX_RESPONSE + 1 - len(payload)))
                     if not data:
                         break
-                    total += len(data)
-                    if total > MAX_RESPONSE:
+                    payload.extend(data)
+                    if len(payload) > MAX_RESPONSE:
                         raise ValueError("RESPONSE_LIMIT")
-                    self.wfile.write(data)
-                    self.wfile.flush()
-                if total == 0 or (declared is not None and total != int(declared)):
+                if declared is not None and len(payload) != int(declared):
                     raise ValueError("RESPONSE_TRUNCATED")
+                validate_response(content_type, bytes(payload))
+                self.close_connection = True
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(payload)))
+                self.send_header("Connection", "close")
+                self.end_headers()
+                started = True
+                self.wfile.write(payload)
+                self.wfile.flush()
                 self.server.completed += 1
-        except (OSError, ValueError, http.client.HTTPException):
+        except (OSError, ValueError, UnicodeError, RecursionError, http.client.HTTPException):
             if not started:
                 self.deny(502)
             else:

@@ -243,44 +243,79 @@ class WorkspaceTests(unittest.TestCase):
         from unittest.mock import MagicMock, patch
         body = json.dumps({"model": proxy.MODEL,
                            "messages": [{"role": "user", "content": "fixture"}]}).encode()
-        data = b"{}"
+        data = b'{"choices":[{"index":0,"message":{"role":"assistant","content":"ok"},"finish_reason":"stop"}]}'
+        chunk = b'data: {"choices":[{"index":0,"delta":{"content":"ok"},"finish_reason":null}]}\n\n'
+        finish = b'data: {"choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}\n\n'
+        done = b'data: [DONE]\n\n'
+        cases = (
+            ("application/json", data, str(len(data)), True),
+            ("application/json", data, None, True),
+            ("application/json", data, str(len(data) + 1), False),
+            ("application/json", data[:-1], None, False),
+            ("application/json", b'{}', None, False),
+            ("application/json", data.replace(b'"stop"', b'null'), None, False),
+            ("application/json", data + b'{}', None, False),
+            ("application/json", data.replace(b'"index":0', b'"index":0,"index":1'), None, False),
+            ("text/event-stream", chunk + finish + done, None, True),
+            ("text/event-stream", (chunk + finish + done).replace(b'\n', b'\r\n'), None, True),
+            ("text/event-stream", chunk + finish, None, False),
+            ("text/event-stream", chunk + finish, str(len(chunk + finish)), False),
+            ("text/event-stream", chunk + finish + done[:-1], None, False),
+            ("text/event-stream", chunk + done, None, False),
+            ("text/event-stream", done, None, False),
+            ("text/event-stream", chunk + finish + done + chunk, None, False),
+            ("text/event-stream", chunk + finish + done + done, None, False),
+            ("text/event-stream", b'data: {"choices":\n\n' + finish + done, None, False),
+            ("text/event-stream", chunk + finish + b'data: {"choices":[],"usage":{}}\n\n' + done,
+             None, True),
+        )
         with tempfile.TemporaryDirectory() as tmp:
             endpoint = Path(tmp) / "model.sock"
             with proxy.ModelServer(endpoint, proxy.Handler) as server:
                 server.timeout = 2
-                for declared, expected in (("2", 1), ("3", 1)):
-                    with patch.object(proxy.http.client, "HTTPConnection") as upstream:
-                        response = MagicMock()
-                        response.status = 200
-                        response.headers.get_content_type.return_value = "application/json"
-                        response.getheader.return_value = declared
-                        response.read1.side_effect = [data, b""]
-                        upstream.return_value.getresponse.return_value.__enter__.return_value = response
-                        thread = threading.Thread(target=server.handle_request)
-                        thread.start()
-                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
-                            client.settimeout(3)
-                            client.connect(str(endpoint))
-                            request = (b"POST /v1/chat/completions HTTP/1.0\r\n"
-                                       b"Content-Type: application/json\r\n"
-                                       b"Authorization: MUST-NOT-FORWARD\r\n"
-                                       + b"Content-Length: " + str(len(body)).encode()
-                                       + b"\r\n\r\n" + body)
-                            client.sendall(request)
-                            client.shutdown(socket.SHUT_WR)
-                            received = client.makefile("rb").read()
-                        thread.join(3)
-                        self.assertFalse(thread.is_alive())
-                        self.assertIn(b"200", received.split(b"\r\n", 1)[0])
-                        upstream.assert_called_once_with("127.0.0.1", 11434, timeout=proxy.TIMEOUT)
-                        args, kwargs = upstream.return_value.request.call_args
-                        self.assertEqual(args, ("POST", proxy.PATH))
-                        self.assertNotIn("Authorization", kwargs["headers"])
-                        self.assertEqual(json.loads(kwargs["body"])["model"], proxy.MODEL)
-                        self.assertEqual(server.completed, expected)
-                self.assertEqual(server.forwarded, 2)
-                self.assertEqual(server.completed, 1)
-                self.assertEqual(server.denied, 1)
+                # Use a test-only call budget to exercise all fixtures over
+                # the real Unix transport; production MAX_CALLS is unchanged.
+                with patch.object(proxy, "MAX_CALLS", len(cases)):
+                    for content_type, payload, declared, valid in cases:
+                        with self.subTest(content_type=content_type, declared=declared, valid=valid):
+                            before = server.completed
+                            with patch.object(proxy.http.client, "HTTPConnection") as upstream:
+                                response = MagicMock()
+                                response.status = 200
+                                response.headers.get_content_type.return_value = content_type
+                                response.getheader.return_value = declared
+                                # Force boundaries inside JSON and SSE frames.
+                                response.read1.side_effect = [
+                                    payload[pos:pos + 7] for pos in range(0, len(payload), 7)
+                                ] + [b""]
+                                upstream.return_value.getresponse.return_value.__enter__.return_value = response
+                                thread = threading.Thread(target=server.handle_request)
+                                thread.start()
+                                with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                                    client.settimeout(3)
+                                    client.connect(str(endpoint))
+                                    request = (b"POST /v1/chat/completions HTTP/1.0\r\n"
+                                               b"Content-Type: application/json\r\n"
+                                               b"Authorization: MUST-NOT-FORWARD\r\n"
+                                               + b"Content-Length: " + str(len(body)).encode()
+                                               + b"\r\n\r\n" + body)
+                                    client.sendall(request)
+                                    client.shutdown(socket.SHUT_WR)
+                                    received = client.makefile("rb").read()
+                                thread.join(3)
+                                self.assertFalse(thread.is_alive())
+                                headers, returned = received.split(b"\r\n\r\n", 1)
+                                self.assertIn(b"200" if valid else b"502", headers.split(b"\r\n", 1)[0])
+                                self.assertEqual(returned, payload if valid else b"")
+                                upstream.assert_called_once_with("127.0.0.1", 11434, timeout=proxy.TIMEOUT)
+                                args, kwargs = upstream.return_value.request.call_args
+                                self.assertEqual(args, ("POST", proxy.PATH))
+                                self.assertNotIn("Authorization", kwargs["headers"])
+                                self.assertEqual(json.loads(kwargs["body"])["model"], proxy.MODEL)
+                                self.assertEqual(server.completed, before + int(valid))
+                self.assertEqual(server.forwarded, len(cases))
+                self.assertEqual(server.completed, sum(case[3] for case in cases))
+                self.assertEqual(server.denied, sum(not case[3] for case in cases))
 
     def test_fixed_runtime_failure_categories(self):
         self.assertEqual(i.fixed_failure(ValueError("MCP_RED_EDIT_PASS_INCOMPLETE")),
