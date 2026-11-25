@@ -94,9 +94,8 @@ jobs:
                   report["rulesets"].append(entry)
                   try:
                       detail = a.api("GET", f"/rulesets/{rid}?includes_parents=false")
-                      actors = detail.get("bypass_actors")
-                      if isinstance(actors, list):
-                          entry["bypass_visibility"] = "empty" if not actors else "nonempty"
+                      entry["bypass_visibility"] = gate.ruleset_bypass_evidence(detail)
+                      entry["current_user_can_bypass"] = detail.get("current_user_can_bypass", "unknown")
                       params = [r.get("parameters", {}) for r in detail.get("rules", [])
                                 if r.get("type") == "required_status_checks"]
                       entry["strict_checks_enabled"] = any(
@@ -547,9 +546,8 @@ jobs:
                   report["rulesets"].append(entry)
                   try:
                       detail = a.api("GET", f"/rulesets/{rid}?includes_parents=false")
-                      actors = detail.get("bypass_actors")
-                      if isinstance(actors, list):
-                          entry["bypass_visibility"] = "empty" if not actors else "nonempty"
+                      entry["bypass_visibility"] = gate.ruleset_bypass_evidence(detail)
+                      entry["current_user_can_bypass"] = detail.get("current_user_can_bypass", "unknown")
                       params = [r.get("parameters", {}) for r in detail.get("rules", [])
                                 if r.get("type") == "required_status_checks"]
                       entry["strict_checks_enabled"] = any(
