@@ -580,5 +580,54 @@ class HistoricalRoutingTests(unittest.TestCase):
             self.assertEqual(len(writes), int(scenario == "valid"))
 
 
+class SupervisedFeedbackTests(unittest.TestCase):
+    def test_authenticated_negative_review_is_routed_without_granting_authority(self):
+        import gaslux_supervised_admission as gate
+        import gaslux_distro_admission as admission
+        from unittest.mock import patch
+        head, base = "a" * 40, "b" * 40
+        env = {"GITHUB_REPOSITORY": triage.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule"}
+        repo = {"full_name": triage.REPO}
+        pr = {"state": "open", "head": {"sha": head, "repo": repo},
+              "base": {"sha": base, "ref": "dev", "repo": repo},
+              "user": {"id": 41898282, "login": "github-actions[bot]"}}
+        for scenario in ("valid", "wrong_actor", "old_head", "comment", "paused", "changed_review"):
+            review = {"id": 101, "user": {"id": 999 if scenario == "wrong_actor" else 123},
+                      "commit_id": base if scenario == "old_head" else head,
+                      "state": "COMMENTED" if scenario == "comment" else "CHANGES_REQUESTED"}
+            calls, writes = [], []
+            def get(method, route):
+                self.assertEqual(method, "GET")
+                if route == "/pulls/500":
+                    return pr
+                if route == "/git/ref/heads/dev":
+                    return {"object": {"sha": base}}
+                if route.endswith("/reviews?per_page=100"):
+                    calls.append(route)
+                    return [] if scenario == "changed_review" and len(calls) > 1 else [review]
+                self.fail(route)
+            def post(method, route, body):
+                self.assertEqual((method, route), ("POST", "/issues"))
+                writes.append(body)
+                return {"number": 501}
+            with patch.dict("os.environ", dict(env, GASLUX_AUTONOMY_PAUSED="true" if scenario == "paused" else ""), clear=True), \
+                 patch.object(gate, "configured_reviewers", return_value=(123, {"zorin": 456})), \
+                 patch.object(gate, "discover", return_value={500: ("zorin", gate.DYNAMIC_SCOPE, head)}), \
+                 patch.object(admission, "api", side_effect=get), \
+                 patch.object(triage, "all_issues", return_value=[]), \
+                 patch.object(triage, "api", side_effect=post):
+                if scenario == "paused":
+                    with self.assertRaises(RuntimeError):
+                        triage.sync_supervised_feedback()
+                else:
+                    result = triage.sync_supervised_feedback()
+                    self.assertEqual(result["status"] == "supervised_feedback_routed", scenario == "valid")
+            self.assertEqual(len(writes), int(scenario == "valid"))
+            if writes:
+                self.assertIn("never inherit approvals", writes[0]["body"])
+                self.assertIn("pullrequestreview-101", writes[0]["body"])
+
+
 if __name__ == "__main__":
     unittest.main()
