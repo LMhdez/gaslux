@@ -118,17 +118,26 @@ class SupervisedIntegrationTests(unittest.TestCase):
     def test_ruleset_protection_requires_visible_non_bypassable_active_policy(self):
         for scenario in ("valid", "no_rules", "hidden_bypass", "bypass", "wrong_target",
                          "wrong_source", "inactive", "loose", "missing_check", "no_delete",
-                         "no_force_block", "no_pr", "different_rules", "base_drift", "denied"):
+                         "no_force_block", "no_pr", "different_rules", "base_drift", "denied",
+                         "no_review_count", "stale_reviews", "last_push", "unresolved_threads",
+                         "wrong_check_app", "restrict_updates"):
             rules = [
                 {"type": "deletion"}, {"type": "non_fast_forward"},
-                {"type": "pull_request", "parameters": {}},
+                {"type": "pull_request", "parameters": {
+                    "required_approving_review_count": 0 if scenario == "no_review_count" else 2,
+                    "dismiss_stale_reviews_on_push": scenario != "stale_reviews",
+                    "require_last_push_approval": scenario != "last_push",
+                    "required_review_thread_resolution": scenario != "unresolved_threads"}},
                 {"type": "required_status_checks", "parameters": {
                     "strict_required_status_checks_policy": scenario != "loose",
                     "do_not_enforce_on_create": False,
                     "required_status_checks": [
-                        {"context": name} for name in sorted(A.COMMON_CHECKS)
+                        {"context": name, "integration_id": 1 if scenario == "wrong_check_app" else 15368}
+                        for name in sorted(A.COMMON_CHECKS)
                         if scenario != "missing_check" or name != "evidence-python"]}},
             ]
+            if scenario == "restrict_updates":
+                rules.append({"type": "update"})
             missing = {"no_delete": "deletion", "no_force_block": "non_fast_forward",
                        "no_pr": "pull_request"}.get(scenario)
             rules = [r for r in rules if r["type"] != missing]
@@ -176,10 +185,15 @@ class SupervisedIntegrationTests(unittest.TestCase):
     def test_strict_dev_policy_fail_closed(self):
         for scenario in ("valid", "no_rule", "loose", "no_checks", "admin_bypass",
                          "force_push", "delete", "pr_bypass", "force_bypass",
-                         "effective_bypass", "wrong_base", "graphql_error", "unreadable"):
-            checks = ["evidence-python"]
+                         "effective_bypass", "wrong_base", "graphql_error", "unreadable",
+                         "no_review_count", "stale_reviews", "last_push", "unresolved_threads"):
+            checks = sorted(A.COMMON_CHECKS)
             rule = {"isAdminEnforced": True, "requiresStatusChecks": True,
                     "requiresStrictStatusChecks": True, "requiredStatusCheckContexts": checks,
+                    "requiredApprovingReviewCount": 0 if scenario == "no_review_count" else 2,
+                    "dismissesStaleReviews": scenario != "stale_reviews",
+                    "requireLastPushApproval": scenario != "last_push",
+                    "requiresConversationResolution": scenario != "unresolved_threads",
                     "allowsForcePushes": False, "allowsDeletions": False,
                     "bypassPullRequestAllowances": {"totalCount": 0},
                     "bypassForcePushAllowances": {"totalCount": 0}}
