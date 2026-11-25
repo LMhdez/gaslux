@@ -158,6 +158,38 @@ def style_check(tree, dependencies, role, work):
     return results
 
 
+def normalize_addition(tree, dependencies, role, work, addition):
+    """Apply only pinned Ruff safe fixes/format to the admitted function copy.
+
+    The actual checkout and product archive are read-only here. The broker
+    and independent Factory verifier subsequently validate the final bytes.
+    """
+    broker.validate_source(role, addition)
+    ruff = dependencies / "bin" / "ruff"
+    if not ruff.is_file() or ruff.is_symlink():
+        raise ValueError("SHADOW_RUFF_UNAVAILABLE")
+    with tempfile.TemporaryDirectory(prefix="style-", dir=work) as tmp:
+        scratch = Path(tmp)
+        candidate = scratch / "addition.py"
+        broker.write_new(candidate, addition.encode("utf-8"))
+        prefix = boundary.sandbox_base() + [
+            "--ro-bind", str(tree), "/product", "--ro-bind", str(dependencies), "/deps",
+            "--bind", str(scratch), "/scratch", "--setenv", "HOME", "/scratch",
+            "--setenv", "XDG_CACHE_HOME", "/scratch", "--setenv", "PATH", "/usr/bin:/bin",
+            "--chdir", "/product", "/deps/bin/ruff"]
+        config = ["--config", "/product/auto_tests/pyproject.toml", "/scratch/addition.py"]
+        # Exit 1 means residual lint findings, not permission to skip checks.
+        for args, allowed in ((["check", "--fix", "--no-unsafe-fixes", "--no-cache"], (0, 1)),
+                              (["format", "--no-cache"], (0,))):
+            code, _, _ = trial.bounded_process(prefix + args + config, scratch,
+                                               {"PATH": "/usr/bin:/bin"}, timeout=60)
+            if code not in allowed:
+                raise ValueError("SHADOW_STYLE_NORMALIZATION_FAILED")
+        normalized = broker.read_bounded(candidate, broker.MAX_SOURCE).decode("utf-8")
+        broker.validate_source(role, normalized)
+        return normalized
+
+
 def factory_contract(repo, role, base, task, addition, expected, directory):
     # Exercise the existing independent verifier's exact report/byte contract
     # without exporting a publishable artifact or enabling the publisher.
@@ -238,7 +270,18 @@ def run_round(binary, repo, base, dependencies, role, context, round_root, task,
     if not iteration["accepted"] or len(selected) != 1:
         row["failure"] = "SHADOW_ITERATION_RED"
         return row, None
-    addition = selected[0]
+    raw_addition = selected[0]
+    raw_digest = factory.sha256(raw_addition.encode())
+    if raw_digest != iteration.get("candidate_sha256"):
+        raise ValueError("SHADOW_NATIVE_DIGEST_MISMATCH")
+    row["stage"] = "style_normalization"
+    addition = normalize_addition(tree, dependencies, role, tests, raw_addition)
+    row["style_normalization"] = {
+        "input_sha256": raw_digest,
+        "output_sha256": factory.sha256(addition.encode()),
+        "changed": addition != raw_addition,
+        "profile": "ruff-safe-fixes-format-v1",
+    }
     row["stage"] = "candidate_composition"
     expected = apply_candidate(tree, role, task, addition)
     row.update(expected)
@@ -326,7 +369,8 @@ def evaluate(binary, repo, base, dependencies, role, context, *, selected_artifa
                    "SHADOW_SOURCE_CHANGED", "SHADOW_FUNCTIONAL_REJECTED", "SHADOW_READBACK",
                    "SHADOW_BASELINE_RED", "SHADOW_ITERATION_RED", "SHADOW_CANDIDATE_RED",
                    "SHADOW_STYLE_RED", "SHADOW_RUFF_UNAVAILABLE", "SHADOW_FACTORY_CONTRACT_MISMATCH",
-                   "SHADOW_BASELINE_STYLE_RED", "SHADOW_BUDGET_EXHAUSTED", "SHADOW_TEST_COUNT_MISMATCH"}
+                   "SHADOW_BASELINE_STYLE_RED", "SHADOW_BUDGET_EXHAUSTED", "SHADOW_TEST_COUNT_MISMATCH",
+                   "SHADOW_STYLE_NORMALIZATION_FAILED", "SHADOW_NATIVE_DIGEST_MISMATCH"}
         report["failure"] = str(error) if type(error) is ValueError and str(error) in allowed else type(error).__name__
     report["elapsed_seconds"] = round(time.monotonic() - started, 2)
     return report
