@@ -287,3 +287,33 @@ A green probe does not prove actual publication or merge.
 #417/#421 remain at their prior heads, #419 workflow overlap still
 requires reconciliation. Independent review/actual main gates are not
 waived by this implementation or by the user's engineering delegation.
+
+
+### Actual historical successor collision (2026-11-25, 08:16 UTC)
+
+Final prior HEAD cc7665c6046f07ace4147a9704406fd17742b920:
+45572334845 (27+22 PASS), 45572334893 (32+19+15 PASS).
+The real probe selected no candidate; product tests skipped. Its green
+job status was NOT a repaired product or successful publication.
+Direct API lookup established that both proposed successor branch names
+already exist on current dev d89f1547:
+
+- Zorin #409, closed/unmerged HEAD a72fad6f1411b2eb1aa55f20a413d51707ce4152,
+  historical duplicate of #395, failed read-only contracts (formatting).
+- Bazzite #415, closed/unmerged HEAD 2031d599ec65fb8b4a9ddb1bb4318ea90d3ca306,
+  historical duplicate of #400, failed read-only contracts (formatting).
+
+Both closure decisions explicitly preserve the older PR and history.
+Do not create another equivalent PR or reopen these automatically based
+on that text. Reconcile historical successors through independently
+reviewed exact-head changes; no previous failure or approval transfers.
+The runtime selector still refuses any successor history or existing ref.
+The new diagnostic records specific reasons and, after passing the
+same stale-candidate/CI/scope/ancestry/source+test gates, supplies a
+build-only plan to the read-only probe. This exercises real canonical
+repair and regressions without bypassing the history guard. It labels
+history-blocked success separately from publication eligibility and
+never attempts publication or merge. New exact HEAD CI required.
+#419 has an unresolved OpenCode containment/event-audit finding and
+failed current CI; do not combine its unapproved changes to claim a
+fully autonomous cycle. No changes to #417/#421 or old closed PRs.
