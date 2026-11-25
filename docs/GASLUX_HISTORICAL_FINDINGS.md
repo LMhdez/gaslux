@@ -65,3 +65,7 @@ O catálogo continua parcial, não contém aprovação atual, e não modifica fo
 | q4os | Q4OS-RUNLAB-BOUNDARY-01: Real paused QEMU diagnostic reuses measured FD/peer primitives without issuing operational session; independent review requested, no guest boot. | [#338](https://github.com/LMhdez/gaslux/pull/338#issuecomment-7080518502) | remediation_reported_reaudit_required |
 
 Metadados de 10 runs adicionais conferidos no GitHub. Pareceres de conta partilhada não constituem aprovação formal independente. O catálogo permanece parcial, sem entrada em evidence.json. Não reexecutámos os ensaios históricos nesta extensão.
+
+## 25-11-2026 — preservação e extensão
+
+9 ZIPs (69 membros) descarregados e comparados com os SHA-256 GitHub, CRC, membros únicos/planos e ausência de symlinks; [manifesto](GASLUX_HISTORICAL_ARCHIVE_VERIFICATION.json). Bytes originais disponibilizados ao utilizador em bundle de sessão, não publicados no repositório; guardar cópia durável autorizada. ID 14757314819 não associado a run verificado. Conteúdo confirma DENY_NO_WRITER Pop, Q4OS apenas fixture, Bazzite sem binding e ausência de GRUB nativo/rollback Mint. Não constitui atestação de origem guest nem autorização. Catálogo: 29 registos e 35 runs; acrescentados bloqueios documentados #328 e #345, não pareceres Safety independentes. O trabalho concorrente sobre hash_differential e os restantes findings foi preservado. Nenhuma mudança a código, workflows ou gates nesta atualização documental. CI e revisão independente continuam necessárias.

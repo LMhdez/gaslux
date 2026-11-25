@@ -436,6 +436,38 @@
       "merge_authorized": false,
       "writer_authorized": false,
       "release_eligible": false
+    },
+    {
+      "role": "zorin",
+      "id": "CAT-328-INDEPENDENT-SAFETY",
+      "pr": 328,
+      "review_sha": "f801d762a285b6a7b65d8f460cb857c1216909cf",
+      "comment": 7080428282,
+      "status": "producer_blocker",
+      "summary": "Integrator reports synthetic FD CI green but blocks merge pending independent FD/TOCTOU/ownership review. Catalog ID, not Safety finding.",
+      "fix_pr": null,
+      "fix_sha": null,
+      "fix_comment": null,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "role": "q4os",
+      "id": "CAT-345-NATIVE-READINESS",
+      "pr": 345,
+      "review_sha": "ad1e3fee3b7b20b765daa89b525fff806e5b5a08",
+      "comment": 7080802390,
+      "status": "producer_blocker",
+      "summary": "Readiness remains deny-only; no fresh ISO bytes, signed metadata or live guest boot at this HEAD. Catalog ID.",
+      "fix_pr": 351,
+      "fix_sha": "be3bda9eda2598cff8943af48580112e5922cd7e",
+      "fix_comment": 7081160990,
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
     }
   ],
   "runs": [
@@ -666,6 +698,20 @@
     {
       "run": 45032436274,
       "sha": "72018d795ce9aeec5f2918a888c12bec542fd2c9",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45030297731,
+      "sha": "f801d762a285b6a7b65d8f460cb857c1216909cf",
+      "conclusion": "success",
+      "verification": "run_metadata",
+      "formal_gate_verified": false
+    },
+    {
+      "run": 45034499474,
+      "sha": "ad1e3fee3b7b20b765daa89b525fff806e5b5a08",
       "conclusion": "success",
       "verification": "run_metadata",
       "formal_gate_verified": false

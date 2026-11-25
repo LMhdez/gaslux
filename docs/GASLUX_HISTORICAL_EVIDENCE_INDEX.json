@@ -87,7 +87,10 @@
         "availability_at_audit": "listed_unexpired",
         "expires_at": "2026-11-27T09:16:57Z",
         "github_digest_sha256": "2bcf1d1b8277bbaed7c0c7aa7545275412f2e8ebcd570cad07535996f5b0cab3",
-        "archive_reverified_this_audit": false
+        "archive_reverified_this_audit": true,
+        "archive_verification_date": "2026-11-25",
+        "archive_verification_manifest": "GASLUX_HISTORICAL_ARCHIVE_VERIFICATION.json",
+        "raw_archive_committed": false
       },
       "formal_gate_verified": false,
       "merge_authorized": false,
@@ -107,7 +110,10 @@
         "availability_at_audit": "listed_unexpired",
         "expires_at": "2026-11-27T10:02:22Z",
         "github_digest_sha256": "2a8cf4d29781538a15dad6965aa35251bae29a3c3146d0cc7442f35e48cbd021",
-        "archive_reverified_this_audit": false
+        "archive_reverified_this_audit": true,
+        "archive_verification_date": "2026-11-25",
+        "archive_verification_manifest": "GASLUX_HISTORICAL_ARCHIVE_VERIFICATION.json",
+        "raw_archive_committed": false
       },
       "formal_gate_verified": false,
       "merge_authorized": false,
@@ -127,7 +133,10 @@
         "availability_at_audit": "listed_unexpired",
         "expires_at": "2026-12-06T20:13:45Z",
         "github_digest_sha256": "9f387e95c5fe1e9d7166aa150a2eb11fbf91411224d4ac982c92827af06a2a82",
-        "archive_reverified_this_audit": false
+        "archive_reverified_this_audit": true,
+        "archive_verification_date": "2026-11-25",
+        "archive_verification_manifest": "GASLUX_HISTORICAL_ARCHIVE_VERIFICATION.json",
+        "raw_archive_committed": false
       },
       "formal_gate_verified": false,
       "merge_authorized": false,
@@ -147,7 +156,10 @@
         "availability_at_audit": "listed_unexpired",
         "expires_at": "2026-12-06T20:41:46Z",
         "github_digest_sha256": "63c48150bb0108be5934c5b24dc9079780ec316dc319ce11cfb68258d69229e0",
-        "archive_reverified_this_audit": false
+        "archive_reverified_this_audit": true,
+        "archive_verification_date": "2026-11-25",
+        "archive_verification_manifest": "GASLUX_HISTORICAL_ARCHIVE_VERIFICATION.json",
+        "raw_archive_committed": false
       },
       "formal_gate_verified": false,
       "merge_authorized": false,
