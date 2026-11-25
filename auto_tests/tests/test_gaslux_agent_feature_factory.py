@@ -843,6 +843,53 @@ class DeterministicRepairTests(unittest.TestCase):
                     else:
                         self.assertIsNone(plan)
 
+    def test_create_only_ref_rejects_concurrent_creation_and_identical_ref(self):
+        # Real Git protocol on disposable local repositories, no GitHub writes.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "work"
+            remote = Path(tmp) / "remote.git"
+            root.mkdir()
+            def cmd(*args):
+                return subprocess.check_output(
+                    ["git", "-C", str(root), *args],
+                    text=True, stderr=subprocess.STDOUT, timeout=20).strip()
+            subprocess.run(["git", "init", "--bare", str(remote)], check=True,
+                           capture_output=True, timeout=20)
+            cmd("init")
+            cmd("config", "user.name", "Safety fixture")
+            cmd("config", "user.email", "fixture@example.invalid")
+            cmd("remote", "add", "origin", str(remote))
+            (root / "data").write_text("baseline\n")
+            cmd("add", "data")
+            cmd("commit", "-m", "baseline")
+            base = cmd("rev-parse", "HEAD")
+            ref = "refs/heads/" + factory.origin_branch("zorin", base)
+            self.assertEqual(cmd("ls-remote", "origin", ref), "")
+            (root / "data").write_text("candidate\n")
+            cmd("commit", "-am", "candidate")
+            candidate = cmd("rev-parse", "HEAD")
+            # The ref appears after the absence check, at an ancestor.
+            cmd("push", "origin", f"{base}:{ref}")
+            # RED: historical ordinary push is a permitted fast-forward.
+            cmd("push", "origin", f"HEAD:{ref}")
+            self.assertEqual(cmd("ls-remote", "origin", ref).split()[0], candidate)
+            # Use an independent second role for the actual GREEN race.
+            ref2 = "refs/heads/" + factory.origin_branch("bazzite", base)
+            self.assertEqual(cmd("ls-remote", "origin", ref2), "")
+            cmd("push", "origin", f"{base}:{ref2}")
+            with self.assertRaises(subprocess.CalledProcessError):
+                factory.create_successor_ref(root, "bazzite", base)
+            self.assertEqual(cmd("ls-remote", "origin", ref2).split()[0], base)
+            # Positive: create exclusively on an absent ref.
+            ref3 = "refs/heads/" + factory.origin_branch("q4os", base)
+            self.assertEqual(cmd("ls-remote", "origin", ref3), "")
+            factory.create_successor_ref(root, "q4os", base)
+            self.assertEqual(cmd("ls-remote", "origin", ref3).split()[0], candidate)
+            # Already identical is not an exclusive create.
+            with self.assertRaises((RuntimeError, subprocess.CalledProcessError)):
+                factory.create_successor_ref(root, "q4os", base)
+            self.assertEqual(cmd("ls-remote", "origin", ref3).split()[0], candidate)
+
     def test_workflow_reuses_existing_isolated_jobs(self):
         workflow = (SCRIPT.parents[2] /
                     ".github/workflows/gaslux-agent-feature-factory.yml").read_text()
