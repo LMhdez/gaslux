@@ -68,12 +68,115 @@ def canonical_scope(pr, role, scope, head):
     return parent
 
 
+VM_PLATFORMS = ("windows10-bios-mbr", "windows10-uefi-gpt", "windows11-uefi-gpt")
+VM_MARKER = re.compile(
+    r"GASLUX-VM-V1 role=([a-z]+) platform=([a-z0-9-]+) "
+    r"head=([0-9a-f]{40}) base=([0-9a-f]{40}) "
+    r"run=([1-9][0-9]{0,18}) artifact=([1-9][0-9]{0,18}) "
+    r"sha256=([0-9a-f]{64})"
+)
+
+
+def vm_acceptance_verified(reviews, role, head, base, author, safety, owner):
+    """Authenticate independent installed-lifecycle evidence, not live ISO proof.
+
+    The reviewer is an externally controlled observer who independently checks
+    the archived, exact candidate's complete install/boot/update/uninstall/
+    rollback evidence. GitHub metadata binds that review to immutable runs and
+    artifact digests. The producer workflow must be separately provisioned and
+    reviewed; a missing producer or observer is never treated as success.
+    """
+    try:
+        observer_raw = os.getenv("GASLUX_VM_OBSERVER_ID", "")
+        workflow_raw = os.getenv("GASLUX_VM_ACCEPTANCE_WORKFLOW_ID", "")
+        if not all(re.fullmatch(r"[1-9][0-9]{0,18}", x)
+                   for x in (observer_raw, workflow_raw)):
+            return False
+        observer, workflow = int(observer_raw), int(workflow_raw)
+        if (role not in factory.TASKS or not all(admission.valid_sha(x) for x in (head, base))
+                or any(type(x) is not int or x <= 0 for x in (author, safety, owner))
+                or observer in (author, safety, owner, *admission.BOTS.values())):
+            return False
+        rows = admission.complete_page(reviews)
+        if any(x.get("state") == "CHANGES_REQUESTED" for x in rows):
+            return False
+        own = [x for x in rows if x.get("user", {}).get("id") == observer
+               and x.get("state") != "COMMENTED"]
+        if len(own) != 1 or own[0].get("state") != "APPROVED" or own[0].get("commit_id") != head:
+            return False
+        platforms = VM_PLATFORMS[1:] if role == "bazzite" else VM_PLATFORMS
+        receipts = {}
+        for line in str(own[0].get("body", "")).splitlines():
+            if not line.startswith("GASLUX-VM-V1"):
+                continue
+            m = VM_MARKER.fullmatch(line)
+            if not m:
+                return False
+            distro, platform, observed_head, observed_base, run, artifact, digest = m.groups()
+            if (distro != role or platform not in platforms or platform in receipts
+                    or observed_head != head or observed_base != base):
+                return False
+            receipts[platform] = (int(run), int(artifact), digest)
+        if set(receipts) != set(platforms) or len({v[1] for v in receipts.values()}) != len(platforms):
+            return False
+        # This is a distinct, separately reviewed full installed-guest
+        # workflow. Existing lifecycle/read-only workflows cannot substitute.
+        definition = admission.api("GET", f"/actions/workflows/{workflow}")
+        path = definition.get("path")
+        if (definition.get("id") != workflow or definition.get("state") != "active"
+                or path != ".github/workflows/gaslux-full-vm-acceptance.yml"):
+            return False
+        # Refuse a candidate with a different lab workflow than trusted main.
+        trusted = admission.api("GET", "/git/ref/heads/main")["object"]["sha"]
+        if not admission.valid_sha(trusted) or admission.source_at(path, head) != admission.source_at(path, trusted):
+            return False
+        for platform, (run_id, artifact_id, digest) in receipts.items():
+            run = admission.api("GET", f"/actions/runs/{run_id}")
+            attempt = run.get("run_attempt")
+            if (run.get("id") != run_id or run.get("workflow_id") != workflow
+                    or run.get("head_sha") != head or run.get("event") != "pull_request"
+                    or run.get("repository", {}).get("id") != admission.REPOSITORY_ID
+                    or run.get("head_repository", {}).get("id") != admission.REPOSITORY_ID
+                    or run.get("status") != "completed" or run.get("conclusion") != "success"
+                    or type(attempt) is not int or attempt <= 0):
+                return False
+            job_data = admission.api("GET", f"/actions/runs/{run_id}/attempts/{attempt}/jobs?per_page=100")
+            jobs = admission.complete_page(job_data.get("jobs"))
+            if job_data.get("total_count") != len(jobs):
+                return False
+            required = f"full-installed-lifecycle ({role}, {platform})"
+            matching = [j for j in jobs if j.get("name") == required]
+            if (len(matching) != 1 or any(j.get("head_sha") != head
+                    or j.get("run_id") != run_id or j.get("run_attempt") != attempt
+                    or j.get("status") != "completed" or j.get("conclusion") != "success"
+                    for j in matching)):
+                return False
+            data = admission.api("GET", f"/actions/runs/{run_id}/artifacts?per_page=100")
+            artifacts = admission.complete_page(data.get("artifacts"))
+            if data.get("total_count") != len(artifacts):
+                return False
+            matching = [a for a in artifacts if a.get("id") == artifact_id]
+            if len(matching) != 1:
+                return False
+            artifact = matching[0]
+            if (artifact.get("name") != f"gaslux-full-vm-{role}-{platform}"
+                    or artifact.get("expired") is not False
+                    or artifact.get("digest") != "sha256:" + digest
+                    or type(artifact.get("size_in_bytes")) is not int
+                    or not 0 < artifact["size_in_bytes"] <= 64 * 1024 * 1024):
+                return False
+        return True
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
+        return False
+
+
 def inspect(number, role, scope, head, reviewer=None, owner=None, *, allow_ready=False):
     row = {"pr": number, "role": role, "scope": scope, "head": head,
            "base": None, "exact_scope_verified": False, "current_base_verified": False,
            "ci_workflow_provenance_verified": False, "ci_verified": False,
            "technical_objection": None, "safety_review_verified": False,
-           "backend_owner_verified": False, "merge_authorized": False,
+           "backend_owner_verified": False, "full_vm_acceptance_verified": False,
+           "merge_authorized": False,
            "release_eligible": False, "next_action": "VERIFY_SUPERVISED_SCOPE"}
     try:
         if not admission.valid_sha(head) or role not in factory.TASKS or scope not in factory.SUPERVISED_SCOPES:
@@ -109,6 +212,10 @@ def inspect(number, role, scope, head, reviewer=None, owner=None, *, allow_ready
             row["safety_review_verified"] = admission.review_ok(reviews, reviewer, author, head, base)
             row["backend_owner_verified"] = admission.owner_review_ok(
                 reviews, owner, reviewer, author, None, role, head, base, supervised=True)
+            if (scope == factory.SUPERVISED_MEDIA_SCOPE
+                    and row["safety_review_verified"] and row["backend_owner_verified"]):
+                row["full_vm_acceptance_verified"] = vm_acceptance_verified(
+                    reviews, role, head, base, author, reviewer, owner)
         if (admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != base
                 or admission.api("GET", f"/pulls/{number}")["head"]["sha"] != head):
             raise ValueError("Candidate drift during inspection")
@@ -118,7 +225,8 @@ def inspect(number, role, scope, head, reviewer=None, owner=None, *, allow_ready
             "WAIT_OR_REPAIR_SCOPE_CI" if not row["ci_verified"] else
             "INDEPENDENT_SAFETY_REVIEW" if not row["safety_review_verified"] else
             "BACKEND_OWNER_REVIEW" if not row["backend_owner_verified"] else
-            "COLLECT_VM_EVIDENCE" if scope == factory.SUPERVISED_MEDIA_SCOPE else
+            ("PRODUCT_INTEGRATION_ELIGIBLE" if row["full_vm_acceptance_verified"] else
+             "COLLECT_VM_EVIDENCE") if scope == factory.SUPERVISED_MEDIA_SCOPE else
             "TEST_ONLY_INTEGRATION_ELIGIBLE"
         )
     except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError, SyntaxError):
@@ -161,6 +269,21 @@ def eligible_test(row):
             "exact_scope_verified", "current_base_verified",
             "ci_workflow_provenance_verified", "ci_verified",
             "safety_review_verified", "backend_owner_verified"))
+        and row.get("technical_objection") is False
+        and admission.valid_sha(row.get("head"))
+        and admission.valid_sha(row.get("base"))
+    )
+
+
+def eligible_product(row):
+    return (
+        row.get("scope") == factory.SUPERVISED_MEDIA_SCOPE
+        and row.get("next_action") == "PRODUCT_INTEGRATION_ELIGIBLE"
+        and all(row.get(key) is True for key in (
+            "exact_scope_verified", "current_base_verified",
+            "ci_workflow_provenance_verified", "ci_verified",
+            "safety_review_verified", "backend_owner_verified",
+            "full_vm_acceptance_verified"))
         and row.get("technical_objection") is False
         and admission.valid_sha(row.get("head"))
         and admission.valid_sha(row.get("base"))
@@ -240,7 +363,7 @@ def strict_dev_protected(base):
         return False
 
 
-def integrate_one():
+def integrate_one(*, product=False):
     """Trusted-main-only bounded integration, never executes candidate code."""
     if (os.getenv("GITHUB_REPOSITORY") != admission.REPO
             or os.getenv("GITHUB_REF") != "refs/heads/main"
@@ -248,11 +371,13 @@ def integrate_one():
             or os.getenv("GASLUX_AUTONOMY_PAUSED", "").lower() == "true"):
         raise ValueError("Untrusted integration context")
     reviewer, owners = configured_reviewers()
+    expected_scope = factory.SUPERVISED_MEDIA_SCOPE if product else factory.SUPERVISED_TEST_SCOPE
+    eligible = eligible_product if product else eligible_test
     for number, (role, scope, head) in sorted(discover().items()):
-        if scope != factory.SUPERVISED_TEST_SCOPE:
+        if scope != expected_scope:
             continue
         row = inspect(number, role, scope, head, reviewer, owners.get(role), allow_ready=True)
-        if not eligible_test(row):
+        if not eligible(row):
             continue
         base = row["base"]
         if not strict_dev_protected(base):
@@ -265,7 +390,7 @@ def integrate_one():
             subprocess.run(["gh", "pr", "ready", str(number), "--repo", admission.REPO],
                            check=True, timeout=60)
         checked = inspect(number, role, scope, head, reviewer, owners.get(role), allow_ready=True)
-        if not eligible_test(checked) or checked["base"] != base:
+        if not eligible(checked) or checked["base"] != base:
             return {"status": "drift_before_merge", "pr": number, "head": head}
         pr = admission.api("GET", f"/pulls/{number}")
         if (pr.get("draft") is not False or pr.get("mergeable_state") != "clean"
@@ -372,8 +497,10 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     modes = parser.add_mutually_exclusive_group()
     modes.add_argument("--integrate-test", action="store_true")
+    modes.add_argument("--integrate-product", action="store_true")
     modes.add_argument("--independent-safety", action="store_true")
     args = parser.parse_args()
     result = (independent_safety_review() if args.independent_safety else
+              integrate_one(product=True) if args.integrate_product else
               integrate_one() if args.integrate_test else inventory())
     print(json.dumps(result, indent=2, sort_keys=True))
