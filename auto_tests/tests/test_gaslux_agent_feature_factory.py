@@ -896,7 +896,9 @@ class DeterministicRepairTests(unittest.TestCase):
         model = workflow.split("  model:\n", 1)[1].split("  safety:\n", 1)[0]
         safety = workflow.split("  safety:\n", 1)[1].split("  publish_draft:\n", 1)[0]
         publisher = workflow.split("  publish_draft:\n", 1)[1].split("  triage_missing_gates:\n", 1)[0]
-        self.assertIn("if: needs.select.outputs.repair_pr == ''", model)
+        self.assertIn("if: needs.select.outputs.worker == 'direct'", model)
+        self.assertIn("if: needs.select.outputs.worker == 'opencode'", model)
+        self.assertIn("if: needs.select.outputs.worker != 'opencode'", model)
         for part in (model, safety, publisher):
             self.assertIn('--repair-pr "$REPAIR_PR" --repair-head "$REPAIR_HEAD"', part)
         self.assertNotIn("GASLUX_REPAIR_READ_TOKEN", model)

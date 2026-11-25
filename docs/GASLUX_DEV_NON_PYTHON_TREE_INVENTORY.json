@@ -1,0 +1,3536 @@
+{
+  "schema_version": 1,
+  "kind": "dev_tree_metadata_only",
+  "repository": "LMhdez/gaslux",
+  "dev": "d89f1547c50787e4640164e34bfd1863134e2908",
+  "observed_date": "2026-11-25",
+  "coverage": {
+    "total_blobs": 824,
+    "python": 202,
+    "shell": 45,
+    "other": 577,
+    "extensions": {
+      "editorconfig": 1,
+      "gitattributes": 1,
+      "yml": 35,
+      "md": 58,
+      "gitignore": 2,
+      "xaml": 17,
+      "cs": 130,
+      "csproj": 6,
+      "(none)": 5,
+      "json": 23,
+      "sig": 2,
+      "sln": 1,
+      "psd1": 1,
+      "ps1": 125,
+      "resx": 1,
+      "settings": 1,
+      "ico": 1,
+      "xml": 2,
+      "in": 1,
+      "psm1": 23,
+      "manifest": 2,
+      "exe": 2,
+      "ttf": 1,
+      "pf2": 2,
+      "png": 91,
+      "sh": 45,
+      "txt": 3,
+      "pub": 1,
+      "py": 202,
+      "service": 5,
+      "conf": 1,
+      "path": 1,
+      "desktop": 1,
+      "tsv": 1,
+      "plymouth": 1,
+      "script": 1,
+      "example": 1,
+      "toml": 2,
+      "zip": 1,
+      "mbr": 1,
+      "lst": 1,
+      "html": 2,
+      "lock": 1,
+      "patch": 1,
+      "env": 3,
+      "svg": 5,
+      "yaml": 1,
+      "js": 1,
+      "css": 1,
+      "signed": 3,
+      "cfg": 4
+    }
+  },
+  "records": [
+    {
+      "path": ".editorconfig",
+      "blob": "d5fee2d1cffc652ed608b782308e608ca56b2817",
+      "size": 267,
+      "extension": "editorconfig"
+    },
+    {
+      "path": ".gitattributes",
+      "blob": "5128b5731f32c948b28a6726a19214c56c3e5bc4",
+      "size": 176,
+      "extension": "gitattributes"
+    },
+    {
+      "path": ".github/FUNDING.yml",
+      "blob": "075b10f5047461e9160a0a7a3288a0f498aa9ec6",
+      "size": 126,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/bug_report.md",
+      "blob": "cbcf213cdd152a95f0156bdbdd1aad516343406e",
+      "size": 996,
+      "extension": "md"
+    },
+    {
+      "path": ".github/ISSUE_TEMPLATE/feature_request.md",
+      "blob": "b9eb863971ac9b47794f12ab7c9096c6aa9b6783",
+      "size": 607,
+      "extension": "md"
+    },
+    {
+      "path": ".github/PULL_REQUEST_TEMPLATE.md",
+      "blob": "6116c0c7656fda06f7019fdad59e68d14ca2a586",
+      "size": 764,
+      "extension": "md"
+    },
+    {
+      "path": ".github/workflows/auth-dest-128g-readonly.yml",
+      "blob": "e8aa48917f0a1e49054da1ec7d6de50e30d572f0",
+      "size": 8965,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/auth-dest-342-346-canonical.yml",
+      "blob": "d1977e041bb4b24bd83e2456ca34af7e866fce7b",
+      "size": 15275,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/bootstrap-libertix.yml",
+      "blob": "58f7c50ca400b42ccf7c244e2996c83db7958513",
+      "size": 2993,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/cachyos-windows-recovery-evidence.yml",
+      "blob": "fbcb17bb8a7a8fe8c55e8c3fcddcd04d12a72d6d",
+      "size": 3530,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/compact-ovmf-target-disk.yml",
+      "blob": "7d2489fceb8259badfc6bc3406e082fee400216f",
+      "size": 4528,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/contracts-authenticated-destination-readonly.yml",
+      "blob": "b99c8a6738e83a1b2d33462dec877db48dd71a71",
+      "size": 9073,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/core-source-provenance-offline.yml",
+      "blob": "c50247353e2f9b9cfb25223dee421e20183d7883",
+      "size": 5262,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/distro-dossiers-static.yml",
+      "blob": "6e4bfa776b40dfb000c4079cac42fec773475221",
+      "size": 1412,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/distro-ui-schema-offline.yml",
+      "blob": "1d059fbd19a84864a373a1997e58e83d12e96145",
+      "size": 1642,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/gaslux-agent-builder.yml",
+      "blob": "3b2443dbacb4432e91806ed2517c5dcd3f50d8c2",
+      "size": 5061,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/gaslux-ai-observer-rank.yml",
+      "blob": "ef15569af8879027a72439d391184fc4fc7728c0",
+      "size": 3981,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/gaslux-bazzite-atomic-origin.yml",
+      "blob": "4f4cffbfef0ca1273bd0dbe9c14b6e30df7ed389",
+      "size": 3043,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/gaslux-bazzite-iso-signature.yml",
+      "blob": "a9d12f325b5945d6e2c251712bec5a992fa951f7",
+      "size": 4472,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/gaslux-goal-supervisor.yml",
+      "blob": "76e93f6e41ad58e9f8a315ba8aaab47a14c0b94c",
+      "size": 2472,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/gaslux-lab-media-probe.yml",
+      "blob": "e0f10dcb7e558af03ebc5b0a4b2a004fa40e0180",
+      "size": 2030,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/gaslux-local-coder.yml",
+      "blob": "e090141deabdab9a8566cedb592521d630a2e980",
+      "size": 2002,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/gaslux-q4os-official-iso.yml",
+      "blob": "20dca68e39fad026c552b613987a0c47f8e91221",
+      "size": 4949,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/gpt-fd-crosscheck-compat-offline.yml",
+      "blob": "2c7c13170da2efefc76ca0cc19107a2eb8f86900",
+      "size": 3943,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/gpt-identity-gate.yml",
+      "blob": "720a4be9b92c14ee8645069a1a1845d6c1d44ce8",
+      "size": 2359,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/mint-223-live-ovmf-boot.yml",
+      "blob": "6567ea6c98263b57754aee2bf0fe90d5533ac88b",
+      "size": 5310,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/multidistro-legacy-backend.yml",
+      "blob": "e8a101ac83b9217b5d4f0136a3bf8e025bc58246",
+      "size": 4993,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/observer-evidence-readonly-subset.yml",
+      "blob": "5a4763604d5eab59618e83d77e99733b00351c41",
+      "size": 2425,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/observer-host-fd-import-dev.yml",
+      "blob": "6954db339fe784d033574ed49bdbfb9b212acffa",
+      "size": 3554,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/observer-local-peer-session-offline.yml",
+      "blob": "9dac7aa3f0851b18005c231f104dcd812f59863e",
+      "size": 7216,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/observer-one-shot-ledger-offline-static.yml",
+      "blob": "3254c6815663df76b8b89e893c7bf2281a0a8e0d",
+      "size": 3588,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/observer-qemu-real-disk-readonly.yml",
+      "blob": "6e0ccd65946e3bac565f294f1685a4aef5070012",
+      "size": 6248,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/observer-synthetic-boundary-offline.yml",
+      "blob": "63c0678ac975667410993f3cb6957575dbd6fd9e",
+      "size": 3171,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/protected-authority-readiness-offline.yml",
+      "blob": "7c12df1919287bc5514d07f15d976ed7015101e9",
+      "size": 9272,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/research-local-coder-smoke.yml",
+      "blob": "de1efa049f47db89ab1e20a0077e4fe7dc8b0b17",
+      "size": 7898,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/research-model-authored-patches.yml",
+      "blob": "68f325ab888597a27fb44ba0b5787a3973f15a1b",
+      "size": 3404,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/windows-guest-recovery-evidence.yml",
+      "blob": "6138cd770426d66b521055aabc4ab9f4b2f6ae6e",
+      "size": 2691,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/windows-ntfs-safety-regression.yml",
+      "blob": "1a569fde98674531be98f97ae9c034f9518f02c9",
+      "size": 2551,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/windows10-vm-host-capacity.yml",
+      "blob": "23f3473bf0e737b376ae5248f3c83034730f1e76",
+      "size": 2816,
+      "extension": "yml"
+    },
+    {
+      "path": ".github/workflows/zorin-real-iso-preflight.yml",
+      "blob": "4b18a824b8053e6a3662258ec870f599de793536",
+      "size": 14335,
+      "extension": "yml"
+    },
+    {
+      "path": ".gitignore",
+      "blob": "a034131442644bf359fa4568de73e13c480ac9c6",
+      "size": 1340,
+      "extension": "gitignore"
+    },
+    {
+      "path": "AGENTS.md",
+      "blob": "f77579dc2886449ddfd7a92341f85b13ddec5fd1",
+      "size": 19170,
+      "extension": "md"
+    },
+    {
+      "path": "AI_POLICY.md",
+      "blob": "278f1c59786e50bc2596497f01d14902db598086",
+      "size": 18289,
+      "extension": "md"
+    },
+    {
+      "path": "App.xaml",
+      "blob": "06b986b0bf65b10cfaf6c1ac393d9d9ec684c9f2",
+      "size": 13231,
+      "extension": "xaml"
+    },
+    {
+      "path": "App.xaml.cs",
+      "blob": "6782dc814024fbf57a37bed1f48c0f8fa7668dae",
+      "size": 21234,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/AtomicFile.cs",
+      "blob": "5b9efacbfe99273817631f931d651fc2b661df50",
+      "size": 3092,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/BootGuardianConfig.cs",
+      "blob": "01c684320c0d1432dc02e54563f848711c29630f",
+      "size": 10714,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/BootGuardianEngine.cs",
+      "blob": "43e8d98adbaad7d5bc8e3a17636a0624ecefd062",
+      "size": 16115,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/EspMount.cs",
+      "blob": "bd32b55e059e863271ad12ebbd13bab9fae6ea17",
+      "size": 1735,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/FirmwareEnvironment.cs",
+      "blob": "0ac12339ff61f60756819c0e2bd2265239310507",
+      "size": 4285,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/GuardianAttemptState.cs",
+      "blob": "ca7e76a65f3dea5a702f37e8a7c1dc41a2d5477a",
+      "size": 2115,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/Hashing.cs",
+      "blob": "aac8e7441c62809b530977c9b5f849f262775dd6",
+      "size": 966,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/Libertix.BootGuardian.csproj",
+      "blob": "dc70de74abb128c6256e77bef74bb08fd7113631",
+      "size": 3081,
+      "extension": "csproj"
+    },
+    {
+      "path": "BootGuardian/NativeMethods.cs",
+      "blob": "7740ef400df545d664f9341fd4396dfcb6748ee3",
+      "size": 9279,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/PreferredSynchronization.cs",
+      "blob": "d48eb81e7d6ec5c6db9194c893c2f835e68ecbdc",
+      "size": 12973,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/Program.cs",
+      "blob": "0b7e7d4b46644e4bd49a9d8fe2d18b0b8f45467b",
+      "size": 5852,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/Properties/AssemblyInfo.cs",
+      "blob": "a5eb14641bab1d25efbe2ebaf641abbe8244d5aa",
+      "size": 524,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/RepairDeadline.cs",
+      "blob": "fcbb175933d418475b782c234b4918739a905989",
+      "size": 1008,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/RepairJournal.cs",
+      "blob": "a8e5fdff3d0e2e4eb5933f012e5240980331b154",
+      "size": 4051,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/ServiceHost.cs",
+      "blob": "77c0f40b5fa9153542bad9d0b5eabd90a6a0f7e7",
+      "size": 11779,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/TrustedScripts.cs",
+      "blob": "d3a42a2dd63d2205b31096e3f217082f648f2709",
+      "size": 3652,
+      "extension": "cs"
+    },
+    {
+      "path": "BootGuardian/WindowsBootLoaderTrust.cs",
+      "blob": "7173a4c9d6136517ebe9b2c2f63f814982a05fe7",
+      "size": 2907,
+      "extension": "cs"
+    },
+    {
+      "path": "CONTRIBUTING.md",
+      "blob": "273bef13d2105b58f083becc10f9490d819be077",
+      "size": 6303,
+      "extension": "md"
+    },
+    {
+      "path": "Controls/ErrorPanel.xaml",
+      "blob": "4a6c8ca57a82aa24f3757644c53792a9f6d99d53",
+      "size": 7678,
+      "extension": "xaml"
+    },
+    {
+      "path": "Controls/ErrorPanel.xaml.cs",
+      "blob": "6bef39b4d713e00e570d0c6746d26599d0877532",
+      "size": 1676,
+      "extension": "cs"
+    },
+    {
+      "path": "Controls/SupportActions.xaml",
+      "blob": "58bdfb5cf1b119eac204c37db7196ff385d44b38",
+      "size": 947,
+      "extension": "xaml"
+    },
+    {
+      "path": "Controls/SupportActions.xaml.cs",
+      "blob": "4ed548890fc440017fd1c8c41b7560ace9e3819d",
+      "size": 2712,
+      "extension": "cs"
+    },
+    {
+      "path": "Converters/StringToVisibilityConverter.cs",
+      "blob": "6e48ff218d8c8b8086cb8e9bff6edf47984afb6f",
+      "size": 611,
+      "extension": "cs"
+    },
+    {
+      "path": "Dialogs/LocalizedConfirmationDialog.xaml",
+      "blob": "0f35b9fd75d0765b524120ac46dd2e55b2898d86",
+      "size": 1818,
+      "extension": "xaml"
+    },
+    {
+      "path": "Dialogs/LocalizedConfirmationDialog.xaml.cs",
+      "blob": "54d3eaf22e01beb6eb0fbd0f3551a41836ddd4f4",
+      "size": 1397,
+      "extension": "cs"
+    },
+    {
+      "path": "Dialogs/UnattendedWarningDialog.xaml",
+      "blob": "ca1ded962326c5fa0c76493525e62e9f389931b7",
+      "size": 3178,
+      "extension": "xaml"
+    },
+    {
+      "path": "Dialogs/UnattendedWarningDialog.xaml.cs",
+      "blob": "e11d874c2224991b18cbfb37dcb478f8ce946334",
+      "size": 3142,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/ApplicationBuild.cs",
+      "blob": "9034fddcf625808ef97345ad0f1d400eb4e058a2",
+      "size": 2319,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/ApplicationFiles.cs",
+      "blob": "b547ed4109609b8a49f63a03a8a641de26341089",
+      "size": 428,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/ApplicationLogger.cs",
+      "blob": "c409795f725c544695052c6c44cf1a2e95eb9811",
+      "size": 2992,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/BoundedHttpContent.cs",
+      "blob": "e7ed7a33657e79e55f2f8a0434e9a1814222ff46",
+      "size": 1553,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/CompatibilityPreflightRunner.cs",
+      "blob": "d4715419115f50aa4639a4f947247c5f15763f85",
+      "size": 11462,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/FilepoolConfig.cs",
+      "blob": "8c809d4a52d5d06d65da46e34db3879f2885a0d3",
+      "size": 5010,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/FilepoolProtocol.cs",
+      "blob": "7dd5b8f3117232fe4f9dae0a764ae95675bc9955",
+      "size": 1407,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/InstalledLinuxRecovery.cs",
+      "blob": "3534f3497eda831f63411d325776e1a5adb65a13",
+      "size": 25223,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/LinuxPasswordHasher.cs",
+      "blob": "2d47bce6190707b2ff05554db410dcae985564c2",
+      "size": 628,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/LocalFilepoolDiscovery.cs",
+      "blob": "de6bfd3f985453c99ce9083cbdfa902498b91280",
+      "size": 3666,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/NavigationHelper.cs",
+      "blob": "7a5d47731b1988545b0f558962958a33cdd3fd17",
+      "size": 4575,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/PowerShellJsonResult.cs",
+      "blob": "1745653e582eec7cfad33d26019fa8e0a780fa7b",
+      "size": 4626,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/ProtectedFiles.cs",
+      "blob": "0e0d3311003538cdc14d56de26502fbdc05cd9cf",
+      "size": 15807,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/RecoveryCodeUpgrade.cs",
+      "blob": "da9ff77ff827e3c4cd4fc24d09c6e7ad60bdfe1b",
+      "size": 7341,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/StartupOptions.cs",
+      "blob": "9e0e6c4907e51a45a9265d296f2d231f52339a4f",
+      "size": 13160,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/SupportReport.cs",
+      "blob": "599597ea984cd36b75c262b89c37184d2c4ebabf",
+      "size": 7136,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/SupportReportDialog.cs",
+      "blob": "9305fc183e45148e543f18798d8f56bbad11da61",
+      "size": 2404,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/SystemPowerProbe.cs",
+      "blob": "4ae56309ae4479c2acf58c7590d6b163711958eb",
+      "size": 5461,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/TrayIconController.cs",
+      "blob": "3e3dc3615ac68010779902bd7608e899ba9d8364",
+      "size": 3149,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/UefiRecoveryState.cs",
+      "blob": "fca938094f97e9acc3562b7b74cae840b63e99c5",
+      "size": 1675,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/UnattendedWorkflow.cs",
+      "blob": "79ec1832c8e44692f03f04f58701cd938540e0c7",
+      "size": 12035,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/WindowsPreferenceCollector.cs",
+      "blob": "d71f9467fcc55dc703948e6a5142a6798fb14ac3",
+      "size": 24370,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/WindowsProcessRunner.cs",
+      "blob": "c1d32c0fef79a8ec931fdfd8f119030e82caa893",
+      "size": 14395,
+      "extension": "cs"
+    },
+    {
+      "path": "Helpers/WindowsWifiProfileReader.cs",
+      "blob": "0f64ca9cdd65ac427981b417ecce6889357b02ae",
+      "size": 16441,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/AccountPolicy.cs",
+      "blob": "539d55f37c58b5c7b3d49e7f7b3e989751692840",
+      "size": 2800,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/ArtifactCatalog.cs",
+      "blob": "5b5b91d551a9a6d0d61fcc79ed47a11bd950f38f",
+      "size": 4990,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/AtomicJsonFile.cs",
+      "blob": "7b66b1a5f1678c0ce32620bd72a3f9c704f3b0d6",
+      "size": 4505,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/BiosBootPayload.cs",
+      "blob": "ac390490fcd98c466f1fa412d61edf88ecc8dab5",
+      "size": 2365,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/CatalogFiles.cs",
+      "blob": "ee0b8eb12cdbdb4a160da13340cfa9362effeef6",
+      "size": 1837,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/DistributionBackendPolicy.cs",
+      "blob": "8f89516e064bb5111a29759069e502019c32ebf8",
+      "size": 889,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/DistributionCapabilityPolicy.cs",
+      "blob": "f4c790e9d164d12d7ced77e4e1a1907f2b11c80e",
+      "size": 4970,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/DistributionCatalogLoader.cs",
+      "blob": "234d40ff620602866d23e0dcef4e74140aeef5e3",
+      "size": 19125,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/DistributionCatalogTrust.cs",
+      "blob": "8da0194090d21b7a5e25afb4922d2d091524e89c",
+      "size": 3258,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/FirmwareInterop.cs",
+      "blob": "01ddf5ad0808eb2fb0b816c24fcb9a087c56388c",
+      "size": 423,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/IInstallationView.cs",
+      "blob": "326d5ff383b7f25cabfce8df055ef10aa78c8ed5",
+      "size": 1001,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationEngine.Bios.cs",
+      "blob": "73b48ae92ad3bf2801ed53ec11742cf286abf190",
+      "size": 48183,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationEngine.Cancellation.cs",
+      "blob": "683f0af60ba21e1a78d76a2588e82516d9ae27a8",
+      "size": 13631,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationEngine.Downloads.cs",
+      "blob": "4dd71e4ebe80a01b77633545fd73118cfed566a2",
+      "size": 22522,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationEngine.Plan.cs",
+      "blob": "cb3bc6290751e141a0336ae573b5d95f41a48d58",
+      "size": 18722,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationEngine.Processes.cs",
+      "blob": "2dba773322a5208149b7d8cd264748c4c74d804b",
+      "size": 12342,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationEngine.System.cs",
+      "blob": "98aec8635755710bba090e189204143d2eb93f47",
+      "size": 10119,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationEngine.Types.cs",
+      "blob": "c496dcfd6c43b7e1d7de18fa26918074ad010a2a",
+      "size": 2268,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationEngine.Uefi.cs",
+      "blob": "e2e219bcf865edb232bfdad89051a25e6278fced",
+      "size": 32668,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationEngine.Windows.cs",
+      "blob": "e39bd768a0235ec28466bac9aa22ed41167c2414",
+      "size": 36824,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationEngine.cs",
+      "blob": "4d576c04081b20932e12f09db20c0ecb8200f860",
+      "size": 14732,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationExecutionLedger.cs",
+      "blob": "cb8f36b1b9db4734c93984d7871f298dee4bff8e",
+      "size": 3910,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationExecutionState.cs",
+      "blob": "5b1dcb0f602358a79ae8f1b7f229cdfcaa4951af",
+      "size": 4335,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationPlan.cs",
+      "blob": "02c113ade35e91bfca7e62105f5396f4dbfa8428",
+      "size": 10973,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationPlanFactory.cs",
+      "blob": "57742e7e60ffc840c457625126671c2c7c5054af",
+      "size": 8792,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationPlanSerializer.cs",
+      "blob": "cb2cece497a1314778a55dcc330b8a4ff4732a28",
+      "size": 2225,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationPlanValidator.cs",
+      "blob": "2f7abbaa60f5b0e0ecd7fbd11f08905f31af57a1",
+      "size": 41808,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationPolicy.cs",
+      "blob": "eb47f9421af118165974c60fe48e7eb8d0d01a28",
+      "size": 7028,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationSizePolicy.cs",
+      "blob": "321dcb12e76c972b9c31138379b9c36199b9e4e7",
+      "size": 4622,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationStateMachine.cs",
+      "blob": "a9923778e336f178ac217486929544a62d72e0f0",
+      "size": 20756,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationStateStore.cs",
+      "blob": "80fee34f1dc3c388922e567d69020b637df2286a",
+      "size": 1088,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationTargetSelection.cs",
+      "blob": "f10ff0972d282aa94474fb44b6a9777ac20c036c",
+      "size": 5962,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/InstallationTemporaryArtifacts.cs",
+      "blob": "904091985baa52a11e328168e30d53a351118201",
+      "size": 10003,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/Ipv4NetworkPolicy.cs",
+      "blob": "081d637ae92ca19e14b854e39d482c6484a18f71",
+      "size": 4284,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/LiveBootArguments.cs",
+      "blob": "9175259d9958ac90d8cd23f60be86ad706507be3",
+      "size": 3022,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/ReleaseMetadata.cs",
+      "blob": "4d09fc1c7524dfb3f8b95d7772d81f608b24a00c",
+      "size": 7224,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/RuntimeNames.cs",
+      "blob": "bd69769fc3846cfb2799089ee1c1d5f3532d39ab",
+      "size": 1017,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/StoragePreflightInfo.cs",
+      "blob": "c243d336ac5e4ebc86e5e10911b7b48b7a8eb87c",
+      "size": 3991,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/UnattendedInstallationConfigurator.cs",
+      "blob": "7b27227fc87bcc587c9b4af6d6b025747aecd671",
+      "size": 7501,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/WindowsKeyboardLayout.cs",
+      "blob": "e68b71b455c76781519c2fa32ffc2f33da81b849",
+      "size": 6171,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/WindowsPreferenceMigrationContract.cs",
+      "blob": "27086baac61d3f595121c694d4f2cc7801cb2ff9",
+      "size": 1048,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/WindowsShareConfiguration.cs",
+      "blob": "1f383c6784583fedeb648e00f0c001c34b2682b1",
+      "size": 4226,
+      "extension": "cs"
+    },
+    {
+      "path": "Installation/WindowsSharingPlan.cs",
+      "blob": "c248efd1a4cb4608ee04726e61ab8f0a304c3aab",
+      "size": 5061,
+      "extension": "cs"
+    },
+    {
+      "path": "LICENSE",
+      "blob": "f288702d2fa16d3cdf0035b15a9fcbc552cd88e7",
+      "size": 35149,
+      "extension": "(none)"
+    },
+    {
+      "path": "Libertix.Tests/BiosBootPayloadTests.cs",
+      "blob": "b9ef7e8f94a494b681d209cdf182384c3d6394be",
+      "size": 2780,
+      "extension": "cs"
+    },
+    {
+      "path": "Libertix.Tests/BootGuardianTests.cs",
+      "blob": "19f8c175d7f08dddb15bdb13350142f4cdc5c7bc",
+      "size": 38887,
+      "extension": "cs"
+    },
+    {
+      "path": "Libertix.Tests/FallbackLifecycleTests.cs",
+      "blob": "66ee63027b8a7b2e65d7fd7074129e3551ae7d35",
+      "size": 15146,
+      "extension": "cs"
+    },
+    {
+      "path": "Libertix.Tests/HttpCatalogTests.cs",
+      "blob": "d14103aba2c8371339957971f9235b1feb3328d3",
+      "size": 4424,
+      "extension": "cs"
+    },
+    {
+      "path": "Libertix.Tests/InstallationContractsTests.cs",
+      "blob": "de70ba3447a2c9454c628245edaac004c5668e68",
+      "size": 114358,
+      "extension": "cs"
+    },
+    {
+      "path": "Libertix.Tests/InstallationTargetTests.cs",
+      "blob": "f7b6b15580dcbac90e3d5812b4889105c719808e",
+      "size": 14965,
+      "extension": "cs"
+    },
+    {
+      "path": "Libertix.Tests/Libertix.Tests.csproj",
+      "blob": "bc8c211efb0702f2cb811ca8cedc48d6706620f1",
+      "size": 4333,
+      "extension": "csproj"
+    },
+    {
+      "path": "Libertix.Tests/LiveBootArgumentsTests.cs",
+      "blob": "8cfa06a893bf25b2d63eac04faa666c1e16a9c1b",
+      "size": 1569,
+      "extension": "cs"
+    },
+    {
+      "path": "Libertix.Tests/RuntimeContractTests.cs",
+      "blob": "ac081607ea86ea82fe48d0d0e04106c7eb574eb3",
+      "size": 19503,
+      "extension": "cs"
+    },
+    {
+      "path": "Libertix.Tests/StartupValidationTests.cs",
+      "blob": "d5de2eee94dfb215cee1de8cb79cd0417ae82b67",
+      "size": 1256,
+      "extension": "cs"
+    },
+    {
+      "path": "Libertix.Tests/TestData/catalog.json",
+      "blob": "ca3fd6f7679ef2f7171eeec2d3edd2170e8b2357",
+      "size": 3289,
+      "extension": "json"
+    },
+    {
+      "path": "Libertix.Tests/TestData/catalog.json.sig",
+      "blob": "ff438f9ea3c1943e10e55d6c1f53924c8822f430",
+      "size": 513,
+      "extension": "sig"
+    },
+    {
+      "path": "Libertix.Tests/WindowsSharingPlanTests.cs",
+      "blob": "51f0a92df560e51e98cd3d891178d6778c1fe377",
+      "size": 3349,
+      "extension": "cs"
+    },
+    {
+      "path": "Libertix.csproj",
+      "blob": "ef6c64ec0a2ebae10aeb859b3d8bd8d3c4b4dbc3",
+      "size": 21055,
+      "extension": "csproj"
+    },
+    {
+      "path": "Libertix.sln",
+      "blob": "7dd83b252a20631a6d2136f7ec07917d15ebbb18",
+      "size": 2586,
+      "extension": "sln"
+    },
+    {
+      "path": "Localization.cs",
+      "blob": "f6a36729fc8f14a6c4439205ff715cf50f416f11",
+      "size": 10273,
+      "extension": "cs"
+    },
+    {
+      "path": "MainWindow.xaml",
+      "blob": "329a3addd53e8590bb8cadfd607e4b9dd44b156f",
+      "size": 1631,
+      "extension": "xaml"
+    },
+    {
+      "path": "MainWindow.xaml.cs",
+      "blob": "46cc6c56a4b1cbb40754b6be11ebb3b372409efa",
+      "size": 9277,
+      "extension": "cs"
+    },
+    {
+      "path": "Models/AccountInfo.cs",
+      "blob": "3051bdd4c11d43df9010b04492c88149094cedce",
+      "size": 384,
+      "extension": "cs"
+    },
+    {
+      "path": "Models/CompatibilityInfo.cs",
+      "blob": "fe97ce597ba5f7fcca353131014ea5e1ef962503",
+      "size": 1333,
+      "extension": "cs"
+    },
+    {
+      "path": "Models/DistroInfo.cs",
+      "blob": "c337bb5969836ade7c32e30ef50b88b7e7bc66ae",
+      "size": 694,
+      "extension": "cs"
+    },
+    {
+      "path": "Models/DistroInfoJson.cs",
+      "blob": "f225d10fc12e3fe6777b1585c9fff8aac8209199",
+      "size": 4496,
+      "extension": "cs"
+    },
+    {
+      "path": "Models/InstallationState.cs",
+      "blob": "c72f06ac2b6e45ab77dc76ab18cec0801188a9ca",
+      "size": 1177,
+      "extension": "cs"
+    },
+    {
+      "path": "Models/InstallationTargetInfo.cs",
+      "blob": "55f7f5a461bf4f5f9609a7569185fd1fb4acc52b",
+      "size": 1767,
+      "extension": "cs"
+    },
+    {
+      "path": "Models/SharingOptions.cs",
+      "blob": "061a65bf7af2b5dd2d5ba52d5af92a4039636856",
+      "size": 275,
+      "extension": "cs"
+    },
+    {
+      "path": "PSScriptAnalyzerSettings.psd1",
+      "blob": "fcb3f3597a5fdb16ec972f264c80804903e26075",
+      "size": 442,
+      "extension": "psd1"
+    },
+    {
+      "path": "Pages/About.xaml",
+      "blob": "af2426abbfbbe0e1dfb8805e9bc2ed230705ca32",
+      "size": 4932,
+      "extension": "xaml"
+    },
+    {
+      "path": "Pages/About.xaml.cs",
+      "blob": "3b2eb11c91bfc4dccf6671b6d549f4c55a673abc",
+      "size": 1212,
+      "extension": "cs"
+    },
+    {
+      "path": "Pages/AccountCreation.xaml",
+      "blob": "f3f691707f277c617484344995cd1c75defaad9e",
+      "size": 9737,
+      "extension": "xaml"
+    },
+    {
+      "path": "Pages/AccountCreation.xaml.cs",
+      "blob": "132c1b8404c345f4c08be7c527f549fab7882bc3",
+      "size": 6264,
+      "extension": "cs"
+    },
+    {
+      "path": "Pages/ApplyChanges.xaml",
+      "blob": "a85b12edfcbc5a6ffdd20de7e823c0530d73c1b1",
+      "size": 8080,
+      "extension": "xaml"
+    },
+    {
+      "path": "Pages/ApplyChanges.xaml.cs",
+      "blob": "e001e70120cc541643d12c75d24c27f002a24f2f",
+      "size": 10322,
+      "extension": "cs"
+    },
+    {
+      "path": "Pages/ChooseDistro.xaml",
+      "blob": "1bfe7eeb147cd3bb779d5a35e2817d05f3f35a74",
+      "size": 11174,
+      "extension": "xaml"
+    },
+    {
+      "path": "Pages/ChooseDistro.xaml.cs",
+      "blob": "a6c332e79261fe15c86bac71af3b43f2dc2e2941",
+      "size": 8069,
+      "extension": "cs"
+    },
+    {
+      "path": "Pages/CompatibilityCheck.xaml",
+      "blob": "d815fc91f07cf283861f85199651b19c3aae743b",
+      "size": 3999,
+      "extension": "xaml"
+    },
+    {
+      "path": "Pages/CompatibilityCheck.xaml.cs",
+      "blob": "8cb1d0b8defd103abb21cc3a39a8560846d25827",
+      "size": 7080,
+      "extension": "cs"
+    },
+    {
+      "path": "Pages/ResizeDisk.xaml",
+      "blob": "874c9614c052ad13b9a084e8dfb7eb6c9319aac7",
+      "size": 17963,
+      "extension": "xaml"
+    },
+    {
+      "path": "Pages/ResizeDisk.xaml.cs",
+      "blob": "49f0460db793033479ee8822f13f1cbb0fc7e7ba",
+      "size": 24133,
+      "extension": "cs"
+    },
+    {
+      "path": "Pages/SharingOptionsPage.xaml",
+      "blob": "466d57cec6c1502647858dedde2cdb822901ea2f",
+      "size": 4301,
+      "extension": "xaml"
+    },
+    {
+      "path": "Pages/SharingOptionsPage.xaml.cs",
+      "blob": "f5ebc6fbccdd9daa817da2afe56f33313d2203fc",
+      "size": 2469,
+      "extension": "cs"
+    },
+    {
+      "path": "Pages/UefiBootFallback.xaml",
+      "blob": "8dcaedde97ea9662be927b1e7627be586a50c240",
+      "size": 4894,
+      "extension": "xaml"
+    },
+    {
+      "path": "Pages/UefiBootFallback.xaml.cs",
+      "blob": "3ae47a791acbcbdd98041efd4826338e08c65282",
+      "size": 14591,
+      "extension": "cs"
+    },
+    {
+      "path": "Pages/UninstallLinux.xaml",
+      "blob": "736f266c2f2c0df12f44817851de847dedd4c653",
+      "size": 4849,
+      "extension": "xaml"
+    },
+    {
+      "path": "Pages/UninstallLinux.xaml.cs",
+      "blob": "47236cbb56043043c193d35b471058762d4b7f2f",
+      "size": 10072,
+      "extension": "cs"
+    },
+    {
+      "path": "Pages/WarningConfirmation.xaml",
+      "blob": "ce5b8af1561d44d9f63a3a1bc4a9bc934911caf8",
+      "size": 5510,
+      "extension": "xaml"
+    },
+    {
+      "path": "Pages/WarningConfirmation.xaml.cs",
+      "blob": "c60049d9187a54e14c36cc5b39ddb24bc12bfe8a",
+      "size": 2233,
+      "extension": "cs"
+    },
+    {
+      "path": "Pages/Welcome.xaml",
+      "blob": "889e6732193d923a7cca7276338187e6b8c548be",
+      "size": 4081,
+      "extension": "xaml"
+    },
+    {
+      "path": "Pages/Welcome.xaml.cs",
+      "blob": "a70ea210c07f796c13f05f160c3b122622767bc3",
+      "size": 5370,
+      "extension": "cs"
+    },
+    {
+      "path": "PowerShell.Tests/AutoTestScriptSyntax.Tests.ps1",
+      "blob": "1018cf79815801cf78d06654ea71dbdeaf624c84",
+      "size": 752,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/BiosBootPayload.Tests.ps1",
+      "blob": "bdf36776e323522244f3a0aa97e4ac69fc0bc815",
+      "size": 2591,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/BiosMbrIo.Tests.ps1",
+      "blob": "07f6b00de97d2f75519b9140ae453a9a90b41abd",
+      "size": 2932,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/BiosMbrRecoveryStage.Tests.ps1",
+      "blob": "f82131b45dd1e3dc00ccd7c4c5b9ae431288102d",
+      "size": 8022,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/BiosPostInstallFixture.Tests.ps1",
+      "blob": "2712b898cfcb87cf46c6d6a41c31778671675ce9",
+      "size": 3438,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/BiosRecoveryDependencies.Tests.ps1",
+      "blob": "4856c35a9f490be33248d0c909da9a6c14e28988",
+      "size": 4723,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/BiosRollbackDiskProof.Tests.ps1",
+      "blob": "6102611e659b735acd2e3a66d594b9fbfdc704b9",
+      "size": 13156,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/BiosRollbackGeometry.Tests.ps1",
+      "blob": "1610e979574fca829ebb0297d8987375c1d2e0e4",
+      "size": 1741,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/BiosSourceDecryption.Tests.ps1",
+      "blob": "8a17319d67b2c4c4cf3c737c59ae540d9dbddfef",
+      "size": 8187,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/BiosSourceStaging.Tests.ps1",
+      "blob": "80bb390fcbed8cdacc6ac1e63a7365c6510c57ee",
+      "size": 5799,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/BitLockerReadableState.Tests.ps1",
+      "blob": "3c78d73cf4794dd4fad9c2f6727a92622626ded6",
+      "size": 1942,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/BootGuardian.Tests.ps1",
+      "blob": "367768fe9a47cdbd6062b1b0b0c80c77c0ce36c5",
+      "size": 4274,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/CompatibilityAllocationCapacity.Tests.ps1",
+      "blob": "0335b5e19857b3a3bd9797e02409f3b6d1b9e96e",
+      "size": 4332,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/CompatibilityStorage.Tests.ps1",
+      "blob": "a81acb2fe1e57587a2cfe83d8d0b3f7714faaf35",
+      "size": 4580,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/DismHealthEvidence.Tests.ps1",
+      "blob": "fe0cb489d32512b47677beb1bdfb76e30fc7c218",
+      "size": 2836,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/DistributionCapabilities.Tests.ps1",
+      "blob": "f71cda98a548223d558076af61921653de20f538",
+      "size": 2715,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/Download.Tests.ps1",
+      "blob": "5c4f462eae45a15d2521ee9fbf05fa3f456bd607",
+      "size": 2663,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/ExplorerProfileScope.Tests.ps1",
+      "blob": "087a8cb6f12006b344740092da3bde4ba990815a",
+      "size": 6727,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/FallbackProcessState.Tests.ps1",
+      "blob": "86297243a697b87a4913588ab955a76237a87753",
+      "size": 1219,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/FirmwareFixturePayload.Tests.ps1",
+      "blob": "969cc4b753a73ce18ad6b625045aa8afc7323c1b",
+      "size": 4101,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/InstallationAllocationSelection.Tests.ps1",
+      "blob": "84d2cf500ceccf6a36c88838dc3cbf84a988283c",
+      "size": 4809,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/InstallationContracts.Tests.ps1",
+      "blob": "10962b1b572cfb71b41eb232484e29fbff1b2f5c",
+      "size": 25985,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/InteractiveKeyboardEvidence.Tests.ps1",
+      "blob": "6cde1636497062305e85d8408b3c3dbb82c266b8",
+      "size": 1758,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/NtfsVolumeIdentity.Tests.ps1",
+      "blob": "abafe80e378379a7ee7c3ddbeb150e21401da28d",
+      "size": 1392,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/PostInstallStorage.Tests.ps1",
+      "blob": "bff0ae88cf6c90e738d1adfc25c6077a589a965d",
+      "size": 10479,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/PostInstallVerification.Tests.ps1",
+      "blob": "348d7c551b36c8afefb48261aad87b4ceda71a9b",
+      "size": 39678,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/PreferenceFixture.Tests.ps1",
+      "blob": "847944ee8da19ab5533cd4df1a0f23cbd4d45787",
+      "size": 2906,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/PreferenceFixtureWlan.Tests.ps1",
+      "blob": "6b0d3134f001f005ad32db2b6a000fc2e14f123b",
+      "size": 2433,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/PreferredBootPath.Tests.ps1",
+      "blob": "d9e21313d71ea1d653a8d0a127a6e2b8992c2784",
+      "size": 11031,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/Process.Tests.ps1",
+      "blob": "78077c31bc38f5e6d4f94a6d89eb4926581760ba",
+      "size": 2679,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/ProcessSafety.Tests.ps1",
+      "blob": "78804f09db5392199ab740e2bdd5f6daad42a7f7",
+      "size": 7544,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/ReadOnlyWriteProof.Tests.ps1",
+      "blob": "9e0ce5adceabd5087a39207b45e57fe1efae5a25",
+      "size": 3921,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/RecoveryEvidence.Tests.ps1",
+      "blob": "9471cea160da15c838a4e7a7982fc665a5e7131b",
+      "size": 2668,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/RecoverySelection.Tests.ps1",
+      "blob": "d84a0a99ba1da800ec851dd34340b2d7cc57da27",
+      "size": 6661,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/RollbackBootEvidence.Tests.ps1",
+      "blob": "3dd3b72136c547d7b69932230ceec836f6aada54",
+      "size": 2754,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/RollbackDiskIdentity.Tests.ps1",
+      "blob": "502df9cc3e486d2c992d87dd613c7128c4bda4d1",
+      "size": 11180,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/RollbackEvidence.Tests.ps1",
+      "blob": "ea0cb975ca84c5ff05a11dddbdb8e596da071e2f",
+      "size": 3440,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/RollbackPartitionLayout.Tests.ps1",
+      "blob": "97a9914522a4478c9aa2e2a9a9a850dc714354db",
+      "size": 6919,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/SecondaryBootPreflight.Tests.ps1",
+      "blob": "7310b75bcb0846db8e6093baabdbdb9877b9b93d",
+      "size": 6761,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/SshOutputDrain.Tests.ps1",
+      "blob": "e85c77bdc9cfae5b46acaee337a2c05a804f8624",
+      "size": 2817,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/StorageBaseline.Tests.ps1",
+      "blob": "53b5f1ecd808f280c2fcb5525fb3a72b2fb6c171",
+      "size": 16895,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/StorageControllerSelection.Tests.ps1",
+      "blob": "eddbea0ae2dc6b296dffa8b9aecc966f52cfee69",
+      "size": 4212,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/StorageDocumentsSession.Tests.ps1",
+      "blob": "3201c4d1b4a0cf0d255fa5efa03924f33bedbac4",
+      "size": 1695,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/StorageFixtureDecryption.Tests.ps1",
+      "blob": "661c51dbf71dd0a37296247104be20508d70955a",
+      "size": 5101,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/StorageFixtureIdentity.Tests.ps1",
+      "blob": "fac6c779134074e2d1ba8bd737086e42ec3ac71f",
+      "size": 4163,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/StorageFixturePrimaryPartition.Tests.ps1",
+      "blob": "23d66b3f9ea05bac908563b30841fb2a0a098a67",
+      "size": 8259,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/StorageGeometry.Tests.ps1",
+      "blob": "d96a75383e095a05dd0514d6e33d56549c1c8ee2",
+      "size": 3347,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/StoragePreflightIdentity.Tests.ps1",
+      "blob": "b7932b3931595953f52530938241a0fa5d79f047",
+      "size": 8206,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/StorageTargets.Tests.ps1",
+      "blob": "36453255a0216ac74309a1dbce2c9dd9faff531f",
+      "size": 15344,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/TargetEncryptionState.Tests.ps1",
+      "blob": "9d6af9eeaa893e015e83ddc89435f1aef71d4d5f",
+      "size": 3771,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/TemporaryArtifacts.Tests.ps1",
+      "blob": "26c8dd2b049900e23b8baecd19c9fc6510191dcc",
+      "size": 6690,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/UefiAllocationStaging.Tests.ps1",
+      "blob": "5c452d2fc0545d03fb03ae1f735071dc31ea0144",
+      "size": 7648,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/UefiExecution.Tests.ps1",
+      "blob": "21763bfc787d375aca4a97bfd600ee54dba89c38",
+      "size": 2325,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/UefiInstalledBootOwnership.Tests.ps1",
+      "blob": "1c385c231975b4d6b732a807b8cbe8ff65c0fd27",
+      "size": 5177,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/UefiLiveFailure.Tests.ps1",
+      "blob": "5587d3f9590cd922ee931db6fd639e0fd9c779b8",
+      "size": 3407,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/UefiRecoveryPartition.Tests.ps1",
+      "blob": "741e44538b20f57cfc143a72bdff9c40bc575b88",
+      "size": 15077,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/UefiSecureBoot.Tests.ps1",
+      "blob": "cf5ac1456dc68bd6ed6af7e94e47892c6a2441cd",
+      "size": 2424,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/UefiSourceDecryption.Tests.ps1",
+      "blob": "fbb4dbf6de8c1d96fddb187d7d521ba82d70a0ba",
+      "size": 8891,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/UefiStaging.Tests.ps1",
+      "blob": "36d586de839c0da7570b1432099c0644b311605a",
+      "size": 1012,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/UefiStoragePreflight.Tests.ps1",
+      "blob": "3dcf9e4992954ad570b7e8aa5011d862942eb428",
+      "size": 6248,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/UefiTemporaryEspOwnership.Tests.ps1",
+      "blob": "0fc294c26f1c8f3ad95e269244e0b4ef6a91012e",
+      "size": 3753,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/UefiTransaction.Tests.ps1",
+      "blob": "d0ad3eac98c15191a1344809af5761a62a61a6b2",
+      "size": 35427,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/WindowsGuestRecoveryEvidence.Tests.ps1",
+      "blob": "7aa75818ed89c2efa550c7b56730c7bd02c4368b",
+      "size": 1981,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/WindowsProfiles.Tests.ps1",
+      "blob": "4ba28a2e2c452506c3ef5d4b7c5ad121054fb93f",
+      "size": 4332,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/WindowsShareCleanup.Tests.ps1",
+      "blob": "a7ea19de015d94c79b4ff033a7fc95137e33e608",
+      "size": 5328,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/WindowsShareDiskIdentity.Tests.ps1",
+      "blob": "282088b8503a77d93d3268194a57c79642c9e8bc",
+      "size": 2714,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/WindowsSharingContract.Tests.ps1",
+      "blob": "e1fadf476bf4df2134e06bf7bc83eb9cda250bef",
+      "size": 2915,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/WindowsSharingInventory.Tests.ps1",
+      "blob": "382a4bd0b66406698cc179c2d6f0a0a04362798a",
+      "size": 6280,
+      "extension": "ps1"
+    },
+    {
+      "path": "PowerShell.Tests/WindowsShortcutEvidence.Tests.ps1",
+      "blob": "ae79e0e32630cfe1752e1072a5d3df4917918375",
+      "size": 1910,
+      "extension": "ps1"
+    },
+    {
+      "path": "Properties/AssemblyInfo.cs",
+      "blob": "c4870440e4d59681ee7e04db4e6f1d6ea3eb7a89",
+      "size": 859,
+      "extension": "cs"
+    },
+    {
+      "path": "Properties/Resources.Designer.cs",
+      "blob": "3f7b59b7e20f7c97310b38c458ab89ec3cfba6f3",
+      "size": 2515,
+      "extension": "cs"
+    },
+    {
+      "path": "Properties/Resources.resx",
+      "blob": "ea9cbcdb40a4c2738ef77558c3e8f96b9d51877d",
+      "size": 5428,
+      "extension": "resx"
+    },
+    {
+      "path": "Properties/Settings.Designer.cs",
+      "blob": "ef3545cdda151e08b98c01212cb394eea61d424a",
+      "size": 1039,
+      "extension": "cs"
+    },
+    {
+      "path": "Properties/Settings.settings",
+      "blob": "c2dbd5cad302c06b1fc3b61299215a1ebd485f1a",
+      "size": 196,
+      "extension": "settings"
+    },
+    {
+      "path": "README.md",
+      "blob": "90a5eded36871150d8111cb2e4a0b0f20899ef77",
+      "size": 20080,
+      "extension": "md"
+    },
+    {
+      "path": "Resources/Images/icon.ico",
+      "blob": "fbb5b606178790ad2da6074514af541a1dde47cb",
+      "size": 211679,
+      "extension": "ico"
+    },
+    {
+      "path": "Resources/Libertix.Translations.json",
+      "blob": "4191aef1e71fd8f87ba735b5de466c7233b193b2",
+      "size": 160948,
+      "extension": "json"
+    },
+    {
+      "path": "Resources/windowsZones.xml",
+      "blob": "c233c8e9de71e76331a64a4177f939e12492b7ff",
+      "size": 11586,
+      "extension": "xml"
+    },
+    {
+      "path": "Scripts/config/Libertix.Artifacts.json",
+      "blob": "480c652fb84c1510a1a78427c9b9b5664010dddf",
+      "size": 941,
+      "extension": "json"
+    },
+    {
+      "path": "Scripts/config/Libertix.BootArguments.json",
+      "blob": "0e45f859ad9279fa394fe2061e3adee88e925be5",
+      "size": 278,
+      "extension": "json"
+    },
+    {
+      "path": "Scripts/config/Libertix.CatalogPublicKey.xml",
+      "blob": "eef85df9fc59a110f37a61991a600329182ff211",
+      "size": 584,
+      "extension": "xml"
+    },
+    {
+      "path": "Scripts/config/Libertix.InstallationPolicy.json",
+      "blob": "bbd1c02237a619e08c65078cd2b2089814e751c6",
+      "size": 2680,
+      "extension": "json"
+    },
+    {
+      "path": "Scripts/config/Libertix.LiveGrubMenu.cfg.in",
+      "blob": "e71269f39aeae23ae71e5f6ef36329b5f59a36ae",
+      "size": 808,
+      "extension": "in"
+    },
+    {
+      "path": "Scripts/libertix-bios-storage.ps1",
+      "blob": "82763bea0ad9497608f400bdeab78a5e895e8c15",
+      "size": 13525,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/libertix-cachyos-windows-evidence.ps1",
+      "blob": "f9af543151bb73eade9239ecbd2285f079997025",
+      "size": 3005,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/libertix-compatibility-preflight.ps1",
+      "blob": "82dbfc6d43e1bcad1bd7f05a73ee8cd087b2a75c",
+      "size": 25596,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/libertix-configure-windows-share.ps1",
+      "blob": "19d52433da8bb2ce41c952716437b26718a3f8cf",
+      "size": 43109,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/libertix-disk-image.ps1",
+      "blob": "4d9fae1dd913ace066f325bb638a3a74c09a905d",
+      "size": 837,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/libertix-post-install-result.ps1",
+      "blob": "04261f201456f51d97b1b040bcc1746eddaf9e6a",
+      "size": 19732,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/libertix-recovery-guard.ps1",
+      "blob": "16b4cb425aab7ab8494ff450eea0086cfd3972d2",
+      "size": 69174,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/libertix-register-bios-recovery-task.ps1",
+      "blob": "3319b0501f850c010d026b54e1285ad90293af39",
+      "size": 3517,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/libertix-register-uefi-recovery-tasks.ps1",
+      "blob": "78fe571029cc3419edf1d0ca9329cdbecb2afa86",
+      "size": 2966,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/libertix-save-storage-baseline.ps1",
+      "blob": "8222c6270ff5d58ec6eb92e9a6ebcee9142c50d1",
+      "size": 492,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/libertix-storage-preflight.ps1",
+      "blob": "0c35e292fc866d266f4eb398f456265d09a1d1e7",
+      "size": 15923,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/libertix-uefi-install.ps1",
+      "blob": "8dce0e0be5c4b86c4354043b2e5a9e11ca3bd265",
+      "size": 23516,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/libertix-uefi-recovery-agent.ps1",
+      "blob": "ade5d6e961f4b73fadcb4aa84c5b47d8bbcbd254",
+      "size": 78287,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/libertix-windows-sharing-inventory.ps1",
+      "blob": "097ed312c919b12bfced73a298c579729418c9f7",
+      "size": 744,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/modules/Gaslux.CachyosWindowsEvidence.psm1",
+      "blob": "e18d449710e27902759e4d87a1081e80625c1ca0",
+      "size": 10852,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Gaslux.DistributionCapabilities.psm1",
+      "blob": "d9a8174b3dd0bd615855e083e804d5f9c44639b3",
+      "size": 3790,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.AtomicFile.psm1",
+      "blob": "ad7a679f0fa297b32b0e42e8bb22aa6389019133",
+      "size": 9101,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.BiosMbr.psm1",
+      "blob": "ccd7fbcd60909ceabf0fd0fd9e269035c84e967c",
+      "size": 6433,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.BootGuardian.psm1",
+      "blob": "88c9e2f71f94895ff93bba3e792f613003ee82dc",
+      "size": 21869,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.Download.psm1",
+      "blob": "6e6869da1e9b595359bdb290842dd6487d0401d3",
+      "size": 2004,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.Firmware.psm1",
+      "blob": "63b4c0079537770d6a96383821bedb398c806057",
+      "size": 9727,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.FirmwareVariables.psm1",
+      "blob": "8552ee79cea93584c275ea0863550d30ce46d46c",
+      "size": 5880,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.InstallationPlan.psm1",
+      "blob": "a98dc251ac7fd94e542ec88b73362ace9f96752f",
+      "size": 48511,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.InstallationPolicy.psm1",
+      "blob": "46ee849b20713463f4c869fc80d076ed729c9975",
+      "size": 3920,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.InstallationState.psm1",
+      "blob": "b4c94438ba425153a2907195a5fa9177aa8c4ce6",
+      "size": 20554,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.PostInstallVerification.psm1",
+      "blob": "995dc2d25e71d73a9173ba6a28e5b5817cba0731",
+      "size": 78656,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.PreferredBootPath.psm1",
+      "blob": "e95f72d7948e7c89ac1fc3694b2067e3bddcd9d7",
+      "size": 46036,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.Process.psm1",
+      "blob": "8a687d85349ee9cf32178532788f393e1e7185a6",
+      "size": 12456,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.Rollback.psm1",
+      "blob": "eb15436b259e912abd64634d880ee5bcae6fe301",
+      "size": 8652,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.SecondaryBootPreflight.psm1",
+      "blob": "138ce628320b34c5c833224bfc89265080860cd0",
+      "size": 4668,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.StorageBaseline.psm1",
+      "blob": "7047b884276039b16642f57765a0aae32d9b165f",
+      "size": 14640,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.StorageGeometry.psm1",
+      "blob": "70d43865562046574b4c9082ea465629b9857207",
+      "size": 10842,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.StorageTargets.psm1",
+      "blob": "6496df6156e5424b27a86e0184ebe0a1bbabcff5",
+      "size": 20328,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.TemporaryArtifacts.psm1",
+      "blob": "dd54d8e27fff43e22f3f2b096453d08059afd072",
+      "size": 11090,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.Transaction.psm1",
+      "blob": "e7c1c3677d32ed557e01634e95a82ceb2cec63af",
+      "size": 1487,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.WindowsProfiles.psm1",
+      "blob": "442a4d74352393c32dfb3c54ae5bbad4ff792bdc",
+      "size": 2141,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/modules/Libertix.WindowsSharingInventory.psm1",
+      "blob": "a16a14ef28e23c7b67ad54dd0b7b71ef67e50176",
+      "size": 7837,
+      "extension": "psm1"
+    },
+    {
+      "path": "Scripts/native/LocalFilepoolDownload.cs",
+      "blob": "1e1437892abdca1e673a45e0bf5dd5a22dc00130",
+      "size": 4058,
+      "extension": "cs"
+    },
+    {
+      "path": "Scripts/native/WindowsSharingPaths.cs",
+      "blob": "2fec18b6038c5afc8d6e3d78dc880cac91d9bdc8",
+      "size": 8920,
+      "extension": "cs"
+    },
+    {
+      "path": "Scripts/uefi/Libertix.Uefi.Downloads.ps1",
+      "blob": "bcfdab9f232388ebb5e23060848ddac6c56146e0",
+      "size": 23409,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/uefi/Libertix.Uefi.Execution.ps1",
+      "blob": "c90f266671b387d3943a6b4e9c5fe040e2d6aefd",
+      "size": 20341,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/uefi/Libertix.Uefi.Firmware.ps1",
+      "blob": "bd02b3cbe5b16198983c482aff4fa5f3147198db",
+      "size": 36509,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/uefi/Libertix.Uefi.Staging.ps1",
+      "blob": "7d80e31ac4697c331e6cd67bda140f238e9e9e3e",
+      "size": 32231,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/uefi/Libertix.Uefi.Storage.ps1",
+      "blob": "6e0f47c4dcf74f369ef4eb6260a1ad7067c3d5ce",
+      "size": 27268,
+      "extension": "ps1"
+    },
+    {
+      "path": "Scripts/uefi/Libertix.Uefi.Transaction.ps1",
+      "blob": "c92227ee8d2a113fa1810c1ba91b82180d486579",
+      "size": 40592,
+      "extension": "ps1"
+    },
+    {
+      "path": "Standalone/AssemblyInfo.cs",
+      "blob": "fca122d1a96a603eac6c9b96a73a763589de4ba8",
+      "size": 520,
+      "extension": "cs"
+    },
+    {
+      "path": "Standalone/Create-Payload.ps1",
+      "blob": "2bfd7c6603a4a862f8f16ae304f2913e97c8c352",
+      "size": 4790,
+      "extension": "ps1"
+    },
+    {
+      "path": "Standalone/Libertix.Standalone.csproj",
+      "blob": "ffad129677913c6e4d250ef3704b3ce05795f4fe",
+      "size": 3914,
+      "extension": "csproj"
+    },
+    {
+      "path": "Standalone/Program.cs",
+      "blob": "5b6ef4a91f68d47aadfd988794a9c1ccde054009",
+      "size": 18541,
+      "extension": "cs"
+    },
+    {
+      "path": "Standalone/app.manifest",
+      "blob": "3ec1890bf6b8ab5b68400f88789700dc6f26bfcc",
+      "size": 624,
+      "extension": "manifest"
+    },
+    {
+      "path": "THIRD_PARTY.md",
+      "blob": "aafc8b04d8287deefc6e0ed36f83f99d74fc161c",
+      "size": 2999,
+      "extension": "md"
+    },
+    {
+      "path": "Tools/aria2/aria2c.exe",
+      "blob": "5004e10349f69be6c4ccf5913ca0b6ca9fd8f660",
+      "size": 5649408,
+      "extension": "exe"
+    },
+    {
+      "path": "UPSTREAM-SOURCE.md",
+      "blob": "ac5b594e6a702d34b185de7e7be9e13c34aee04c",
+      "size": 200,
+      "extension": "md"
+    },
+    {
+      "path": "app1.manifest",
+      "blob": "3c83e735a5eb5b2c1da25208a114508a446bec7b",
+      "size": 1487,
+      "extension": "manifest"
+    },
+    {
+      "path": "assets/grub-theme/Terminus.ttf",
+      "blob": "d302264a1cd10ccd6d96d410add3ac93f03af651",
+      "size": 453248,
+      "extension": "ttf"
+    },
+    {
+      "path": "assets/grub-theme/Terminus_16.pf2",
+      "blob": "1ca8e74f8a71d6c8f65c83f84e1792d3f06e2bd9",
+      "size": 36664,
+      "extension": "pf2"
+    },
+    {
+      "path": "assets/grub-theme/Terminus_24.pf2",
+      "blob": "ca304d5dc8b74a983a9f5f51d002297cd02f6b33",
+      "size": 48305,
+      "extension": "pf2"
+    },
+    {
+      "path": "assets/grub-theme/background.png",
+      "blob": "25b780fa605c13c5aba618b108e80cec94d9d62e",
+      "size": 41535,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/4MLinux.png",
+      "blob": "6fcf564e7a9d9b315fbd97833abe7372cd9f0dfa",
+      "size": 1640,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/AlpineLinux.png",
+      "blob": "72af67261fb63ce85756c60addbde57cb7e78931",
+      "size": 1352,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/Manjaro.i686.png",
+      "blob": "c589381c9c64c86a76023f84b4ae4b1e5c44d982",
+      "size": 858,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/Manjaro.x86_64.png",
+      "blob": "c589381c9c64c86a76023f84b4ae4b1e5c44d982",
+      "size": 858,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/SystemRescueCD.png",
+      "blob": "47734e525670f8b99c9db3a56d51a0cbc1aecedb",
+      "size": 1920,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/android.png",
+      "blob": "a3bcee5042d5a488cab3691ecaf5831410c9f294",
+      "size": 1343,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/anonymous.png",
+      "blob": "7ee4936544e54d1f7c638d0cb85f902cd704abdb",
+      "size": 2084,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/antergos.png",
+      "blob": "e13fcb595ee5af92a371d5ddfb0e76941df38c92",
+      "size": 1544,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/arch.png",
+      "blob": "73f15c75a6a0e1dfdde11022543bdeb1d1726862",
+      "size": 1330,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/archlinux.png",
+      "blob": "73f15c75a6a0e1dfdde11022543bdeb1d1726862",
+      "size": 1330,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/arcolinux.png",
+      "blob": "845e589763164e82e0aa4058d993e5864b3f8eee",
+      "size": 1314,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/artix.png",
+      "blob": "fb51c08f8f1ae57f05dcdd972d104b5b7d6c9ac3",
+      "size": 1357,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/cancel.png",
+      "blob": "96f94565ae4eb61829e347eeed889573c96fc82c",
+      "size": 1038,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/centos.png",
+      "blob": "6d4625794571cf0f09183aaf68de785db5efe4bf",
+      "size": 2062,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/chakra.png",
+      "blob": "d4ff37cd647cb2b1212325a95b1cf14fa877b6b5",
+      "size": 1618,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/debian.png",
+      "blob": "0088639514ac8fe15e82f3e7baf25e52df1cb5c1",
+      "size": 1459,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/deepin.png",
+      "blob": "c6f9dbdd6c0d20a39dde9e951e06ae9d88ae1e7f",
+      "size": 1443,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/devuan.png",
+      "blob": "8031ae1b48cc60c5e6035bf6a55fccddde1dcf2c",
+      "size": 1165,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/driver.png",
+      "blob": "40279fc8f559e1d51b38220d35e2dd36c7846448",
+      "size": 1229,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/edit.png",
+      "blob": "12774569f28bb2ff56cc77b6815634ddfc8931d5",
+      "size": 886,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/efi.png",
+      "blob": "2614c9640e63890236d56691938a23166f97d944",
+      "size": 995,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/elementary.png",
+      "blob": "a7134c44a9da9af267fc8edc49248ddadf23feda",
+      "size": 1815,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/endeavouros.png",
+      "blob": "dd3cd42722faa8800cdaac7da1c7ec9157dcad86",
+      "size": 1625,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/fedora.png",
+      "blob": "322fb0dcb2c32637319bea63c7e3df123d82b186",
+      "size": 1647,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/find.efi.png",
+      "blob": "c9661e254b82abb3f08c3bf0059c2cc2ec88f932",
+      "size": 1143,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/find.none.png",
+      "blob": "ff66c4759eb2e5437f813490918ab27566062bcd",
+      "size": 1124,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/freebsd.png",
+      "blob": "09b5d0e2b94724e0cf2636be5f1a6756215f87eb",
+      "size": 1349,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/gameros.png",
+      "blob": "ec5d9599ff7ab569584eacb571a4a46b9a291ae5",
+      "size": 1622,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/gentoo.png",
+      "blob": "8e7731d7eb0df33ea8a5fedb9f5c5c9967e20d92",
+      "size": 1633,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/gnu-linux.png",
+      "blob": "1c612f1ea6716c694ffb7df2027ab97c71f68910",
+      "size": 1950,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/gpart.png",
+      "blob": "b5693e862936f128f62f5aadeae0ef8a56b80a96",
+      "size": 1738,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/haiku.png",
+      "blob": "49a508958f4ff05801f2db92f602980abd0da0ba",
+      "size": 2439,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/help.png",
+      "blob": "5886054b2649bcb48aa8b1f4a6a77de75b94bf3e",
+      "size": 1085,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/kali.png",
+      "blob": "89b9078e3e1ff80403a1ed38e8f770a592e43ffa",
+      "size": 1486,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/kaos.png",
+      "blob": "c30e505eabf51a1516be3b23e23027a4323ad47d",
+      "size": 1638,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/kbd.png",
+      "blob": "165d28d82c7d2bdf76a8448ccb00434085a891c7",
+      "size": 934,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/kernel.png",
+      "blob": "1c612f1ea6716c694ffb7df2027ab97c71f68910",
+      "size": 1950,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/korora.png",
+      "blob": "5fe5cb6ee1342e63d61d35e3267e1a80e3f96742",
+      "size": 1747,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/kubuntu.png",
+      "blob": "0a10653504fbe308720732a350fc9669e1331a87",
+      "size": 1774,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/lang.png",
+      "blob": "7fc44bb29cd3c227c88f80aae77dcd9cca51b93b",
+      "size": 1253,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/lfs.png",
+      "blob": "1c612f1ea6716c694ffb7df2027ab97c71f68910",
+      "size": 1950,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/linux.png",
+      "blob": "1c612f1ea6716c694ffb7df2027ab97c71f68910",
+      "size": 1950,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/linuxmint.png",
+      "blob": "4de819f64c7a65c642ca5a3cc852d88cc96d2c7c",
+      "size": 1584,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/lubuntu.png",
+      "blob": "a48b9577714c911efa21409d39c78e3e4031b849",
+      "size": 1724,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/macosx.png",
+      "blob": "4c83f576a0080bba9fd8aa0abecdf02cf7a274ca",
+      "size": 1224,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/mageia.png",
+      "blob": "05f1ea88f2ffb49925e61bfd9096f7836a06ee02",
+      "size": 1483,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/manjaro.png",
+      "blob": "c589381c9c64c86a76023f84b4ae4b1e5c44d982",
+      "size": 858,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/manjarolinux.png",
+      "blob": "c589381c9c64c86a76023f84b4ae4b1e5c44d982",
+      "size": 858,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/memtest.png",
+      "blob": "40279fc8f559e1d51b38220d35e2dd36c7846448",
+      "size": 1229,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/mx-linux.png",
+      "blob": "fd47d5490cd7ce5dabedb9bea1a0556896efad35",
+      "size": 1512,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/neon.png",
+      "blob": "9ae503af9101bd8227c746c1345376f7772031bd",
+      "size": 2052,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/nixos.png",
+      "blob": "6a5bced975f88943dffb4cf9041216f9e936eb36",
+      "size": 2033,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/opensuse.png",
+      "blob": "f0756574b819bb0b71666d9093bdc7e26606865a",
+      "size": 1877,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/parrot.png",
+      "blob": "e4a8730036d268b0832cdc1a1a0d3adf5e6e0c38",
+      "size": 1747,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/peppermint.png",
+      "blob": "859d97e24706ad5ed25db90b4c93836a69c37681",
+      "size": 2128,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/pop-os.png",
+      "blob": "a594973993433429de1d02674c9a2d0c061e7a4f",
+      "size": 1525,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/pop.png",
+      "blob": "a594973993433429de1d02674c9a2d0c061e7a4f",
+      "size": 1525,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/puppy.png",
+      "blob": "5b67f7b6e775825fdfe1ae399a5e09c83a434af6",
+      "size": 2223,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/q4os.png",
+      "blob": "8cb447bfd40d4a33164052e4c06f735e671a2427",
+      "size": 1645,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/recovery.png",
+      "blob": "17c5d476c735c61d90c1b9d0a6d8bc052f5e16ee",
+      "size": 1194,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/red.png",
+      "blob": "15411d30e8880e8b8053b9f636684096c782d8aa",
+      "size": 1741,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/redhat.png",
+      "blob": "15411d30e8880e8b8053b9f636684096c782d8aa",
+      "size": 1741,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/regolith.png",
+      "blob": "d38c9e9bf7522699056cdf5e70745eadafb72e04",
+      "size": 1816,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/restart.png",
+      "blob": "22069a5c5f45568c0cec401841fd8efa7e548e3d",
+      "size": 1328,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/rocky.png",
+      "blob": "0e1cfc581e599657bc30581dcd92dd7f0d73fed4",
+      "size": 1317,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/shutdown.png",
+      "blob": "a772b9442e10121064e6bbe8ee87f689d8d95fb1",
+      "size": 1141,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/siduction.png",
+      "blob": "2249e8e6ef9702f443da953771334d3384722ea7",
+      "size": 1456,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/slackware.png",
+      "blob": "b4b2bd21e2fff66c14a6ed92f79ef170e53e06a8",
+      "size": 1735,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/solus.png",
+      "blob": "c9ac52c8745739e93741735a325d3d0731436611",
+      "size": 1993,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/sparky.png",
+      "blob": "48f584c1f8813053e6fc42a0f42557697cc12004",
+      "size": 2495,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/steamos.png",
+      "blob": "fea812a760bdfcdd9150b12e94726f21b175256a",
+      "size": 1769,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/submenu.png",
+      "blob": "bd496c0b7b1452b02b09c27102e1363c3905eea4",
+      "size": 1032,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/type.png",
+      "blob": "8aae498ac9456fc5cf33087a3d06cd443251d604",
+      "size": 860,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/tz.png",
+      "blob": "7ec54e8c30cc0ddbf2fc81445d5d37e49caf08fe",
+      "size": 1129,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/ubuntu.png",
+      "blob": "a430f93c20217f90febf7573efa9c7857a9e5022",
+      "size": 1660,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/ubuntubudgie.png",
+      "blob": "ef31439cda26791c0d1f31bcd7c1493cdcb3ace8",
+      "size": 1727,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/ubuntumate.png",
+      "blob": "211c27705e813e72bc6ad627194e26a87f82a183",
+      "size": 1795,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/ubuntustudio.png",
+      "blob": "dcbdfeae0d3f527e1d458e9895522cc9660a4c31",
+      "size": 1785,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/unknown.png",
+      "blob": "1c612f1ea6716c694ffb7df2027ab97c71f68910",
+      "size": 1950,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/unset.png",
+      "blob": "09a38feab6a8495e8a42bd6d789e29456e9602fc",
+      "size": 888,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/void.png",
+      "blob": "57ac2a841e5485766ad7bddc73654b5e679f7e37",
+      "size": 1874,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/windows.png",
+      "blob": "b5b46ce53dcc45527e771688a6248350398aa3dd",
+      "size": 994,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/xubuntu.png",
+      "blob": "83e0eff063726e0110a33abd4ee20cebe8260591",
+      "size": 1432,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/icons/zorin.png",
+      "blob": "3551172fa0606765620b821004712b8479a9f7db",
+      "size": 1400,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/left_down_border.png",
+      "blob": "49c7c19929a21c6782d1e8842dda238368600b58",
+      "size": 17821,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/right_down_border.png",
+      "blob": "4f79195db9ffa5d8be382cad6eaf1f2068af86eb",
+      "size": 8593,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/select_c.png",
+      "blob": "a4a9fba24a9910ecf50eee47bd545df30ab5690f",
+      "size": 95,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/select_e.png",
+      "blob": "ef870fc6c082f5be346204d00b9d57b982e026fe",
+      "size": 161,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/select_w.png",
+      "blob": "0272f22a0fe0c94ae0eb43ed251cdebb9793c77c",
+      "size": 163,
+      "extension": "png"
+    },
+    {
+      "path": "assets/grub-theme/theme.txt",
+      "blob": "0f22f7e88990a80b5ac2d09b9ce3107cd79c4f42",
+      "size": 860,
+      "extension": "txt"
+    },
+    {
+      "path": "assets/keys/bazzite-upstream-cosign.pub",
+      "blob": "bd5b1927189e8af5566a8ff399c46cbf7085d3b1",
+      "size": 178,
+      "extension": "pub"
+    },
+    {
+      "path": "assets/live/first-boot-resize.service",
+      "blob": "e80f65d5aa25b7965d1d688d052d016ece3f53fb",
+      "size": 296,
+      "extension": "service"
+    },
+    {
+      "path": "assets/live/getty-tty2-override.conf",
+      "blob": "dd387c8975a7b5c2c06ff782381e4f8d40066ad2",
+      "size": 93,
+      "extension": "conf"
+    },
+    {
+      "path": "assets/live/libertix-development-ssh.service",
+      "blob": "dfac8c91b8d49def6b655ba3e7a4cb0b84d8b5db",
+      "size": 321,
+      "extension": "service"
+    },
+    {
+      "path": "assets/live/libertix-efi-sync.path",
+      "blob": "f58b4727774a1f0671d49bd802b02d4e938172ed",
+      "size": 308,
+      "extension": "path"
+    },
+    {
+      "path": "assets/live/libertix-efi-sync.service",
+      "blob": "fcc5842c94e5066aae1496c4140ed3b2e56b1118",
+      "size": 228,
+      "extension": "service"
+    },
+    {
+      "path": "assets/live/libertix-first-boot-result.desktop",
+      "blob": "2ce0fe55f04da7ea46ae420e1ff390f8b20c654c",
+      "size": 200,
+      "extension": "desktop"
+    },
+    {
+      "path": "assets/live/libertix-stages.tsv",
+      "blob": "b91552cc1aab656f291ff32625182ab6750ec642",
+      "size": 1434,
+      "extension": "tsv"
+    },
+    {
+      "path": "assets/plymouth/libertix.plymouth",
+      "blob": "5737d6a139b6f5b83ad7577c23daa66067764a26",
+      "size": 215,
+      "extension": "plymouth"
+    },
+    {
+      "path": "assets/plymouth/libertix.script",
+      "blob": "4ec50ef30ac8898464061939c45ab32590290dae",
+      "size": 380,
+      "extension": "script"
+    },
+    {
+      "path": "auto_tests/.env.example",
+      "blob": "0b8160eeff9659fee40e522f8f8446c7c47d79d7",
+      "size": 3100,
+      "extension": "example"
+    },
+    {
+      "path": "auto_tests/.gitignore",
+      "blob": "3a578df1df5830ff2ac73c1430819e958e194c7c",
+      "size": 90,
+      "extension": "gitignore"
+    },
+    {
+      "path": "auto_tests/README.md",
+      "blob": "74953d70a0c585bdcd981f770b8a67e2d432dc0c",
+      "size": 30100,
+      "extension": "md"
+    },
+    {
+      "path": "auto_tests/RUN/campaign.toml",
+      "blob": "9b3299b01f8fe2acec8e3ac771dfca8be06a7daf",
+      "size": 466,
+      "extension": "toml"
+    },
+    {
+      "path": "auto_tests/app/filepool/aria2-64.zip",
+      "blob": "ef3fb8b6e42464391b2a3f733ee6830f21ea45c1",
+      "size": 2475379,
+      "extension": "zip"
+    },
+    {
+      "path": "auto_tests/app/filepool/catalog.json",
+      "blob": "ca3fd6f7679ef2f7171eeec2d3edd2170e8b2357",
+      "size": 3289,
+      "extension": "json"
+    },
+    {
+      "path": "auto_tests/app/filepool/catalog.json.sig",
+      "blob": "ff438f9ea3c1943e10e55d6c1f53924c8822f430",
+      "size": 513,
+      "extension": "sig"
+    },
+    {
+      "path": "auto_tests/app/filepool/ext4-win-driver.exe",
+      "blob": "93df87402a71f4fbc5d9cc366a1513ee92cdbe47",
+      "size": 3518926,
+      "extension": "exe"
+    },
+    {
+      "path": "auto_tests/app/filepool/grldr",
+      "blob": "14f249b699f8fe588917170cf412fbee030a4ce3",
+      "size": 217769,
+      "extension": "(none)"
+    },
+    {
+      "path": "auto_tests/app/filepool/grldr.mbr",
+      "blob": "7fd7a086b413e66df22e27561fbb0b3b8d974eb8",
+      "size": 9216,
+      "extension": "mbr"
+    },
+    {
+      "path": "auto_tests/app/filepool/menu.lst",
+      "blob": "572612e8118535e1e27fa12dd558236e568fac78",
+      "size": 251,
+      "extension": "lst"
+    },
+    {
+      "path": "auto_tests/app/scripts/assert_vstest_results.ps1",
+      "blob": "7ef8ad1b47b1b7e84512d87b17e50c57af4a577a",
+      "size": 1145,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/build_libertix.ps1",
+      "blob": "d43a6145c834a18ce21f6f9d2b51ded924f440fb",
+      "size": 20980,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/check_windows_integrity.ps1",
+      "blob": "1dc1ecdfe997d5d71716fd2261655d7caa2d0f4d",
+      "size": 17968,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/collect_windows_diagnostics.ps1",
+      "blob": "228d0557e8dad1e0399e3f1d992e4214207d1ba7",
+      "size": 11507,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/configure_windows_preference_fixture.ps1",
+      "blob": "457b1e99c143bb36fbf7145e30c7b39fba776752",
+      "size": 14854,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/confirm_libertix_process.ps1",
+      "blob": "9b71bb0199f94e9c6ea1f17ab6c2f81129a4de27",
+      "size": 3667,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/deploy_libertix.ps1",
+      "blob": "2100c35d644043cb76f0719855b1115f9ff12308",
+      "size": 5227,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/dismiss_windows_setup_experience.ps1",
+      "blob": "67b5a8de694f42f9f49cda879ad425232f9f4892",
+      "size": 1541,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/drive_installed_linux_uninstall.ps1",
+      "blob": "05f57d7c08d874b3a534373f1469d4e5d5ee7f9a",
+      "size": 12809,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/focus_post_install_result.ps1",
+      "blob": "3c2e805071cde3ac4346fa744981ebae386c7928",
+      "size": 13458,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/focus_unattended_warning.ps1",
+      "blob": "082e55904d51bf718579d9077d6164305c14baff",
+      "size": 14454,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/force_uefi_bootnext_failure.ps1",
+      "blob": "98899bf4ef5d283c4689678c47f749de9588434e",
+      "size": 2288,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/get_windows_lab_logon_state.ps1",
+      "blob": "e181674a337bd5b28623e6e3274cf8b1038f5759",
+      "size": 1307,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/inject_stale_firmware_entry.ps1",
+      "blob": "20193ef8dffd24f10737852aa69694d1d270f93e",
+      "size": 6238,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/inspect_installation_rollback_state.ps1",
+      "blob": "834a8df96520b30f9bec0ad8c02309ef547977ec",
+      "size": 9145,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/inspect_live_failure.ps1",
+      "blob": "4f21a53e94ddda9a3172804a45ec8b0ac6d92beb",
+      "size": 2073,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/inspect_windows_graphical_session.ps1",
+      "blob": "bdcce73aafb233fc958ee56e0bb1a7a64a9e5a15",
+      "size": 1288,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/launch_libertix_elevated.ps1",
+      "blob": "81c308680996bf3c4011a680d5ef91639ac7acde",
+      "size": 24615,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/local_filepool.ps1",
+      "blob": "c98bb7469c98d1d1dcc57ca08e2d8ce6d2744377",
+      "size": 1571,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/post_install_windows_check.ps1",
+      "blob": "85e57a85494e08f99a453a2c9d0b5bb387104891",
+      "size": 87775,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/prepare_storage_fixture_volume.ps1",
+      "blob": "d8aac3224449f4e49857dad3500af06296146769",
+      "size": 2209,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/prepare_windows_test_vm.ps1",
+      "blob": "346fe6b02ed6160d8103358c1942fb6c62771d3b",
+      "size": 17617,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/request_bios_postinstall_rollback.ps1",
+      "blob": "7d6490bc40862d123e48521e7fab017fd0f0129e",
+      "size": 2114,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/request_installation_cancellation.ps1",
+      "blob": "fd6cca0b2e1ef10f2dd80f2ef1f61b1af16d6d00",
+      "size": 11332,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/request_uefi_postinstall_rollback.ps1",
+      "blob": "eb649110cb7d96823bec840ec2f78b147ba0fc69",
+      "size": 3765,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/ssh_command_wrapper.ps1",
+      "blob": "08e95dcfed9e861d7d0c17cb6cb8d0812d3a8f91",
+      "size": 6260,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/storage_documents_fixture.ps1",
+      "blob": "968665cd680dbda675db7b0a4ec0754975ff436b",
+      "size": 9227,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/storage_fixture.ps1",
+      "blob": "2489690c6156c7ef0f81c2febf45df06d05b10fa",
+      "size": 30453,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/test_boot_guardian_fault.ps1",
+      "blob": "c369001a7c85c1e3b812430033cca270f3046f23",
+      "size": 14118,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/test_boot_guardian_preferred_path_fault.ps1",
+      "blob": "948076ad4971600b5be341105effeccdafcfac1a",
+      "size": 9684,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/verify_installation_rollback.ps1",
+      "blob": "373e6536c5c08f097655e21946b143a1bca5e1e9",
+      "size": 19451,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/scripts/windows-guest-recovery-evidence.ps1",
+      "blob": "0e279135151b072b87303865a7c53fa8a69fd38d",
+      "size": 8569,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/app/web/index.html",
+      "blob": "0c3a11fb5e7b82aade39d762e46ce02c7483775d",
+      "size": 40982,
+      "extension": "html"
+    },
+    {
+      "path": "auto_tests/fixtures/observer-one-shot/valid-grant.json",
+      "blob": "787735542a79ff3c057f222a6e6c5845c1ec72a6",
+      "size": 816,
+      "extension": "json"
+    },
+    {
+      "path": "auto_tests/fixtures/protected-authority-readiness/untrusted-github-observations.json",
+      "blob": "4bd6ee0f28ed018e6e8f66d8f17b5803970c55a0",
+      "size": 1574,
+      "extension": "json"
+    },
+    {
+      "path": "auto_tests/powershell/test_cachyos_windows_recovery_evidence.ps1",
+      "blob": "0294ca73bbf8b24d8472fedf133d9f65159f9cd3",
+      "size": 8119,
+      "extension": "ps1"
+    },
+    {
+      "path": "auto_tests/pyproject.toml",
+      "blob": "de2b4c5c28f86128c84703470b6692a7106346b1",
+      "size": 882,
+      "extension": "toml"
+    },
+    {
+      "path": "auto_tests/requirements-dev.txt",
+      "blob": "c6cb11821711c0cda18bd3526843a6a84ccbe850",
+      "size": 85,
+      "extension": "txt"
+    },
+    {
+      "path": "auto_tests/requirements.txt",
+      "blob": "92a2b2dde53059037232fe7d9b975461309f510e",
+      "size": 182,
+      "extension": "txt"
+    },
+    {
+      "path": "auto_tests/uv.lock",
+      "blob": "1b77fea34f18de81b7121273cc3d671db6e83adc",
+      "size": 336049,
+      "extension": "lock"
+    },
+    {
+      "path": "bootstrap/libertix-cachyos-preflight.patch",
+      "blob": "4db05b6eb995776b01905e1e21a9ae2ea9daa192",
+      "size": 13151,
+      "extension": "patch"
+    },
+    {
+      "path": "docker/iso-builder/Dockerfile",
+      "blob": "9f8598d1c8385f1e7996583e396674bc05a055da",
+      "size": 1266,
+      "extension": "(none)"
+    },
+    {
+      "path": "docker/iso-builder/versions.env",
+      "blob": "720005111e8abe941415316094afb95460d3a275",
+      "size": 131,
+      "extension": "env"
+    },
+    {
+      "path": "docs/AGENT_HISTORICAL_PLAYBOOK.md",
+      "blob": "23af475c921c5b8b7d0c74ca80217cc57a446cca",
+      "size": 30825,
+      "extension": "md"
+    },
+    {
+      "path": "docs/ARCHITECTURE.md",
+      "blob": "c90e5577e2701ac9cf2398e0a3732bf3906c454c",
+      "size": 11601,
+      "extension": "md"
+    },
+    {
+      "path": "docs/AUTHENTICATED_DESTINATION_READONLY.md",
+      "blob": "39ad4dc585fa3b4ede6cf27f9104d72bf15b2c98",
+      "size": 10451,
+      "extension": "md"
+    },
+    {
+      "path": "docs/AUTH_DEST_128G_READONLY.md",
+      "blob": "0a5ddf9f3fab9ef377bb05fd1fde93f7a4dfacc0",
+      "size": 13977,
+      "extension": "md"
+    },
+    {
+      "path": "docs/AUTH_DEST_342_346_CANONICAL.md",
+      "blob": "1097dcb358959560f5356f642a2338eb72b4df54",
+      "size": 11055,
+      "extension": "md"
+    },
+    {
+      "path": "docs/AUTONOMY_ROADMAP.md",
+      "blob": "359cba14090502212b899d207c56c619500241f5",
+      "size": 6230,
+      "extension": "md"
+    },
+    {
+      "path": "docs/BAZZITE_BACKEND.md",
+      "blob": "8e16010ce3ae8728491ca1cb8d358ddd3675a987",
+      "size": 2113,
+      "extension": "md"
+    },
+    {
+      "path": "docs/BAZZITE_ISO_SIGNATURE_GATE.md",
+      "blob": "3bdc2a1d5396edc80481c722ca37949768bafd86",
+      "size": 4357,
+      "extension": "md"
+    },
+    {
+      "path": "docs/BAZZITE_SOURCE_PROVENANCE.md",
+      "blob": "63c695b19f0981a74a754dc47a0c110b3072a851",
+      "size": 1644,
+      "extension": "md"
+    },
+    {
+      "path": "docs/CACHYOS_WINDOWS_RECOVERY_EVIDENCE.md",
+      "blob": "63cddb11d152b60cb73d28438c65d7f48939d249",
+      "size": 4974,
+      "extension": "md"
+    },
+    {
+      "path": "docs/CANDIDATE_SIGNED_HANDOFF.md",
+      "blob": "6fafbbcc4a8a3c9b8e341bd8348d2d026f1111d8",
+      "size": 1805,
+      "extension": "md"
+    },
+    {
+      "path": "docs/CAPABILITY_CATALOG_V2.md",
+      "blob": "cee2df5bb6d1f8448018a244e90b61bab9daa161",
+      "size": 3891,
+      "extension": "md"
+    },
+    {
+      "path": "docs/CI_VM_EVIDENCE_INDEX.md",
+      "blob": "6784850cfab4b63483ce08028bab0e743f7bc767",
+      "size": 50312,
+      "extension": "md"
+    },
+    {
+      "path": "docs/COMPACT_VM_INSTALL_LAB.md",
+      "blob": "73e7f13e0bef776f70b290dd21ed0be2217efc14",
+      "size": 4207,
+      "extension": "md"
+    },
+    {
+      "path": "docs/GASLUX_ACTIONS_AGENTS.md",
+      "blob": "701562f2ecce37884e879e590d0196152ab701c4",
+      "size": 5594,
+      "extension": "md"
+    },
+    {
+      "path": "docs/INSTALLER_OBSERVER_ONE_SHOT_LEDGER_OFFLINE.md",
+      "blob": "b89b3eab43af1d2dd7e501ce99e6389cadcc62b0",
+      "size": 9808,
+      "extension": "md"
+    },
+    {
+      "path": "docs/INSTALLER_OBSERVER_ONE_SHOT_LEDGER_V2_P01.md",
+      "blob": "a3b7ce6e695eeb838ebbd60620bdb6480db86c07",
+      "size": 7187,
+      "extension": "md"
+    },
+    {
+      "path": "docs/LAB_MEDIA_PROBES.md",
+      "blob": "d604faa81e8cfbafe160fa6ebc10f694fa017c24",
+      "size": 2343,
+      "extension": "md"
+    },
+    {
+      "path": "docs/LOCAL_CODER_ACTIONS_FEASIBILITY.md",
+      "blob": "9d3acfcab837b0cca1caac8473b1a79361d8ce9c",
+      "size": 11210,
+      "extension": "md"
+    },
+    {
+      "path": "docs/MULTIDISTRO_PLAN.md",
+      "blob": "888a891fd5540d009ab3ba53f720530d99bed44c",
+      "size": 13034,
+      "extension": "md"
+    },
+    {
+      "path": "docs/OBSERVER_HOST_FD_DEV_INTEGRATION.md",
+      "blob": "033cb4ea1225e635e4aef0af914acf39b1236cfe",
+      "size": 3661,
+      "extension": "md"
+    },
+    {
+      "path": "docs/OBSERVER_HOST_FD_HISTORICAL_REPLAY.md",
+      "blob": "deeb6f46a897e69e270bedba5a39d70f9fae7740",
+      "size": 3680,
+      "extension": "md"
+    },
+    {
+      "path": "docs/OBSERVER_LOCAL_PEER_TRUST_BOUNDARY.md",
+      "blob": "e636159a6d8584a2c7c5c24d69cf38cc3045cbbe",
+      "size": 3687,
+      "extension": "md"
+    },
+    {
+      "path": "docs/OBSERVER_QEMU_REAL_DISK_FD_READONLY.md",
+      "blob": "2306598e2df11b21e8e801f17d693d18673a3433",
+      "size": 4919,
+      "extension": "md"
+    },
+    {
+      "path": "docs/OBSERVER_READONLY_EVIDENCE_SUBSET.md",
+      "blob": "6dcd0059f531023f9986405b4a25945a986cafd1",
+      "size": 2527,
+      "extension": "md"
+    },
+    {
+      "path": "docs/POP_OS_BACKEND.md",
+      "blob": "2e385a69bbd8b8f6b6e954e5321a67c83b97a583",
+      "size": 3589,
+      "extension": "md"
+    },
+    {
+      "path": "docs/PROTECTED_AUTHORITY_READINESS_F01_POSTCHECK.md",
+      "blob": "fcf4070f6b9fe96098eecd534209d13a01db96a3",
+      "size": 8620,
+      "extension": "md"
+    },
+    {
+      "path": "docs/PROTECTED_AUTHORITY_READINESS_OFFLINE.md",
+      "blob": "2ef8254d6fe9f4fa58eb236e1b39ed9cc3acd19f",
+      "size": 9851,
+      "extension": "md"
+    },
+    {
+      "path": "docs/Q4OS_BACKEND.md",
+      "blob": "844b89152be5bb6f3bae9c124bf550a3cbbcceec",
+      "size": 2095,
+      "extension": "md"
+    },
+    {
+      "path": "docs/RELEASES.md",
+      "blob": "904967b01dd8cf3d7033312cd820082d1e119687",
+      "size": 5029,
+      "extension": "md"
+    },
+    {
+      "path": "docs/SAFETY_GPT_FD_CROSSCHECK_COMPAT_OFFLINE.md",
+      "blob": "60d579f9d0d1f2e923ac0c7b283e6d349899c747",
+      "size": 7160,
+      "extension": "md"
+    },
+    {
+      "path": "docs/UEFI_BOOTNEXT_BOOTORDER.md",
+      "blob": "b1489f51fe2e67242d362281cad63f6dfa918043",
+      "size": 3566,
+      "extension": "md"
+    },
+    {
+      "path": "docs/WINDOWS_VM_RECOVERY_EVIDENCE.md",
+      "blob": "d579b09218002616595b4835032a2841cb766a12",
+      "size": 2709,
+      "extension": "md"
+    },
+    {
+      "path": "docs/autonomy/agent_missions.json",
+      "blob": "840e88aa671ffc3b8c847ed458723edd32e328b0",
+      "size": 1320,
+      "extension": "json"
+    },
+    {
+      "path": "docs/autonomy/evidence.json",
+      "blob": "a8fb56294a7a5508832fbe5e944d4fc4d0e1a639",
+      "size": 179,
+      "extension": "json"
+    },
+    {
+      "path": "docs/autonomy/goal.json",
+      "blob": "b81714aff4f6023b8839b1c3bb161552e9e6f1d6",
+      "size": 2696,
+      "extension": "json"
+    },
+    {
+      "path": "docs/brand/README.md",
+      "blob": "694894c2f243cf1c81579414e32e2134eb32bedd",
+      "size": 2144,
+      "extension": "md"
+    },
+    {
+      "path": "docs/brand/distributions.svg",
+      "blob": "3d41a258e6efe52559a6b776616a30b9d3a1ebfb",
+      "size": 4702,
+      "extension": "svg"
+    },
+    {
+      "path": "docs/brand/hero.svg",
+      "blob": "a4a72abf7f084cf23c0105b19deff566d526bde0",
+      "size": 5558,
+      "extension": "svg"
+    },
+    {
+      "path": "docs/brand/icon.svg",
+      "blob": "d0a55839a866d9aaac5f62492321e40fba5785fc",
+      "size": 1026,
+      "extension": "svg"
+    },
+    {
+      "path": "docs/brand/logo.svg",
+      "blob": "390f233562558b257780ed6935b91cbd752e1041",
+      "size": 1540,
+      "extension": "svg"
+    },
+    {
+      "path": "docs/brand/metadata.json",
+      "blob": "2241d3af4da133ac2028ed97b702bad39c00e763",
+      "size": 1514,
+      "extension": "json"
+    },
+    {
+      "path": "docs/brand/workflow.svg",
+      "blob": "5fb5c198d8b5474cb350bcf41aa50f54d45a7bc7",
+      "size": 5295,
+      "extension": "svg"
+    },
+    {
+      "path": "docs/distro-backends/BAZZITE.md",
+      "blob": "a7970f9b9504da9cb614b8713f019b26c95a2e2d",
+      "size": 24608,
+      "extension": "md"
+    },
+    {
+      "path": "docs/distro-backends/CACHYOS.md",
+      "blob": "553c981cf87fc82a00bc883e89417c439e9ea596",
+      "size": 22874,
+      "extension": "md"
+    },
+    {
+      "path": "docs/distro-backends/INTEGRATION_PROVENANCE.md",
+      "blob": "77ac673e5578fdd649c301779cd37a319c28b338",
+      "size": 1487,
+      "extension": "md"
+    },
+    {
+      "path": "docs/distro-backends/MINT.md",
+      "blob": "dd6d55606f4dead84d9473ad8c4d7ee17e33134d",
+      "size": 24687,
+      "extension": "md"
+    },
+    {
+      "path": "docs/distro-backends/POPOS.md",
+      "blob": "d54e079e4623448b2489b1ef987ba863434cac61",
+      "size": 22041,
+      "extension": "md"
+    },
+    {
+      "path": "docs/distro-backends/Q4OS.md",
+      "blob": "d3a70586e9bf860dca929112b03680c1c3972248",
+      "size": 28347,
+      "extension": "md"
+    },
+    {
+      "path": "docs/distro-backends/README.md",
+      "blob": "5655cc5348a2385824fcc3481bd67d28a0697d61",
+      "size": 14187,
+      "extension": "md"
+    },
+    {
+      "path": "docs/distro-backends/SHARED_CONTRACTS.md",
+      "blob": "d5329273380ee21151531126797a7bf7517c3ff2",
+      "size": 23902,
+      "extension": "md"
+    },
+    {
+      "path": "docs/distro-backends/UI_SCHEMA_OFFLINE_BOUNDARY.md",
+      "blob": "947d74762869484ae03619509a6fc1517747e2b5",
+      "size": 1707,
+      "extension": "md"
+    },
+    {
+      "path": "docs/distro-backends/ZORIN.md",
+      "blob": "f6121f1e3669af355b3c86fd494d562eeff18a7c",
+      "size": 20104,
+      "extension": "md"
+    },
+    {
+      "path": "docs/images/banner.png",
+      "blob": "8ef1ac3861122a8249d7c1162df4adf136d62978",
+      "size": 470552,
+      "extension": "png"
+    },
+    {
+      "path": "docs/samples/OBSERVER_HOST_FD_SYNTHETIC.json",
+      "blob": "f2fd492aa7fb40c60510b2fa0c106eb808ac99a0",
+      "size": 1864,
+      "extension": "json"
+    },
+    {
+      "path": "grub/10_libertix",
+      "blob": "a6270f4bc5f410e81cafc6f215f6d4a6e2d19a38",
+      "size": 860,
+      "extension": "(none)"
+    },
+    {
+      "path": "install-party-kit/AdjacentFilepool/populate-filepool.ps1",
+      "blob": "8d1c6108b39e788ec34551344be3065db2f11c8d",
+      "size": 10359,
+      "extension": "ps1"
+    },
+    {
+      "path": "install-party-kit/Docker/Dockerfile",
+      "blob": "40c99dfb72dbe7cc43106306f36a9d8ee1061d36",
+      "size": 773,
+      "extension": "(none)"
+    },
+    {
+      "path": "install-party-kit/Docker/README.md",
+      "blob": "077bbd981fc4156285f2395baf9942f5ef7dc821",
+      "size": 1540,
+      "extension": "md"
+    },
+    {
+      "path": "install-party-kit/Docker/compose.yaml",
+      "blob": "ee7e489c498c1e40258ba8c4459625565a788f1a",
+      "size": 222,
+      "extension": "yaml"
+    },
+    {
+      "path": "install-party-kit/README.md",
+      "blob": "d79902564f537738b183cf15ad3f486ecc1e0825",
+      "size": 6595,
+      "extension": "md"
+    },
+    {
+      "path": "install-party-kit/Server/FilepoolStore.cs",
+      "blob": "84d739bf36e79b5c652d3169ccc51143bf1fb9ac",
+      "size": 13627,
+      "extension": "cs"
+    },
+    {
+      "path": "install-party-kit/Server/KitSettings.cs",
+      "blob": "6a4b4255206cfb74487aa4abbf07bfbf28d779af",
+      "size": 1870,
+      "extension": "cs"
+    },
+    {
+      "path": "install-party-kit/Server/Libertix.InstallParty.csproj",
+      "blob": "9da73803e4c8d493ec69108460d074dd3d6ce6b6",
+      "size": 1195,
+      "extension": "csproj"
+    },
+    {
+      "path": "install-party-kit/Server/Program.cs",
+      "blob": "017b9964b00f28279acdd3a04bc0b0c768465b21",
+      "size": 5953,
+      "extension": "cs"
+    },
+    {
+      "path": "install-party-kit/Server/wwwroot/app.js",
+      "blob": "bfbde39e93c4259208c1b0d119a9ef84ba2cbffd",
+      "size": 2966,
+      "extension": "js"
+    },
+    {
+      "path": "install-party-kit/Server/wwwroot/index.html",
+      "blob": "31192ca6bc9f5eb8fb7e55afa3cf33cc563d88b7",
+      "size": 1658,
+      "extension": "html"
+    },
+    {
+      "path": "install-party-kit/Server/wwwroot/style.css",
+      "blob": "b60003266d502792dff501b909ce03162c436d8a",
+      "size": 1194,
+      "extension": "css"
+    },
+    {
+      "path": "install-party-kit/Tests/FilepoolTests.cs",
+      "blob": "ca05470ba68537c6d0ec9ef20e77ea31916ba1e5",
+      "size": 7105,
+      "extension": "cs"
+    },
+    {
+      "path": "install-party-kit/Tests/Libertix.InstallParty.Tests.csproj",
+      "blob": "4aabae1cf276c8167924920db5da427e85d017bc",
+      "size": 1164,
+      "extension": "csproj"
+    },
+    {
+      "path": "install-party-kit/Windows/README.md",
+      "blob": "3f28b5b718e3835c94ae0c85c89278641f12824e",
+      "size": 1399,
+      "extension": "md"
+    },
+    {
+      "path": "iso-uefi/assets/debian-dual-signed/fbx64.efi.signed",
+      "blob": "647adc61886d01d66def87f6ab2478110bb26713",
+      "size": 123552,
+      "extension": "signed"
+    },
+    {
+      "path": "iso-uefi/assets/debian-dual-signed/mmx64.efi.signed",
+      "blob": "a51ca2ffc4ed322ddb32d0745083b0e0c6928143",
+      "size": 919296,
+      "extension": "signed"
+    },
+    {
+      "path": "iso-uefi/assets/debian-dual-signed/shimx64.efi.signed",
+      "blob": "aa457f273540593088302a8598eebff11b2d8c4e",
+      "size": 1088816,
+      "extension": "signed"
+    },
+    {
+      "path": "iso-uefi/boot/grub.cfg",
+      "blob": "53e7c99d542fdb89d303a1452912d01ec9818b59",
+      "size": 321,
+      "extension": "cfg"
+    },
+    {
+      "path": "iso-uefi/boot/isolinux.cfg",
+      "blob": "76d504b30101cd8553275bd550067500912c991e",
+      "size": 384,
+      "extension": "cfg"
+    },
+    {
+      "path": "iso-uefi/config/defaults.env",
+      "blob": "72b3ba2ddd96c9faf6b6c10d43c78ac597a6f2ba",
+      "size": 79,
+      "extension": "env"
+    },
+    {
+      "path": "iso-uefi/systemd/libertix-install.service",
+      "blob": "7a8d788dfaa7016f165db030304462cf7616abc6",
+      "size": 527,
+      "extension": "service"
+    },
+    {
+      "path": "iso/boot/grub.cfg",
+      "blob": "a860ec3972f502be22ced8a098e5a092af6f47f8",
+      "size": 298,
+      "extension": "cfg"
+    },
+    {
+      "path": "iso/boot/isolinux.cfg",
+      "blob": "50be99fcee95f12ec3b4bf12da4acad82dd7a6ee",
+      "size": 397,
+      "extension": "cfg"
+    },
+    {
+      "path": "iso/config/defaults.env",
+      "blob": "86c740eb0d72b55f52c9511b34e36036a68ba080",
+      "size": 79,
+      "extension": "env"
+    },
+    {
+      "path": "iso/systemd/libertix-install.service",
+      "blob": "7a8d788dfaa7016f165db030304462cf7616abc6",
+      "size": 527,
+      "extension": "service"
+    },
+    {
+      "path": "maintenance/Clear-LibertixRecovery.ps1",
+      "blob": "86cecb4028883b81c28b7b228317cb1ba64c1a76",
+      "size": 18341,
+      "extension": "ps1"
+    },
+    {
+      "path": "maintenance/README.md",
+      "blob": "03dfc3b6b6b88ead40e6007b00fd99d9e0e911f6",
+      "size": 6161,
+      "extension": "md"
+    },
+    {
+      "path": "release-config.json",
+      "blob": "47042b9204a6b340989f65c34f7bb6fb68a7ae3b",
+      "size": 2049,
+      "extension": "json"
+    },
+    {
+      "path": "schemas/distribution-capabilities.schema.json",
+      "blob": "bb317e3206be835d7c338d6a3f8a7eff8850c566",
+      "size": 3702,
+      "extension": "json"
+    },
+    {
+      "path": "schemas/distro-ui-evidence.schema.json",
+      "blob": "5842dccc07d10d74f04c784f7582c716c35bbf64",
+      "size": 6556,
+      "extension": "json"
+    },
+    {
+      "path": "schemas/distro-ui-map.schema.json",
+      "blob": "022de48181c5f1458a7d8e192ac7870be90fc83d",
+      "size": 13575,
+      "extension": "json"
+    },
+    {
+      "path": "schemas/installation-plan.schema.json",
+      "blob": "5214c7978b0cb301edee10d50fc07173da316dd3",
+      "size": 17049,
+      "extension": "json"
+    },
+    {
+      "path": "schemas/installation-state.schema.json",
+      "blob": "ba1628b16278351044a70d002a4b8b44bc08a0ae",
+      "size": 7951,
+      "extension": "json"
+    },
+    {
+      "path": "schemas/observer-one-shot-grant-v1.schema.json",
+      "blob": "b11646401b78409671f198774fbcd11efe4f040a",
+      "size": 1670,
+      "extension": "json"
+    },
+    {
+      "path": "schemas/observer-one-shot-grant-v2.schema.json",
+      "blob": "7d7652b34f7542e2255ac445c9c78938b1563ec0",
+      "size": 2303,
+      "extension": "json"
+    },
+    {
+      "path": "schemas/protected-authority-readiness-v1.schema.json",
+      "blob": "534e3a45240ae7564bac3c8833353c2380b721d7",
+      "size": 2504,
+      "extension": "json"
+    },
+    {
+      "path": "schemas/release-config.schema.json",
+      "blob": "a361454eb7e71ded7bb54a1241b39b0cfde17aaa",
+      "size": 9143,
+      "extension": "json"
+    }
+  ],
+  "semantic_equivalence_verified": false,
+  "formal_gate_verified": false,
+  "merge_authorized": false,
+  "writer_authorized": false,
+  "release_eligible": false,
+  "limitations": "Complete tree metadata, not source parsing, execution, dependency closure or functional equivalence. No binary content copied."
+}

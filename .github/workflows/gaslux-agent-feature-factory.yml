@@ -5,49 +5,8 @@ on:
   schedule:
     - cron: '6,21,36,51 * * * *' # staggered scheduler registration refresh
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/gaslux-agent-feature-factory.yml
-      - auto_tests/tools/gaslux_agent_feature_factory.py
-      - auto_tests/tests/test_gaslux_agent_feature_factory.py
-      - auto_tests/tools/gaslux_agent_task_triage.py
-      - auto_tests/tests/test_gaslux_agent_task_triage.py
-      - auto_tests/tests/test_gaslux_agent_phase2b.py
-  pull_request:
-    paths:
-      - .github/workflows/gaslux-agent-feature-factory.yml
-      - auto_tests/tools/gaslux_agent_feature_factory.py
-      - auto_tests/tests/test_gaslux_agent_feature_factory.py
-      - auto_tests/tools/gaslux_agent_task_triage.py
-      - auto_tests/tests/test_gaslux_agent_task_triage.py
-      - auto_tests/tests/test_gaslux_agent_phase2b.py
-
-permissions:
-  contents: read
-
-concurrency:
-  group: gaslux-six-distro-feature-factory-${{ github.event_name == 'pull_request' && github.event.number || 'runtime' }}
-  cancel-in-progress: false
-
-jobs:
-  contracts:
-    if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'push' || github.event_name == 'pull_request')
-    runs-on: ubuntu-24.04
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
-        with:
-          persist-credentials: false
-      - name: Adversarial developer/publisher scope and artifact tests
-        run: |
-          set -euo pipefail
-          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
-          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_task_triage.py -v
-          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_phase2b.py -v
-
-
-  repair_live_probe:
+    inputs:
+      repair_live_probe:
     # Read-only candidate-branch experiment. Never runs the publisher.
     if: >-
       github.event_name == 'pull_request' &&
@@ -163,6 +122,284 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+  opencode_trial:
+        description: 'Run isolated OpenCode comparison and dev shadow only (no publishing)'
+        type: boolean
+        default: false
+      opencode_role:
+        description: 'Backend for explicit OpenCode dev shadow; never grants scope'
+        type: choice
+        default: zorin
+        options: [mint, zorin, cachyos, popos, q4os, bazzite]
+  push:
+    branches: [main]
+    paths:
+      - .github/workflows/gaslux-agent-feature-factory.yml
+      - auto_tests/tools/gaslux_agent_feature_factory.py
+      - auto_tests/tests/test_gaslux_agent_feature_factory.py
+      - auto_tests/tools/gaslux_agent_task_triage.py
+      - auto_tests/tests/test_gaslux_agent_task_triage.py
+      - auto_tests/tests/test_gaslux_agent_phase2b.py
+      - auto_tests/tools/gaslux_agent_history.py
+      - auto_tests/tests/test_gaslux_agent_history.py
+      - auto_tests/tools/gaslux_history_ast.py
+      - auto_tests/tests/test_gaslux_history_ast.py
+      - docs/GASLUX_HISTORICAL_SYMBOL_INVENTORY.json
+      - docs/GASLUX_HISTORICAL_SYMBOL_EXTENSION.json
+      - docs/GASLUX_BACKEND_REUSE_INVENTORY.json
+      - docs/GASLUX_HISTORICAL_FINDINGS.json
+      - docs/GASLUX_HISTORICAL_EVIDENCE_INDEX.json
+      - docs/GASLUX_HISTORICAL_PR_INVENTORY.json
+      - docs/GASLUX_HISTORICAL_DEPENDENCY_AUDIT.json
+      - 'docs/agent-skills/**'
+      - auto_tests/tools/gaslux_opencode_trial.py
+      - auto_tests/tests/test_gaslux_opencode_trial.py
+      - auto_tests/tools/gaslux_opencode_workspace.py
+      - auto_tests/tools/gaslux_opencode_iterative.py
+      - auto_tests/tools/gaslux_opencode_parent_boundary.py
+      - auto_tests/tools/gaslux_opencode_model_proxy.py
+      - auto_tests/tools/gaslux_opencode_isolated_runtime.py
+      - auto_tests/tools/gaslux_opencode_product_shadow.py
+      - auto_tests/tools/gaslux_opencode_factory_worker.py
+      - auto_tests/tests/test_gaslux_opencode_workspace.py
+  pull_request:
+    paths:
+      - .github/workflows/gaslux-agent-feature-factory.yml
+      - auto_tests/tools/gaslux_agent_feature_factory.py
+      - auto_tests/tests/test_gaslux_agent_feature_factory.py
+      - auto_tests/tools/gaslux_agent_task_triage.py
+      - auto_tests/tests/test_gaslux_agent_task_triage.py
+      - auto_tests/tests/test_gaslux_agent_phase2b.py
+      - auto_tests/tools/gaslux_agent_history.py
+      - auto_tests/tests/test_gaslux_agent_history.py
+      - auto_tests/tools/gaslux_history_ast.py
+      - auto_tests/tests/test_gaslux_history_ast.py
+      - docs/GASLUX_HISTORICAL_SYMBOL_INVENTORY.json
+      - docs/GASLUX_HISTORICAL_SYMBOL_EXTENSION.json
+      - docs/GASLUX_BACKEND_REUSE_INVENTORY.json
+      - docs/GASLUX_HISTORICAL_FINDINGS.json
+      - docs/GASLUX_HISTORICAL_EVIDENCE_INDEX.json
+      - docs/GASLUX_HISTORICAL_PR_INVENTORY.json
+      - docs/GASLUX_HISTORICAL_DEPENDENCY_AUDIT.json
+      - 'docs/agent-skills/**'
+      - auto_tests/tools/gaslux_opencode_trial.py
+      - auto_tests/tests/test_gaslux_opencode_trial.py
+      - auto_tests/tools/gaslux_opencode_workspace.py
+      - auto_tests/tools/gaslux_opencode_iterative.py
+      - auto_tests/tools/gaslux_opencode_parent_boundary.py
+      - auto_tests/tools/gaslux_opencode_model_proxy.py
+      - auto_tests/tools/gaslux_opencode_isolated_runtime.py
+      - auto_tests/tools/gaslux_opencode_product_shadow.py
+      - auto_tests/tools/gaslux_opencode_factory_worker.py
+      - auto_tests/tests/test_gaslux_opencode_workspace.py
+
+permissions:
+  contents: read
+
+concurrency:
+  group: gaslux-six-distro-feature-factory-${{ github.event_name == 'pull_request' && github.event.number || 'runtime' }}
+  cancel-in-progress: false
+
+jobs:
+  contracts:
+    if: github.repository == 'LMhdez/gaslux' && (github.event_name == 'push' || github.event_name == 'pull_request')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          persist-credentials: false
+      - name: Adversarial developer/publisher scope and artifact tests
+        run: |
+          set -euo pipefail
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_task_triage.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_phase2b.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_agent_history.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_history_ast.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_trial.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_workspace.py -v
+
+      - name: Verify historical Python AST and reviewed witness differential
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 419 || github.event.pull_request.number == 426) && github.event.pull_request.head.repo.full_name == github.repository
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          timeout 210 python3 -B auto_tests/tools/gaslux_history_ast.py --output "$RUNNER_TEMP/gaslux-history-ast.json"
+      - name: Retain AST discovery report (no authority)
+        if: github.event_name == 'pull_request' && (github.event.pull_request.number == 419 || github.event.pull_request.number == 426) && github.event.pull_request.head.repo.full_name == github.repository
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-history-ast-discovery
+          path: ${{ runner.temp }}/gaslux-history-ast.json
+          if-no-files-found: error
+          retention-days: 14
+
+  opencode_trial:
+    # Same-repo pilot on #419 only; after integration, explicit main dispatch.
+    # No dependency on select, and no publisher/safety job consumes its output.
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      ((github.event_name == 'pull_request' && (github.event.pull_request.number == 419 || github.event.pull_request.number == 426) &&
+        github.event.pull_request.head.repo.full_name == github.repository) ||
+       (github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' &&
+        inputs.opencode_trial))
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      OLLAMA_HOST: 127.0.0.1:11434
+      OLLAMA_NUM_PARALLEL: '1'
+      OLLAMA_CONTEXT_LENGTH: '16384'
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - name: Offline trial admission and event parser tests
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_trial.py -v
+      - name: Fetch pinned OpenCode v1.19.6 release asset
+        shell: bash
+        run: |
+          set -euo pipefail
+          lab=$(mktemp -d "$RUNNER_TEMP/gaslux-opencode.XXXXXXXX")
+          curl --fail --location --proto '=https' --retry 2 --max-time 180 \
+            https://github.com/anomalyco/opencode/releases/download/v1.19.6/opencode-linux-x64-baseline.tar.gz \
+            -o "$lab/opencode.tar.gz"
+          echo "8443113b3f3dfebf8b0fa91c4377e5519a62b9231732d9344a5df001e4a852b3  $lab/opencode.tar.gz" | sha256sum -c -
+          python3 -B - "$lab" <<'PY'
+          import pathlib, sys, tarfile
+          root = pathlib.Path(sys.argv[1])
+          with tarfile.open(root / 'opencode.tar.gz') as archive:
+              files = [m for m in archive.getmembers()
+                       if m.isfile() and pathlib.PurePosixPath(m.name).name == 'opencode']
+              assert len(files) == 1 and 0 < files[0].size <= 300_000_000
+              with archive.extractfile(files[0]) as src, (root / 'opencode').open('xb') as dst:
+                  import shutil
+                  shutil.copyfileobj(src, dst)
+          (root / 'opencode').chmod(0o700)
+          PY
+          echo "GASLUX_OPENCODE_BIN=$lab/opencode" >> "$GITHUB_ENV"
+      - name: Install hash-pinned unprivileged local inference engine
+        id: inference_setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/ollama/ollama/releases/download/v0.40.17/install.sh -o /tmp/ollama-install.sh
+          echo 'eb510679f45de4a914d99953cd3deaada5dc73f9d585014df99d704449dd7dcc  /tmp/ollama-install.sh' | sha256sum -c -
+          OLLAMA_VERSION=0.40.17 timeout 420 sh /tmp/ollama-install.sh
+          # The installer may start a systemd service with its own environment.
+          # Never silently reuse that server: OpenAI-compatible context settings
+          # are not the server's num_ctx.
+          if systemctl is-active --quiet ollama.service; then
+            sudo systemctl stop ollama.service
+          fi
+          if curl -fsS --max-time 2 http://127.0.0.1:11434/api/version >/dev/null 2>&1; then
+            echo "Unexpected existing Ollama listener"; exit 1
+          fi
+          OLLAMA_CONTEXT_LENGTH=16384 ollama serve > /tmp/ollama.log 2>&1 &
+          server_pid=$!
+          ready=false
+          for i in $(seq 1 50); do
+            kill -0 "$server_pid"
+            if curl -fsS --max-time 2 http://127.0.0.1:11434/api/version >/dev/null; then
+              ready=true; break
+            fi
+            sleep 2
+          done
+          test "$ready" = true
+          timeout 720 ollama pull qwen3.5:9b
+          python3 - <<'PY'
+          import json, urllib.request
+          tags = json.load(urllib.request.urlopen('http://127.0.0.1:11434/api/tags'))
+          model = next((x for x in tags.get('models', []) if x.get('name') == 'qwen3.5:9b'), None)
+          assert model and model.get('digest') == '56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
+          PY
+      - name: Compare original Qwen path with native skill tool use
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/opencode-trial
+          python3 -B auto_tests/tools/gaslux_opencode_trial.py \
+            --binary "$GASLUX_OPENCODE_BIN" --context 16384 --report evidence/opencode-trial/report.json
+      - name: Mandatory Landlock and pathless workspace admission tests
+        id: workspace_admission
+        if: ${{ !cancelled() && steps.inference_setup.conclusion == 'success' }}
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_workspace.py -v
+      - name: Verify independent broker and isolated synthetic parent boundary
+        id: parent_admission
+        if: ${{ !cancelled() && steps.workspace_admission.conclusion == 'success' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -x /usr/bin/bwrap ] || [ ! -f /usr/share/apparmor/extra-profiles/bwrap-userns-restrict ]; then
+            sudo timeout 180 apt-get update
+            sudo timeout 180 apt-get install -y --no-install-recommends bubblewrap apparmor-profiles
+          fi
+          # Ubuntu Noble's restrictive, bwrap-specific profile. Do not disable
+          # AppArmor, change sysctl, replace a loaded profile or fall back.
+          profile=/usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+          if [ "$(cat /sys/module/apparmor/parameters/enabled)" = Y ]; then
+            test -f "$profile"
+            dpkg-query -S "$profile" | grep -q '^apparmor-profiles:'
+            loaded=$(sudo cat /sys/kernel/security/apparmor/profiles)
+            if ! printf '%s\n' "$loaded" | grep -Eq '^(bwrap-userns-restrict|bwrap|/usr/bin/bwrap) \('; then
+              sudo apparmor_parser -a "$profile"
+            fi
+          fi
+          mkdir -p evidence/opencode-iterative
+          python3 -B auto_tests/tools/gaslux_opencode_parent_boundary.py \
+            --report evidence/opencode-iterative/parent-boundary.json
+      - name: Checkout actual dev for read-only shadow evaluation
+        if: ${{ !cancelled() && steps.parent_admission.conclusion == 'success' }}
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: dev
+          path: shadow-source
+          persist-credentials: false
+      - name: Prepare same pinned product regression dependencies
+        id: shadow_dependencies
+        if: ${{ !cancelled() && steps.parent_admission.conclusion == 'success' }}
+        run: |
+          set -euo pipefail
+          python3 -m pip install --target "$RUNNER_TEMP/gaslux-shadow-deps" \
+            'pytest==9.0.2' 'jsonschema==4.25.1' 'cryptography==44.0.3' 'ruff==0.17.6'
+      - name: Native skill plus MCP investigation edit and RED-to-PASS tests on actual dev shadow
+        if: ${{ !cancelled() && steps.shadow_dependencies.conclusion == 'success' }}
+        env:
+          SHADOW_ROLE: ${{ github.event_name == 'workflow_dispatch' && inputs.opencode_role || 'zorin' }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p evidence/opencode-iterative
+          base=$(git -C shadow-source rev-parse HEAD)
+          python3 -B auto_tests/tools/gaslux_opencode_product_shadow.py \
+            --binary "$GASLUX_OPENCODE_BIN" --repo shadow-source --base "$base" \
+            --dependencies "$RUNNER_TEMP/gaslux-shadow-deps" --role "$SHADOW_ROLE" \
+            --report evidence/opencode-iterative/report.json
+      # Real shadow above supersedes synthetic-only Mint model execution.
+      - name: Retain iterative lab report only (never a Factory candidate)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-opencode-iterative
+          path: |
+            evidence/opencode-iterative/report.json
+            evidence/opencode-iterative/parent-boundary.json
+          if-no-files-found: ignore
+          retention-days: 14
+      - name: Retain comparison report only (never a Factory candidate)
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-opencode-comparison
+          path: evidence/opencode-trial/report.json
+          if-no-files-found: ignore
+          retention-days: 14
 
   supervised_scope_probe:
     # Product tests on disposable checkout only; no publication credentials.
@@ -265,6 +502,8 @@ jobs:
     if: >-
       github.repository == 'LMhdez/gaslux' &&
       vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      github.ref == 'refs/heads/main' &&
+      !(github.event_name == 'workflow_dispatch' && inputs.opencode_trial) &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
        (github.event_name == 'push' && github.ref == 'refs/heads/main'))
     runs-on: ubuntu-24.04
@@ -283,6 +522,7 @@ jobs:
       scope: ${{ steps.plan.outputs.scope }}
       repair_pr: ${{ steps.plan.outputs.repair_pr }}
       repair_head: ${{ steps.plan.outputs.repair_head }}
+      worker: ${{ steps.plan.outputs.worker }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -294,6 +534,28 @@ jobs:
           ref: dev
           path: source
           persist-credentials: false
+      - name: Produce bounded historical context for existing Factory and specialists
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -B trusted/auto_tests/tools/gaslux_agent_history.py > /tmp/gaslux-history-context.json
+          python3 - <<'PY'
+          import json, os
+          with open('/tmp/gaslux-history-context.json') as inp:
+              data = json.load(inp)
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as out:
+              out.write('### Historical reuse leads — not gate evidence\\n\\n')
+              for row in data['contexts']:
+                  refs = ', '.join('#' + str(n) for n in row['role_pr_leads'])
+                  out.write(f"- {row['role']}: {refs}\\n")
+          PY
+      - name: Retain historical reference context only
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-historical-context
+          path: /tmp/gaslux-history-context.json
+          if-no-files-found: error
+          retention-days: 14
       - name: Choose first missing and unclaimed backend feature
         id: plan
         shell: bash
@@ -304,7 +566,9 @@ jobs:
           python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py plan --repo source --enable-stale-repair --enable-supervised-tests > /tmp/gaslux-feature-plan.json
           cat /tmp/gaslux-feature-plan.json
           python3 - <<'PY'
-          import json, os
+          import json, os, sys
+          sys.path.insert(0, 'trusted/auto_tests/tools')
+          from gaslux_opencode_factory_worker import route
           row = json.load(open('/tmp/gaslux-feature-plan.json'))
           if row['status'] not in ('pending', 'idle', 'blocked'):
               raise SystemExit('Invalid feature factory state')
@@ -316,6 +580,7 @@ jobs:
               out.write('scope=' + row.get('scope', 'lifecycle') + '\n')
               out.write('repair_pr=' + str(row.get('repair_pr', '')) + '\n')
               out.write('repair_head=' + row.get('repair_head', '') + '\n')
+              out.write('worker=' + route(row) + '\n')
           if row['status'] == 'blocked':
               with open(os.environ['GITHUB_STEP_SUMMARY'], 'a', encoding='utf-8') as summary:
                   summary.write('### GASLUX: actual unsatisfied lifecycle gates (read-only)\n\n')
@@ -349,7 +614,7 @@ jobs:
     needs: select
     if: needs.select.outputs.active == 'true'
     runs-on: ubuntu-24.04
-    timeout-minutes: 28
+    timeout-minutes: 65
     permissions:
       contents: read
     env:
@@ -377,8 +642,106 @@ jobs:
           test "$(git -C source rev-parse HEAD)" = "$BASE"
           python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
           python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_phase2b.py -v
+      - name: Fetch pinned OpenCode v1.19.6 release asset
+        if: needs.select.outputs.worker == 'opencode'
+        shell: bash
+        run: |
+          set -euo pipefail
+          lab=$(mktemp -d "$RUNNER_TEMP/gaslux-opencode.XXXXXXXX")
+          curl --fail --location --proto '=https' --retry 2 --max-time 180 \
+            https://github.com/anomalyco/opencode/releases/download/v1.19.6/opencode-linux-x64-baseline.tar.gz \
+            -o "$lab/opencode.tar.gz"
+          echo "8443113b3f3dfebf8b0fa91c4377e5519a62b9231732d9344a5df001e4a852b3  $lab/opencode.tar.gz" | sha256sum -c -
+          python3 -B - "$lab" <<'PY'
+          import pathlib, sys, tarfile
+          root = pathlib.Path(sys.argv[1])
+          with tarfile.open(root / 'opencode.tar.gz') as archive:
+              files = [m for m in archive.getmembers()
+                       if m.isfile() and pathlib.PurePosixPath(m.name).name == 'opencode']
+              assert len(files) == 1 and 0 < files[0].size <= 300_000_000
+              with archive.extractfile(files[0]) as src, (root / 'opencode').open('xb') as dst:
+                  import shutil
+                  shutil.copyfileobj(src, dst)
+          (root / 'opencode').chmod(0o700)
+          PY
+          echo "GASLUX_OPENCODE_BIN=$lab/opencode" >> "$GITHUB_ENV"
       - name: Install hash-pinned unprivileged local inference engine
-        if: needs.select.outputs.repair_pr == '' && needs.select.outputs.scope != 'supervised-lifecycle-tests-v1' && needs.select.outputs.scope != 'supervised-media-pins-v1'
+        if: needs.select.outputs.worker == 'opencode'
+        id: inference_setup
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error \
+            https://github.com/ollama/ollama/releases/download/v0.40.17/install.sh -o /tmp/ollama-install.sh
+          echo 'eb510679f45de4a914d99953cd3deaada5dc73f9d585014df99d704449dd7dcc  /tmp/ollama-install.sh' | sha256sum -c -
+          OLLAMA_VERSION=0.40.17 timeout 420 sh /tmp/ollama-install.sh
+          # The installer may start a systemd service with its own environment.
+          # Never silently reuse that server: OpenAI-compatible context settings
+          # are not the server's num_ctx.
+          if systemctl is-active --quiet ollama.service; then
+            sudo systemctl stop ollama.service
+          fi
+          if curl -fsS --max-time 2 http://127.0.0.1:11434/api/version >/dev/null 2>&1; then
+            echo "Unexpected existing Ollama listener"; exit 1
+          fi
+          OLLAMA_CONTEXT_LENGTH=16384 ollama serve > /tmp/ollama.log 2>&1 &
+          server_pid=$!
+          ready=false
+          for i in $(seq 1 50); do
+            kill -0 "$server_pid"
+            if curl -fsS --max-time 2 http://127.0.0.1:11434/api/version >/dev/null; then
+              ready=true; break
+            fi
+            sleep 2
+          done
+          test "$ready" = true
+          timeout 720 ollama pull qwen3.5:9b
+          python3 - <<'PY'
+          import json, urllib.request
+          tags = json.load(urllib.request.urlopen('http://127.0.0.1:11434/api/tags'))
+          model = next((x for x in tags.get('models', []) if x.get('name') == 'qwen3.5:9b'), None)
+          assert model and model.get('digest') == '56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
+          PY
+      - name: Mandatory isolated workspace regression tests
+        if: needs.select.outputs.worker == 'opencode'
+        run: python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_opencode_workspace.py -v
+      - name: Verify independent broker and isolated synthetic parent boundary
+        id: parent_admission
+        if: needs.select.outputs.worker == 'opencode'
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -x /usr/bin/bwrap ] || [ ! -f /usr/share/apparmor/extra-profiles/bwrap-userns-restrict ]; then
+            sudo timeout 180 apt-get update
+            sudo timeout 180 apt-get install -y --no-install-recommends bubblewrap apparmor-profiles
+          fi
+          # Ubuntu Noble's restrictive, bwrap-specific profile. Do not disable
+          # AppArmor, change sysctl, replace a loaded profile or fall back.
+          profile=/usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+          if [ "$(cat /sys/module/apparmor/parameters/enabled)" = Y ]; then
+            test -f "$profile"
+            dpkg-query -S "$profile" | grep -q '^apparmor-profiles:'
+            loaded=$(sudo cat /sys/kernel/security/apparmor/profiles)
+            if ! printf '%s\n' "$loaded" | grep -Eq '^(bwrap-userns-restrict|bwrap|/usr/bin/bwrap) \('; then
+              sudo apparmor_parser -a "$profile"
+            fi
+          fi
+          mkdir -p evidence/opencode-iterative
+          python3 -B trusted/auto_tests/tools/gaslux_opencode_parent_boundary.py \
+            --report evidence/opencode-iterative/parent-boundary.json
+      - name: Install isolated product regression dependencies
+        if: needs.select.outputs.worker == 'opencode'
+        run: |
+          python3 -m pip install --target "$RUNNER_TEMP/gaslux-shadow-deps" 'pytest==9.0.2' 'jsonschema==4.25.1' 'cryptography==44.0.3' 'ruff==0.17.6'
+      - name: Run exact admitted OpenCode lifecycle task
+        if: needs.select.outputs.worker == 'opencode'
+        run: |
+          set -euo pipefail
+          python3 -B trusted/auto_tests/tools/gaslux_opencode_factory_worker.py \
+            --binary "$GASLUX_OPENCODE_BIN" --repo source --base "$BASE" --role "$ROLE" \
+            --scope "$SCOPE" --dependencies "$RUNNER_TEMP/gaslux-shadow-deps" --evidence evidence/feature-factory
+      - name: Install hash-pinned unprivileged local inference engine
+        if: needs.select.outputs.worker == 'direct'
         shell: bash
         run: |
           set -euo pipefail
@@ -399,6 +762,7 @@ jobs:
           assert model and model.get('digest') == '56671c2ab9385f9cfcb404638e32cd62d88e3501d44822208363c010179a3c90'
           PY
       - name: Generate and adversarially check model-authored backend product code
+        if: needs.select.outputs.worker != 'opencode'
         env:
           GASLUX_FACTORY_RUFF_ENFORCE: 'true'
         shell: bash
@@ -413,6 +777,7 @@ jobs:
           python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py verify \
             --repo source --role "$ROLE" --base "$BASE" --scope "$SCOPE" --evidence evidence/feature-factory "${repair[@]}"
       - name: Recompile and run relevant current-dev product regression tests without write token
+        if: needs.select.outputs.worker != 'opencode'
         shell: bash
         run: |
           set -euo pipefail
@@ -426,8 +791,7 @@ jobs:
           raw = target.read_bytes()
           sep = (b'\n\n\n' if info.get('producer') in (
               'trusted-fixed-lifecycle-repair-v1', 'trusted-supervisor-regression-v1',
-              'trusted-supervisor-media-v1')
-              else b'\n\n')
+              'trusted-supervisor-media-v1') else b'\n\n')
           target.write_bytes(raw.rstrip(b'\n') + sep + addition)
           PY
           # Ruff analyzes bytes only; model-authored code is never imported
@@ -447,7 +811,7 @@ jobs:
           cd source
           python3 -B -m pytest -q "auto_tests/tests/$suite"
       - name: Export immutable candidate bytes, never the complete checkout
-        if: always()
+        if: success()
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         with:
           name: gaslux-feature-candidate

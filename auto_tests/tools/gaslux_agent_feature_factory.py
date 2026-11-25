@@ -1004,6 +1004,9 @@ def verify(root: Path, evidence_dir: Path, role: str, base: str, *, execute: boo
         return report
     if any(k in report for k in ("producer", "repair_pr", "repair_head")):
         raise ValueError("Unexpected repair evidence in model path")
+    composition = report.get("composition")
+    if composition not in (None, "opencode-python-v1") or (composition is not None and scope != "lifecycle"):
+        raise ValueError("Unexpected model composition")
     expected_task = SCOPE2B_TASK if scope == SCOPE2B_ID else TASKS[role][2]
     if scope not in ("lifecycle", SCOPE2B_ID):
         raise ValueError("Unapproved source scope")
@@ -1020,7 +1023,8 @@ def verify(root: Path, evidence_dir: Path, role: str, base: str, *, execute: boo
         report.get("addition_sha256") != sha256(addition_raw)):
         raise ValueError("Untrusted source/report identity")
     validate_addition(role, addition, execute=execute, scope=scope)
-    before, after = expected_source(root, role, addition, scope=scope)
+    before, after = expected_source(root, role, addition, scope=scope,
+                                    formatted_repair=composition == "opencode-python-v1")
     if (report.get("source_sha256") != sha256(before) or
         report.get("candidate_sha256") != sha256(after)):
         raise ValueError("Model artifact/source digest mismatch")
@@ -1297,8 +1301,9 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
         raise ValueError("Only trusted default-branch Actions may publish")
     # Static-only checks: never execute model text in a token-bearing job.
     is_repair = repair_identity(repair_pr, repair_head)
-    verify(root, evidence_dir, role, base, execute=False, scope=scope,
-           repair_pr=repair_pr, repair_head=repair_head)
+    verified = verify(root, evidence_dir, role, base, execute=False, scope=scope,
+                      repair_pr=repair_pr, repair_head=repair_head)
+    is_opencode = verified.get("composition") == "opencode-python-v1"
     is_supervised = scope in SUPERVISED_SCOPES
     if is_repair or is_supervised:
         # Recheck with the workflow token, not the publication App identity.
@@ -1316,7 +1321,7 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
             raise RuntimeError("Repair candidate no longer eligible")
     git(root, "fetch", "origin", "refs/heads/dev:refs/remotes/origin/dev")
     live = git(root, "rev-parse", "refs/remotes/origin/dev")
-    if ((is_repair or is_supervised) and live != base) or not safe_forward_draft_base(root, role, base, live):
+    if ((is_repair or is_supervised or is_opencode) and live != base) or not safe_forward_draft_base(root, role, base, live):
         print(json.dumps({"status": "stale_or_relevant_dev_change", "role": role}))
         return
     if scope == SCOPE2B_ID:
@@ -1344,7 +1349,8 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
     # Safe forward-only changes are included by ancestry, but this review PR
     # is still always Draft. No model text runs with publication credentials.
     git(root, "checkout", "-b", branch, live)
-    _, proposed = expected_source(root, role, addition, scope=scope, formatted_repair=is_repair)
+    _, proposed = expected_source(root, role, addition, scope=scope,
+                                  formatted_repair=is_repair or is_opencode)
     target = scope_target(role, scope)
     (root / target).write_bytes(proposed)
     if git(root, "diff", "--name-only") != target:
@@ -1363,7 +1369,7 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
     subprocess.run(["git", "-C", str(root), "commit", "-m", commit_subject], check=True)
     # No implicit token is available in any model-inference or test runner.
     subprocess.run(["gh", "auth", "setup-git"], check=True)
-    if is_repair or is_supervised:
+    if is_repair or is_supervised or is_opencode:
         create_successor_ref(root, role, base, scope=scope)
     else:
         subprocess.run(["git", "-C", str(root), "push", "origin", f"HEAD:refs/heads/{branch}"], check=True)
