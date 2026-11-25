@@ -709,11 +709,14 @@ def supervised_media_addition(role):
     name, pins = supervised_media_pins(role)
     return (
         f"def {name}(candidate: dict) -> dict:\n"
+        f"    expected_url = {json.dumps(pins['isoInstaller'])}\n"
+        f"    expected_sha256 = {json.dumps(pins['isoInstallerSha256'])}\n"
         "    matched = (\n"
         "        type(candidate) is dict\n"
         + "".join(f"        and type(candidate.get({json.dumps(k)})) is {type(v).__name__}\n"
-                  f"        and candidate.get({json.dumps(k)}) == {json.dumps(v)}\n"
-                  for k, v in pins.items())
+                  f"        and candidate.get({json.dumps(k)}) == "
+                  + {"isoInstaller": "expected_url", "isoInstallerSha256": "expected_sha256"}.get(k, json.dumps(v))
+                  + "\n" for k, v in pins.items())
         + "    )\n"
         "    return {\n"
         f'        "backend": "{role}",\n'
