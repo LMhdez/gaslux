@@ -92,7 +92,8 @@ def discover(root):
                     continue
                 if not dynamic.safe_identifier(alias.name):
                     continue
-                if path in candidates and candidates[path]["symbol"] != alias.name:
+                if path in candidates and (candidates[path].get("ambiguous") or
+                                           candidates[path].get("symbol") != alias.name):
                     # Do not choose one of several missing APIs arbitrarily.
                     candidates[path] = {"ambiguous": True}
                     continue
@@ -183,7 +184,9 @@ def style(tree, deps, work, files):
 
 
 def red_witness(report):
-    return (report["accepted"] is False and report["exit_code"] in (1, 2)
+    return (isinstance(report, dict) and report.get("accepted") is False
+            and type(report.get("exit_code")) is int and report["exit_code"] in (1, 2)
+            and all(type(report.get(k)) is int and report[k] >= 0 for k in ("failed", "errors"))
             and report["failed"] + report["errors"] > 0)
 
 
