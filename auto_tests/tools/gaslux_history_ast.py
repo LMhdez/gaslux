@@ -7,6 +7,7 @@ import ast
 import base64
 from concurrent.futures import ThreadPoolExecutor
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -184,6 +185,69 @@ def differential(left, right):
             "passed": len(CASES), "module_imported": False, "general_equivalence_verified": False}
 
 
+# This second reviewed template is restricted to exactly one declaration.
+# The controlled input is a memory stream, not a real filesystem path.
+HASH_TEMPLATE = '''def sha256(path: Path) -> str:
+    with path.open("rb") as stream:
+        return hashlib.file_digest(stream, "sha256").hexdigest()
+'''
+
+
+def approved_hash(raw):
+    tree = ast.parse(raw)
+    nodes = [n for n in tree.body if type(n) is ast.FunctionDef and n.name == "sha256"]
+    expected = ast.parse(HASH_TEMPLATE).body[0]
+    if len(nodes) != 1 or fingerprint(nodes[0]) != fingerprint(expected):
+        raise ValueError("hash shape changed; independent review required")
+    scope = {"__builtins__": {"str": str}, "Path": object, "hashlib": hashlib}
+    exec(compile(ast.Module(body=[nodes[0]], type_ignores=[]),
+                 "<reviewed-memory-hash-only>", "exec"), scope)
+    return scope["sha256"]
+
+
+def hash_differential(sources):
+    if len(sources) != 3:
+        raise ValueError("expected three reviewed hash declarations")
+    functions = [approved_hash(raw) for raw in sources]
+    cases = (b"", b"a", b"abc", bytes(range(256)), b"\x00" * 8192,
+             b"\xff" * 262145, b"\r\n" * 8193, bytes(range(256)) * 4096)
+
+    class MemoryPath:
+        def __init__(self, value):
+            self.value = value
+            self.opens = 0
+
+        def open(self, mode):
+            if mode != "rb" or self.opens:
+                raise ValueError("unexpected stream access")
+            self.opens += 1
+            return io.BytesIO(self.value)
+
+    for value in cases:
+        expected = hashlib.sha256(value).hexdigest()
+        for function in functions:
+            path = MemoryPath(value)
+            if function(path) != expected or path.opens != 1:
+                raise ValueError("hash differential regression")
+
+    class RefusedPath:
+        def open(self, mode):
+            raise OSError("controlled input refusal")
+
+    for function in functions:
+        try:
+            function(RefusedPath())
+        except OSError:
+            pass
+        else:
+            raise ValueError("hash swallowed input failure")
+    return {"scope": "sha256_memory_stream_only", "implementations": 3,
+            "cases": len(cases) + 1, "passed": len(cases) + 1,
+            "function_evaluations": 3 * (len(cases) + 1),
+            "historical_module_imported": False, "filesystem_access": False,
+            "general_equivalence_verified": False}
+
+
 def audit(token):
     files = manifest()
     unique = sorted({x["blob"] for x in files})
@@ -212,11 +276,17 @@ def audit(token):
               if row["group"] == "historical" and row["ref"] == "7ab2a431767d212566ab57b834f299f8308dbda6"}
     result = differential(source["auto_tests/tools/validate_mint_cow_boot_evidence.py"],
                           source["auto_tests/tools/windows_mint_overlay_root.py"])
+    current_files = {row["path"]: cache[row["blob"]] for row in files if row["group"] == "dev"}
+    hash_result = hash_differential([
+        source["auto_tests/tools/windows_mint_overlay_root.py"],
+        current_files["iso-tools/generate-release-metadata.py"],
+        current_files["iso-tools/sync_filepool_checksums.py"],
+    ])
     return {"kind": "historical_ast_discovery_only", "repository": REPO,
             "files": len(files), "unique_blobs": len(unique), "declarations": counts,
             "historical_nodes_with_identical_ast": sum(n["ast_sha256"] in current for n in historical),
             "matching_pairs": pair_count, "bounded_matches": matches,
-            "differential": result, "formal_gate_verified": False, "merge_authorized": False,
+            "differential": result, "hash_differential": hash_result, "formal_gate_verified": False, "merge_authorized": False,
             "writer_authorized": False, "release_eligible": False,
             "semantic_equivalence_verified": False}
 
@@ -233,7 +303,7 @@ def main():
         json.dump(result, stream, indent=2, sort_keys=True)
         stream.write("\n")
     print(json.dumps({key: result[key] for key in
-                      ("files", "unique_blobs", "declarations", "matching_pairs", "differential")}))
+                      ("files", "unique_blobs", "declarations", "matching_pairs", "differential", "hash_differential")}))
     return 0
 
 

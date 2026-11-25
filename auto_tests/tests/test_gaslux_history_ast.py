@@ -46,6 +46,23 @@ class AstHistoryTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 audit.approved_witness(altered, "serial_bytes")
 
+    def test_memory_hash_differential(self):
+        raw = audit.HASH_TEMPLATE.encode()
+        result = audit.hash_differential([raw, raw, raw])
+        self.assertEqual(result["passed"], 9)
+        self.assertEqual(result["function_evaluations"], 27)
+        self.assertFalse(result["filesystem_access"])
+        self.assertFalse(result["general_equivalence_verified"])
+
+    def test_reject_changed_hash(self):
+        raw = audit.HASH_TEMPLATE
+        for changed in (raw.replace('"rb"', '"wb"'),
+                        raw.replace('"sha256"', '"sha1"'),
+                        raw.replace("return hashlib", "print('untrusted')\n        return hashlib"),
+                        raw + "\n" + raw):
+            with self.assertRaises(ValueError):
+                audit.approved_hash(changed.encode())
+
     def test_fixed_manifest(self):
         rows = audit.manifest()
         self.assertEqual(sum(x["group"] == "dev" for x in rows), 202)
