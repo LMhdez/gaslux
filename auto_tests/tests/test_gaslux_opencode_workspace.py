@@ -394,6 +394,64 @@ class WorkspaceTests(unittest.TestCase):
             self.assertEqual({p.name for p in (Path(tmp) / ".opencode" / "skills").iterdir()},
                              {i.trial.SKILL})
 
+    def test_skill_preflight_requires_actual_discovery_and_native_ripgrep(self):
+        import gaslux_opencode_isolated_runtime as runtime
+        from unittest.mock import MagicMock, patch
+        with tempfile.TemporaryDirectory() as tmp:
+            skill = Path(tmp) / "SKILL.md"
+            skill.write_text("---\nname: gaslux-history-reuse\n---\nreviewed skill\n")
+            native = {"name": runtime.SKILL_NAME, "location": str(skill),
+                      "content": "reviewed skill\n"}
+            real_path = Path
+            fake_rg = MagicMock()
+            fake_rg.is_symlink.return_value = False
+            fake_rg.__str__.return_value = "/usr/bin/rg"
+            def fixed_path(value):
+                return fake_rg if value == "/usr/bin/rg" else real_path(value)
+            for scenario in ("valid", "missing_rg", "wrong_location", "wrong_body",
+                             "extra_skill", "duplicate", "rg_listing_missing"):
+                fake_rg.is_file.return_value = scenario != "missing_rg"
+                rows = [dict(native)]
+                if scenario == "wrong_location":
+                    rows[0]["location"] = "/unexpected/SKILL.md"
+                if scenario == "wrong_body":
+                    rows[0]["content"] = "unreviewed"
+                if scenario == "extra_skill":
+                    rows.append({"name": "unexpected"})
+                if scenario == "duplicate":
+                    rows.append(dict(rows[0]))
+                replies = [b"ripgrep 14.1.0\n", json.dumps(rows).encode(),
+                           b"" if scenario == "rg_listing_missing" else b"SKILL.md\n"]
+                with patch.object(runtime, "Path", side_effect=fixed_path), \
+                     patch.object(runtime, "SKILL_PATH", str(skill)), \
+                     patch.object(runtime, "SKILL_DIR", tmp), \
+                     patch.object(runtime.os, "access", return_value=True), \
+                     patch.object(runtime, "preflight_command", side_effect=replies) as command:
+                    if scenario == "valid":
+                        self.assertTrue(runtime.skill_preflight())
+                        self.assertEqual(command.call_count, 3)
+                        self.assertEqual(command.call_args.kwargs["cwd"], tmp)
+                    else:
+                        with self.assertRaisesRegex(RuntimeError, "SKILL_"):
+                            runtime.skill_preflight()
+                        if scenario == "missing_rg":
+                            command.assert_not_called()
+
+    def test_debug_preflight_disables_mcp_in_child_only(self):
+        import gaslux_opencode_isolated_runtime as runtime
+        from unittest.mock import patch
+        with patch.dict(runtime.os.environ, {"PATH": "/usr/bin:/bin"}, clear=True), \
+             patch.object(runtime.subprocess, "run", return_value=runtime.subprocess.CompletedProcess(
+                 [], 0, b"SKILL.md\n", b"")) as proc:
+            self.assertEqual(runtime.preflight_command(["/opt/opencode", "debug", "skill"]),
+                             b"SKILL.md\n")
+            cfg = json.loads(proc.call_args.kwargs["env"]["OPENCODE_CONFIG_CONTENT"])
+            self.assertIs(cfg["mcp"]["gaslux_workspace"]["enabled"], False)
+            self.assertNotIn("OPENCODE_CONFIG_CONTENT", runtime.os.environ)
+            self.assertEqual(proc.call_args.kwargs["timeout"], runtime.SKILL_PREFLIGHT_TIMEOUT)
+        self.assertEqual(parent.classify_failure(b"RuntimeError: SKILL_RIPGREP_MISSING"),
+                         "SKILL_RIPGREP_MISSING")
+
     def test_real_proxy_completion_fails_closed(self):
         import gaslux_opencode_isolated_runtime as runtime
         valid = {"calls": 5, "forwarded": 5, "completed": 5, "denied": 0}
