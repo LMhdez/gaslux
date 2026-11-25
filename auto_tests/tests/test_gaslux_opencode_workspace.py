@@ -560,6 +560,97 @@ class WorkspaceTests(unittest.TestCase):
             os.close(rd)
             os.waitpid(pid, 0)
 
+    def test_product_style_normalization_is_bounded_and_revalidates_output(self):
+        import gaslux_opencode_product_shadow as shadow
+        from unittest.mock import patch
+        source = correct("zorin")
+        formatted = b.factory.repair_addition("zorin")
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            tree, deps, work = (root / name for name in ("tree", "deps", "work"))
+            for folder in (tree, deps / "bin", work):
+                folder.mkdir(parents=True)
+            (deps / "bin" / "ruff").touch()
+            sentinel = tree / "unchanged.py"
+            sentinel.write_bytes(b"# untouched\n")
+            for scenario in ("valid", "lint_error", "format_error", "invalid_output"):
+                calls = []
+
+                def fake_run(argv, scratch, env, timeout):
+                    calls.append(argv)
+                    self.assertIn("--ro-bind", argv)
+                    self.assertEqual(argv[argv.index("--ro-bind") + 1], str(tree))
+                    self.assertEqual(argv[-1], "/scratch/addition.py")
+                    self.assertEqual(env, {"PATH": "/usr/bin:/bin"})
+                    self.assertEqual(timeout, 60)
+                    if "check" in argv:
+                        self.assertIn("--no-unsafe-fixes", argv)
+                        self.assertEqual((scratch / "addition.py").read_text(), source)
+                        return (2 if scenario == "lint_error" else 1), b"", b""
+                    (scratch / "addition.py").write_text(
+                        "import os\n" if scenario == "invalid_output" else formatted)
+                    return (2 if scenario == "format_error" else 0), b"", b""
+
+                with patch.object(shadow.boundary, "sandbox_base", return_value=["bwrap"]), \
+                     patch.object(shadow.trial, "bounded_process", side_effect=fake_run):
+                    if scenario == "valid":
+                        result = shadow.normalize_addition(tree, deps, "zorin", work, source)
+                        self.assertEqual(result, formatted)
+                        self.assertEqual(b.exhaustive("zorin", result), 259)
+                    else:
+                        with self.assertRaises(ValueError):
+                            shadow.normalize_addition(tree, deps, "zorin", work, source)
+                self.assertEqual(len(calls), 1 if scenario == "lint_error" else 2)
+                self.assertEqual(sentinel.read_bytes(), b"# untouched\n")
+                self.assertEqual(list(work.iterdir()), [])
+
+    def test_product_round_preserves_native_digest_and_rechecks_normalized_bytes(self):
+        import gaslux_opencode_product_shadow as shadow
+        from unittest.mock import patch
+        source = correct("zorin")
+        formatted = b.factory.repair_addition("zorin")
+        digest = b.factory.sha256(source.encode())
+        output_digest = b.factory.sha256(formatted.encode())
+        task = {"source_sha256": "a" * 64}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for scenario in ("valid", "wrong_digest"):
+                folder = root / scenario
+                folder.mkdir()
+
+                def native(*args, **kwargs):
+                    kwargs["accepted_source"].append(source)
+                    return {"accepted": True, "candidate_sha256":
+                            digest if scenario == "valid" else "0" * 64}
+
+                expected = {"product_candidate_sha256": "b" * 64,
+                            "addition_sha256": output_digest}
+                with patch.object(shadow, "read_tree"), \
+                     patch.object(shadow, "source_task", return_value=task), \
+                     patch.object(i, "run", side_effect=native), \
+                     patch.object(shadow, "normalize_addition", return_value=formatted) as normalize, \
+                     patch.object(shadow, "apply_candidate", return_value=expected) as apply, \
+                     patch.object(shadow, "style_check", return_value={"accepted": True}), \
+                     patch.object(shadow, "factory_contract", return_value="c" * 64) as verify, \
+                     patch.object(shadow, "regression", return_value={"accepted": True}) as regress:
+                    args = (None, root, "d" * 40, root, "zorin", 16384, folder, task, None, 1200)
+                    if scenario == "wrong_digest":
+                        with self.assertRaisesRegex(ValueError, "SHADOW_NATIVE_DIGEST_MISMATCH"):
+                            shadow.run_round(*args)
+                        normalize.assert_not_called()
+                        apply.assert_not_called()
+                        verify.assert_not_called()
+                        regress.assert_not_called()
+                    else:
+                        report, feedback = shadow.run_round(*args)
+                        self.assertTrue(report["accepted"])
+                        self.assertIsNone(feedback)
+                        self.assertEqual(report["style_normalization"]["input_sha256"], digest)
+                        self.assertEqual(report["style_normalization"]["output_sha256"], output_digest)
+                        self.assertEqual(apply.call_args.args[-1], formatted)
+                        self.assertEqual(verify.call_args.args[4], formatted)
+                        regress.assert_called_once()
+
     def test_product_repair_retries_only_observed_style_or_test_failure(self):
         import gaslux_opencode_product_shadow as shadow
         source = correct()
