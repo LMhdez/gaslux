@@ -546,5 +546,56 @@ class DynamicAdmissionTests(unittest.TestCase):
                 self.assertEqual(writes[0]["commit_id"], HEAD)
 
 
+class CompletedIntegrationAuditTests(unittest.TestCase):
+    def test_audit_only_counts_actual_verified_merges(self):
+        role = "zorin"
+        merged, live, tree = "c" * 40, "d" * 40, "e" * 40
+        repo = {"full_name": A.REPO}
+        publisher = {"login": "github-actions[bot]", "id": 41898282}
+        pr = {"number": 500, "state": "closed", "merged": True,
+              "merge_commit_sha": merged, "user": publisher,
+              "head": {"ref": f"bot/gaslux-test-{role}-{BASE[:12]}", "sha": HEAD, "repo": repo},
+              "base": {"ref": "dev", "repo": repo}}
+        for scenario in ("valid", "not_merged", "wrong_parent", "wrong_tree", "not_in_dev",
+                         "missing_approval", "bad_ci", "hold", "drift"):
+            calls = []
+            def api(method, route):
+                self.assertEqual(method, "GET")
+                if route == "/git/ref/heads/dev":
+                    calls.append(route)
+                    return {"object": {"sha": BASE if scenario == "drift" and len(calls) > 1 else live}}
+                if route.startswith("/pulls?"):
+                    return [pr]
+                if route == "/pulls/500":
+                    return dict(pr, merged=scenario != "not_merged")
+                if route.startswith("/git/commits/"):
+                    return {"tree": {"sha": BASE if scenario == "wrong_tree" and route.endswith(merged) else tree}}
+                if route.startswith("/compare/"):
+                    return {"status": "diverged" if scenario == "not_in_dev" else "ahead",
+                            "behind_by": 0, "merge_base_commit": {"sha": merged}}
+                if route.endswith("/reviews?per_page=100"):
+                    return []
+                if route.endswith("/check-runs?per_page=100"):
+                    return {}
+                if route.endswith("/comments?per_page=100"):
+                    return [{"body": "SAFETY HOLD"}] if scenario == "hold" else []
+                self.fail(route)
+            with patch.object(A, "api", side_effect=api), \
+                 patch.object(gate, "configured_reviewers", return_value=(123, {role: 456})), \
+                 patch.object(gate, "canonical_scope", return_value=BASE), \
+                 patch.object(A, "single_parent", return_value=HEAD if scenario == "wrong_parent" else BASE), \
+                 patch.object(A, "review_ok", return_value=scenario != "missing_approval"), \
+                 patch.object(A, "owner_review_ok", return_value=True), \
+                 patch.object(A, "ci_workflow_provenance", return_value=True), \
+                 patch.object(A, "checks_ok", return_value=scenario != "bad_ci"):
+                if scenario == "drift":
+                    with self.assertRaises(ValueError):
+                        gate.audit_completed_integrations()
+                    continue
+                result = gate.audit_completed_integrations()
+            self.assertEqual(result["verified_integrations"], int(scenario == "valid"), scenario)
+            self.assertFalse(result["release_eligible"])
+
+
 if __name__ == "__main__":
     unittest.main()
