@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
 import gaslux_opencode_workspace as b
 import gaslux_opencode_iterative as i
 import gaslux_opencode_parent_boundary as parent
+import gaslux_opencode_model_proxy as proxy
 
 
 def correct(role="mint"):
@@ -167,6 +168,65 @@ class WorkspaceTests(unittest.TestCase):
             {"type": "text", "part": {"type": "text", "text": "done"}},
             {"type": "step_finish", "part": {"type": "step-finish"}},
         ])), (["inspect_task"], [i.trial.SKILL]))
+
+    def test_model_proxy_request_scope(self):
+        valid = {"model": proxy.MODEL, "messages": [{"role": "user", "content": "synthetic"}],
+                 "stream": True}
+        def raw(row):
+            return json.dumps(row).encode()
+        self.assertEqual(json.loads(proxy.validate_request(raw(valid)))["max_tokens"],
+                         proxy.MAX_OUTPUT)
+        for changed in (
+            {**valid, "model": "other"},
+            {**valid, "options": {"num_ctx": 999999}},
+            {**valid, "max_tokens": proxy.MAX_OUTPUT + 1},
+            {**valid, "max_tokens": True},
+            {**valid, "stream": "true"},
+            {**valid, "messages": [{"role": "user", "content": [
+                {"type": "image_url", "image_url": {"url": "file:///etc/passwd"}}]}]},
+            {**valid, "messages": [{"role": "user", "content": "x", "attachments": []}]},
+            {**valid, "tools": [{"type": "web_search"}]},
+        ):
+            with self.subTest(changed=changed):
+                with self.assertRaises(ValueError):
+                    proxy.validate_request(raw(changed))
+        for invalid in (b'{"model":"other","model":"qwen3.5:9b"}',
+                        b'{"model":"qwen3.5:9b","messages":[],"temperature":NaN}',
+                        b"x" * (proxy.MAX_REQUEST + 1)):
+            with self.assertRaises(ValueError):
+                proxy.validate_request(invalid)
+
+    def test_model_proxy_unix_endpoint_denies_non_model_routes(self):
+        import socket
+        import threading
+        from unittest.mock import patch
+        with tempfile.TemporaryDirectory() as tmp:
+            endpoint = Path(tmp) / "model.sock"
+            with proxy.ModelServer(endpoint, proxy.Handler) as server:
+                server.timeout = 2
+                requests = [
+                    b"GET /api/tags HTTP/1.0\r\n\r\n",
+                    b"POST /api/pull HTTP/1.0\r\nContent-Length: 0\r\n\r\n",
+                    b"CONNECT 127.0.0.1:22 HTTP/1.0\r\n\r\n",
+                    b"POST http://127.0.0.1:11434/v1/chat/completions HTTP/1.0\r\n\r\n",
+                    b"POST /v1/chat/completions HTTP/1.0\r\nTransfer-Encoding: chunked\r\n\r\n",
+                    b"POST /v1/chat/completions HTTP/1.0\r\nContent-Length: 1\r\nContent-Length: 2\r\nContent-Type: application/json\r\n\r\nx",
+                ]
+                with patch.object(proxy.http.client, "HTTPConnection") as upstream:
+                    for request in requests:
+                        thread = threading.Thread(target=server.handle_request)
+                        thread.start()
+                        with socket.socket(socket.AF_UNIX, socket.SOCK_STREAM) as client:
+                            client.settimeout(3)
+                            client.connect(str(endpoint))
+                            client.sendall(request)
+                            client.shutdown(socket.SHUT_WR)
+                            response = client.makefile("rb").read()
+                        thread.join(3)
+                        self.assertFalse(thread.is_alive())
+                        self.assertIn(response.split(b" ")[1], (b"400", b"403"))
+                    upstream.assert_not_called()
+                self.assertEqual(server.forwarded, 0)
 
     def test_fixed_runtime_failure_categories(self):
         self.assertEqual(i.fixed_failure(ValueError("MCP_RED_EDIT_PASS_INCOMPLETE")),

@@ -36,6 +36,7 @@ on:
       - auto_tests/tools/gaslux_opencode_workspace.py
       - auto_tests/tools/gaslux_opencode_iterative.py
       - auto_tests/tools/gaslux_opencode_parent_boundary.py
+      - auto_tests/tools/gaslux_opencode_model_proxy.py
       - auto_tests/tests/test_gaslux_opencode_workspace.py
   pull_request:
     paths:
@@ -62,6 +63,7 @@ on:
       - auto_tests/tools/gaslux_opencode_workspace.py
       - auto_tests/tools/gaslux_opencode_iterative.py
       - auto_tests/tools/gaslux_opencode_parent_boundary.py
+      - auto_tests/tools/gaslux_opencode_model_proxy.py
       - auto_tests/tests/test_gaslux_opencode_workspace.py
 
 permissions:
