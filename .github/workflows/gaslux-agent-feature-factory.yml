@@ -364,7 +364,10 @@ jobs:
           python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_feature_factory.py -v
           python3 -B -m unittest discover -s trusted/auto_tests/tests -p test_gaslux_agent_phase2b.py -v
       - name: Install hash-pinned unprivileged local inference engine
-        if: needs.select.outputs.repair_pr == '' && needs.select.outputs.scope != 'supervised-lifecycle-tests-v1'
+        if: >-
+          needs.select.outputs.repair_pr == '' &&
+          needs.select.outputs.scope != 'supervised-lifecycle-tests-v1' &&
+          needs.select.outputs.scope != 'supervised-media-pins-v1'
         shell: bash
         run: |
           set -euo pipefail
@@ -411,7 +414,8 @@ jobs:
           addition = Path('evidence/feature-factory/addition.py').read_bytes()
           raw = target.read_bytes()
           sep = (b'\n\n\n' if info.get('producer') in (
-              'trusted-fixed-lifecycle-repair-v1', 'trusted-supervisor-regression-v1')
+              'trusted-fixed-lifecycle-repair-v1', 'trusted-supervisor-regression-v1',
+              'trusted-supervisor-media-v1')
               else b'\n\n')
           target.write_bytes(raw.rstrip(b'\n') + sep + addition)
           PY
