@@ -371,7 +371,17 @@ class Scope2BTests(unittest.TestCase):
         self.assertEqual(workflow.count("SCOPE: ${{ needs.select.outputs.scope }}"), 3)
         self.assertIn("      scope: ${{ steps.plan.outputs.scope }}", workflow)
         self.assertIn("out.write('scope='", workflow)
-        self.assertEqual(workflow.count('--scope "$SCOPE"'), 4)
+        # One additional exact-scope argument belongs to the isolated worker.
+        model = workflow.split("  model:\n", 1)[1].split("  safety:\n", 1)[0]
+        safety = workflow.split("  safety:\n", 1)[1].split("  publish_draft:\n", 1)[0]
+        publisher_job = workflow.split("  publish_draft:\n", 1)[1].split("  triage_missing_gates:\n", 1)[0]
+        self.assertEqual(model.count('--scope "$SCOPE"'), 3)
+        self.assertEqual(safety.count('--scope "$SCOPE"'), 1)
+        self.assertEqual(publisher_job.count('--scope "$SCOPE"'), 1)
+        isolated_worker = model.split("      - name: Run exact admitted OpenCode lifecycle task\n", 1)[1].split("      - name:", 1)[0]
+        self.assertIn("if: needs.select.outputs.worker == 'opencode'", isolated_worker)
+        self.assertIn("gaslux_opencode_factory_worker.py", isolated_worker)
+        self.assertIn('--scope "$SCOPE"', isolated_worker)
         self.assertIn("    environment: gaslux-main-publisher", workflow)
         before, publisher = workflow.split("  publish_draft:\n", 1)
         self.assertNotIn("GASLUX_PUBLISH_APP_PRIVATE_KEY", before)
