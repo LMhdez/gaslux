@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -14,6 +16,7 @@ SPEC = importlib.util.spec_from_file_location("gaslux_agent_integrate", SCRIPT)
 assert SPEC and SPEC.loader
 integ = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(integ)
+REAL_REVIEWS = integ.independent_merge_reviews
 
 
 class IntegratorContractTests(unittest.TestCase):
@@ -54,6 +57,9 @@ class IntegratorContractTests(unittest.TestCase):
         policy = patch.object(integ, "strict_merge_policy", return_value=True)
         self.policy = policy.start()
         self.addCleanup(policy.stop)
+        reviews = patch.object(integ, "independent_merge_reviews", return_value=True)
+        self.review_gate = reviews.start()
+        self.addCleanup(reviews.stop)
 
     def api(self, method, path, body=None):
         self.calls.append((method, path, body))
@@ -338,6 +344,47 @@ class IntegratorContractTests(unittest.TestCase):
                     self.assertEqual(sum(m == "PUT" for m, _, _ in self.calls), 1)
                 finally:
                     setattr(self, field, old)
+
+    def test_isolated_python_loads_trusted_policy_without_network(self):
+        code = ("import runpy; m = runpy.run_path(" + repr(str(SCRIPT)) +
+                "); assert m['strict_merge_policy']('invalid') is False")
+        subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=30)
+
+    def test_readiness_and_merge_require_independent_reviews(self):
+        env = {"GITHUB_REPOSITORY": integ.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule", "GASLUX_WINDOWS_ACCEPTANCE": "success",
+               "GASLUX_AUTONOMY_PAUSED": "false"}
+        with patch.dict(os.environ, env), patch.object(integ, "api", side_effect=self.api):
+            self.review_gate.return_value = False
+            with self.assertRaisesRegex(RuntimeError, "independent exact reviews"):
+                integ.verify_before_ready(123, self.head)
+            self.assertEqual(integ.merge(123, self.head)["reason"], "independent_reviews_required")
+            self.assertFalse(any(m != "GET" for m, _, _ in self.calls))
+
+    def test_actual_legacy_role_reviews_reject_unrelated_and_stale_approvals(self):
+        self.pr["user"]["id"] = 41898282
+        env = {"GASLUX_SAFETY_REVIEWER_ID": "101",
+               "GASLUX_SUPERVISED_OWNER_IDS": '{"mint":102}'}
+        reviews = [
+            {"user": {"id": 101}, "state": "APPROVED", "commit_id": self.head,
+             "body": f"GASLUX-SAFETY-V1 head={self.head} base={self.dev}"},
+            {"user": {"id": 102}, "state": "APPROVED", "commit_id": self.head,
+             "body": f"GASLUX-BACKEND-OWNER-V1 role=mint head={self.head} base={self.dev}"},
+        ]
+
+        def response(method, route, body=None):
+            if route == "/pulls/123/reviews?per_page=100":
+                return reviews
+            return self.api(method, route, body)
+
+        with patch.dict(os.environ, env), patch.object(integ, "api", side_effect=response):
+            checked = integ.inspect(123, self.head)
+            self.assertTrue(REAL_REVIEWS(checked))
+            reviews[1]["user"]["id"] = 103
+            self.assertFalse(REAL_REVIEWS(checked))
+            reviews[1]["user"]["id"] = 102
+            reviews[0]["commit_id"] = "f" * 40
+            self.assertFalse(REAL_REVIEWS(checked))
 
     def test_windows_acceptance_uses_exact_head_and_prebuilt_tests(self):
         yaml = (
