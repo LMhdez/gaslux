@@ -60,6 +60,8 @@ def validate_function(symbol, generated):
     nodes = list(ast.walk(tree))
     if len(nodes) > 350 or any(not isinstance(n, NODES) for n in nodes):
         raise ValueError("DYNAMIC_AST_SCOPE")
+    if any(isinstance(n, ast.FunctionDef) and n is not fn for n in nodes):
+        raise ValueError("DYNAMIC_NESTED_FUNCTION")
     locals_ = {a.arg for a in (*args.posonlyargs, *args.args)}
     for n in nodes:
         if isinstance(n, ast.Assign):
@@ -91,6 +93,18 @@ def validate_function(symbol, generated):
 def candidate_bytes(raw, symbol, generated):
     validate_function(symbol, generated)
     original = ast.parse(raw)
+    # A builtin name in the candidate is safe only if the enclosing module
+    # has not bound that name to a different callable. Reject even ambiguous
+    # bindings, including nested top-level control flow, rather than guess.
+    used = {n.func.id for n in ast.walk(ast.parse(generated))
+            if isinstance(n, ast.Call) and isinstance(n.func, ast.Name)}
+    for node in ast.walk(original):
+        bound = (node.id if isinstance(node, ast.Name) and isinstance(node.ctx, (ast.Store, ast.Del))
+                 else node.name if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
+                 else node.asname or node.name.split('.')[0] if isinstance(node, ast.alias)
+                 else node.name if isinstance(node, ast.ExceptHandler) else None)
+        if bound in used or isinstance(node, ast.alias) and node.name == '*':
+            raise ValueError("DYNAMIC_SHADOWED_BUILTIN")
     if any(isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef))
            and node.name == symbol for node in original.body):
         raise ValueError("DYNAMIC_EXISTING_SYMBOL")
