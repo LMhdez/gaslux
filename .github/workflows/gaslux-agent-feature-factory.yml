@@ -999,6 +999,8 @@ jobs:
 
   dynamic_development:
     needs: select
+    outputs:
+      accepted: ${{ steps.develop.outputs.accepted }}
     if: >-
       github.repository == 'LMhdez/gaslux' &&
       github.ref == 'refs/heads/main' &&
@@ -1100,6 +1102,7 @@ jobs:
         run: |
           python3 -m pip install --target "$RUNNER_TEMP/gaslux-shadow-deps" 'pytest==9.0.2' 'jsonschema==4.25.1' 'cryptography==44.0.3' 'ruff==0.17.6'
       - name: Run bounded dynamic RED GREEN development without publication token
+        id: develop
         run: |
           set -euo pipefail
           mkdir -p evidence
@@ -1108,6 +1111,12 @@ jobs:
             --dependencies "$RUNNER_TEMP/gaslux-shadow-deps" \
             --evidence evidence/dynamic-candidate > evidence/dynamic-status.json
           cat evidence/dynamic-status.json
+          python3 -B - <<'PY'
+          import json, os
+          data = json.load(open('evidence/dynamic-status.json'))
+          with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+              out.write('accepted=' + str(data.get('accepted') is True).lower() + '\n')
+          PY
       - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
         if: always()
         with:
@@ -1118,13 +1127,138 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  dynamic_replay:
+    needs: [select, dynamic_development]
+    if: needs.dynamic_development.outputs.accepted == 'true' && github.ref == 'refs/heads/main' && vars.GASLUX_AUTONOMY_PAUSED != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    env:
+      BASE: ${{ needs.select.outputs.base }}
+      DYNAMIC_KEY: ${{ needs.select.outputs.dynamic_key }}
+      GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.select.outputs.base }}
+          path: source
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gaslux-dynamic-shadow-review
+          path: evidence/dynamic
+      - name: Verify independent broker and isolated synthetic parent boundary
+        id: parent_admission
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [ ! -x /usr/bin/bwrap ] || [ ! -x /usr/bin/rg ] || [ ! -f /usr/share/apparmor/extra-profiles/bwrap-userns-restrict ]; then
+            sudo timeout 180 apt-get update
+            sudo timeout 180 apt-get install -y --no-install-recommends bubblewrap apparmor-profiles ripgrep
+          fi
+          # The native skill tool needs local rg; downloading inside the sandbox is forbidden.
+          test -x /usr/bin/rg && test ! -L /usr/bin/rg
+          dpkg-query -S /usr/bin/rg | grep -q '^ripgrep:'
+          /usr/bin/rg --version
+          # Ubuntu Noble's restrictive, bwrap-specific profile. Do not disable
+          # AppArmor, change sysctl, replace a loaded profile or fall back.
+          profile=/usr/share/apparmor/extra-profiles/bwrap-userns-restrict
+          if [ "$(cat /sys/module/apparmor/parameters/enabled)" = Y ]; then
+            test -f "$profile"
+            dpkg-query -S "$profile" | grep -q '^apparmor-profiles:'
+            loaded=$(sudo cat /sys/kernel/security/apparmor/profiles)
+            if ! printf '%s\n' "$loaded" | grep -Eq '^(bwrap-userns-restrict|bwrap|/usr/bin/bwrap) \('; then
+              sudo apparmor_parser -a "$profile"
+            fi
+          fi
+          mkdir -p evidence/opencode-iterative
+          python3 -B trusted/auto_tests/tools/gaslux_opencode_parent_boundary.py \
+            --report evidence/opencode-iterative/parent-boundary.json
+      - name: Install isolated product regression dependencies
+        run: |
+          python3 -m pip install --target "$RUNNER_TEMP/gaslux-shadow-deps" 'pytest==9.0.2' 'jsonschema==4.25.1' 'cryptography==44.0.3' 'ruff==0.17.6'
+      - name: Replay exact dynamic candidate without model or write token
+        run: |
+          set -euo pipefail
+          python3 -B trusted/auto_tests/tools/gaslux_dynamic_development.py --mode replay \
+            --repo source --base "$BASE" --key "$DYNAMIC_KEY" \
+            --dependencies "$RUNNER_TEMP/gaslux-shadow-deps" \
+            --evidence evidence/dynamic/dynamic-candidate > evidence/dynamic-replay.json
+          cat evidence/dynamic-replay.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-dynamic-independent-replay
+          path: evidence/dynamic-replay.json
+          if-no-files-found: error
+          retention-days: 7
+
+  dynamic_publish:
+    needs: [select, dynamic_replay]
+    if: needs.dynamic_replay.result == 'success' && github.ref == 'refs/heads/main' && vars.GASLUX_AUTONOMY_PAUSED != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: gaslux-main-publisher
+    permissions:
+      contents: read
+      pull-requests: read
+      issues: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ needs.select.outputs.base }}
+          path: source
+          persist-credentials: false
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gaslux-dynamic-shadow-review
+          path: evidence/dynamic
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093
+        with:
+          name: gaslux-dynamic-independent-replay
+          path: evidence/replay
+      - name: Create repository-scoped GitHub App token for Draft PR publication
+        id: publish_identity
+        if: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID != '' }}
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_PUBLISH_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Publish exact dynamic candidate as Draft only
+        env:
+          GH_TOKEN: ${{ steps.publish_identity.outputs.token }}
+          GASLUX_REPAIR_READ_TOKEN: ${{ github.token }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          BASE: ${{ needs.select.outputs.base }}
+          DYNAMIC_KEY: ${{ needs.select.outputs.dynamic_key }}
+        run: |
+          set -euo pipefail
+          python3 -I trusted/auto_tests/tools/gaslux_dynamic_development.py --mode publish \
+            --repo source --base "$BASE" --key "$DYNAMIC_KEY" --dependencies . \
+            --evidence evidence/dynamic/dynamic-candidate --replay evidence/replay/dynamic-replay.json
+
   triage_missing_gates:
     needs: select
     if: >-
       github.repository == 'LMhdez/gaslux' &&
       github.ref == 'refs/heads/main' &&
       vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
-      needs.select.outputs.blocked == 'true'
+      needs.select.outputs.blocked == 'true' &&
+      needs.select.outputs.dynamic_key == ''
     runs-on: ubuntu-24.04
     timeout-minutes: 6
     permissions:
