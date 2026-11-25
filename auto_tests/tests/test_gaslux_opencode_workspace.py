@@ -121,6 +121,45 @@ class WorkspaceTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             i.native_events(raw([{"type": "text", "part": {"text": "skill loaded"}}]))
 
+    def test_safety1_419_01_iterative_native_event_audit(self):
+        skill = {"type": "tool_use", "part": {"type": "tool", "tool": "skill",
+            "state": {"status": "completed", "input": {"name": i.trial.SKILL},
+            "output": '<skill_content name="' + i.trial.SKILL + '">'}}}
+        tool = {"type": "tool_use", "part": {"type": "tool",
+            "tool": i.PREFIX + "inspect_task", "state": {"status": "completed"}}}
+        raw = lambda rows: "\n".join(json.dumps(row) for row in rows).encode()
+        good = raw([skill, tool])
+        malformed = [
+            {"type": "unknown", "part": {"tool": "bash"}},
+            {"type": "unknown", "part": {}},
+            {"part": {"tool": "bash"}},
+            {"type": None, "part": {}},
+            {"type": [], "part": {}},
+            {"type": "reasoning", "part": {"tool": "bash"}},
+            {"type": "step_start", "part": {"type": "tool", "tool": "bash"}},
+            {"type": "step_finish", "part": {"type": "tool"}},
+            {"type": "text", "part": {"type": "tool", "text": "", "tool": "bash"}},
+            {"type": "text", "tool": "bash", "part": {"text": ""}},
+            {"type": "tool_use", "part": {**tool["part"], "type": "text"}},
+        ]
+        for event in malformed:
+            with self.subTest(event=event):
+                with self.assertRaises(ValueError):
+                    i.native_events(raw([skill, tool, event]))
+        for line in (
+            b'{"type":"unknown","type":"reasoning","part":{}}',
+            b'{"type":"reasoning","part":{"tool":"bash","tool":"skill"}}',
+        ):
+            with self.assertRaises(ValueError):
+                i.native_events(good + b"\n" + line)
+        self.assertEqual(i.native_events(raw([
+            {"type": "step_start", "part": {"type": "step-start"}}, skill,
+            {"type": "reasoning", "part": {"type": "reasoning",
+                "text": "bash is not an invocation"}}, tool,
+            {"type": "text", "part": {"type": "text", "text": "done"}},
+            {"type": "step_finish", "part": {"type": "step-finish"}},
+        ])), (["inspect_task"], [i.trial.SKILL]))
+
     def test_verified_journal_and_independent_final_recheck(self):
         with tempfile.TemporaryDirectory() as tmp:
             state = Path(tmp)
