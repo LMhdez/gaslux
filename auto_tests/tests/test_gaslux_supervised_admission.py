@@ -1,4 +1,5 @@
 """Exact supervised append admission, separate from distro merge authority."""
+import json
 import os
 import sys
 from pathlib import Path
@@ -114,11 +115,54 @@ class SupervisedIntegrationTests(unittest.TestCase):
                       {"next_action": "INDEPENDENT_SAFETY_REVIEW"}):
             self.assertFalse(gate.eligible_test({**row, **delta}))
 
+    def test_strict_dev_policy_fail_closed(self):
+        for scenario in ("valid", "no_rule", "loose", "no_checks", "admin_bypass",
+                         "force_push", "delete", "pr_bypass", "force_bypass",
+                         "effective_bypass", "wrong_base", "graphql_error", "unreadable"):
+            checks = ["evidence-python"]
+            rule = {"isAdminEnforced": True, "requiresStatusChecks": True,
+                    "requiresStrictStatusChecks": True, "requiredStatusCheckContexts": checks,
+                    "allowsForcePushes": False, "allowsDeletions": False,
+                    "bypassPullRequestAllowances": {"totalCount": 0},
+                    "bypassForcePushAllowances": {"totalCount": 0}}
+            effective = {"requiredStatusCheckContexts": checks,
+                         "allowsForcePushes": False, "allowsDeletions": False}
+            if scenario == "loose":
+                rule["requiresStrictStatusChecks"] = False
+            if scenario == "no_checks":
+                rule["requiredStatusCheckContexts"] = []
+            if scenario == "admin_bypass":
+                rule["isAdminEnforced"] = False
+            if scenario == "force_push":
+                rule["allowsForcePushes"] = True
+            if scenario == "delete":
+                rule["allowsDeletions"] = True
+            if scenario == "pr_bypass":
+                rule["bypassPullRequestAllowances"]["totalCount"] = 1
+            if scenario == "force_bypass":
+                rule["bypassForcePushAllowances"]["totalCount"] = 1
+            if scenario == "effective_bypass":
+                effective["requiredStatusCheckContexts"] = []
+            ref = {"name": "dev", "prefix": "refs/heads/",
+                   "target": {"oid": "c" * 40 if scenario == "wrong_base" else BASE},
+                   "branchProtectionRule": None if scenario == "no_rule" else rule,
+                   "refUpdateRule": effective}
+            response = {"data": {"repository": {"nameWithOwner": A.REPO, "ref": ref}}}
+            if scenario == "graphql_error":
+                response["errors"] = [{"message": "denied"}]
+            with patch.object(gate.subprocess, "run", return_value=gate.subprocess.CompletedProcess(
+                    [], 0, json.dumps(response).encode(), b""),
+                    side_effect=OSError("unreadable") if scenario == "unreadable" else None) as query:
+                self.assertEqual(gate.strict_dev_protected(BASE), scenario == "valid", scenario)
+                self.assertEqual(query.call_args.args[0][:3], ["gh", "api", "graphql"])
+                self.assertIn("query {", query.call_args.args[0][-1])
+
     def test_trusted_merge_only_after_revalidation_and_github_ready(self):
         env = {"GITHUB_REPOSITORY": A.REPO, "GITHUB_REF": "refs/heads/main",
                "GITHUB_EVENT_NAME": "schedule", "GASLUX_AUTONOMY_PAUSED": ""}
         for scenario in ("valid", "already_ready", "denied", "drift", "blocked",
-                         "base_drift", "media", "paused", "untrusted"):
+                         "base_drift", "media", "paused", "untrusted", "no_policy",
+                         "policy_drift", "server_base_race", "wrong_parent", "wrong_tree"):
             row = self.receipt()
             second = dict(row)
             if scenario == "denied":
@@ -131,6 +175,8 @@ class SupervisedIntegrationTests(unittest.TestCase):
             def api(method, route, body=None):
                 if method == "PUT":
                     writes.append((route, body))
+                    if scenario == "server_base_race":
+                        raise RuntimeError("GitHub rejected out-of-date head")
                     return {"merged": True, "sha": "d" * 40}
                 self.assertEqual(method, "GET")
                 if route == "/pulls/500":
@@ -138,6 +184,9 @@ class SupervisedIntegrationTests(unittest.TestCase):
                             "head": {"sha": HEAD}, "base": {"sha": BASE}}
                 if route == "/git/ref/heads/dev":
                     return {"object": {"sha": "c" * 40 if scenario == "base_drift" else BASE}}
+                if route.startswith("/git/commits/"):
+                    return {"tree": {"sha": "e" * 40 if route.endswith(HEAD)
+                                    or scenario != "wrong_tree" else "f" * 40}}
                 self.fail(route)
 
             def mark_ready(*args, **kwargs):
@@ -155,11 +204,19 @@ class SupervisedIntegrationTests(unittest.TestCase):
                  patch.object(gate, "configured_reviewers", return_value=(1, {ROLE: 2})), \
                  patch.object(gate, "inspect", side_effect=[row, second]), \
                  patch.object(A, "api", side_effect=api), \
+                 patch.object(gate, "strict_dev_protected",
+                              side_effect=[scenario != "no_policy", scenario != "policy_drift"]), \
+                 patch.object(A, "single_parent",
+                              return_value="c" * 40 if scenario == "wrong_parent" else BASE), \
                  patch.object(gate.subprocess, "run", side_effect=mark_ready) as mark:
                 if scenario in ("paused", "untrusted"):
                     with self.assertRaises(ValueError):
                         gate.integrate_one()
                     mark.assert_not_called()
+                elif scenario in ("server_base_race", "wrong_parent", "wrong_tree"):
+                    with self.assertRaises(RuntimeError):
+                        gate.integrate_one()
+                    self.assertEqual(len(writes), 1, "Never retry or roll back a merge")
                 else:
                     result = gate.integrate_one()
                     if scenario in ("valid", "already_ready"):
@@ -167,9 +224,10 @@ class SupervisedIntegrationTests(unittest.TestCase):
                         self.assertEqual(writes, [("/pulls/500/merge", {"sha": HEAD, "merge_method": "squash"})])
                     else:
                         self.assertNotEqual(result["status"], "merged")
-                    if scenario in ("already_ready", "denied", "media"):
+                    if scenario in ("already_ready", "denied", "media", "no_policy"):
                         mark.assert_not_called()
-            if scenario not in ("valid", "already_ready"):
+            if scenario not in ("valid", "already_ready", "server_base_race",
+                                "wrong_parent", "wrong_tree"):
                 self.assertEqual(writes, [], scenario)
 
 
