@@ -207,7 +207,7 @@ class ReconcileTests(unittest.TestCase):
         repo = {"full_name": rec.admission.REPO}
         row = {"pr": 500, "head": OLD, "base": BASE, "target": "dev", "draft": True,
                "unique_head_commits": 0, "status": "ANCESTRY_PRESENT_REVIEW_CLOSURE"}
-        for scenario in ("valid", "different_tree", "comment", "human", "unique", "drift"):
+        for scenario in ("valid", "different_tree", "advanced_empty_diff", "advanced_nonempty_diff", "comment", "human", "unique", "drift"):
             candidate = dict(row)
             if scenario == "unique":
                 candidate["unique_head_commits"] = 1
@@ -215,6 +215,7 @@ class ReconcileTests(unittest.TestCase):
                 self.assertEqual(method, "GET")
                 if route == "/pulls/500":
                     return {"state": "open", "draft": True, "merged": False,
+                            "changed_files": 0 if scenario.startswith("advanced_") else 1,
                             "user": {"login": "github-actions[bot]", "id": 1 if scenario == "human" else 41898282},
                             "head": {"sha": NEW if scenario == "drift" else OLD, "repo": repo},
                             "base": {"ref": "dev", "repo": repo}}
@@ -223,12 +224,14 @@ class ReconcileTests(unittest.TestCase):
                 if route.startswith("/compare/"):
                     return {"status": "ahead", "behind_by": 0, "merge_base_commit": {"sha": OLD}}
                 if route.startswith("/git/commits/"):
-                    return {"tree": {"sha": NEW if scenario == "different_tree" and route.endswith(BASE) else OLD}}
+                    return {"tree": {"sha": NEW if scenario in ("different_tree", "advanced_empty_diff", "advanced_nonempty_diff") and route.endswith(BASE) else OLD}}
+                if route.endswith("/files?per_page=100"):
+                    return [{"filename": "changed.py"}] if scenario == "advanced_nonempty_diff" else []
                 if route.endswith("?per_page=100"):
                     return [{"id": 1}] if scenario == "comment" else []
                 self.fail(route)
             with patch.object(rec.admission, "api", side_effect=api):
-                self.assertEqual(rec.historical_close_candidate(candidate), scenario == "valid")
+                self.assertEqual(rec.historical_close_candidate(candidate), scenario in ("valid", "advanced_empty_diff"))
 
     def test_historical_close_revalidates_and_never_deletes_refs(self):
         row = {"pr": 500, "head": OLD, "base": BASE, "target": "dev"}
