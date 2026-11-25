@@ -363,6 +363,45 @@ query {
 """
 
 
+def read_ruleset_detail(rid):
+    """Only this fixed GET may use a separate administration:read credential.
+
+    GitHub hides bypass_actors from ordinary repository read credentials.
+    A separately provisioned, repository-scoped read-only App installation
+    token can reveal the field. Never replace the actual merge credential
+    or use this token for a mutation, even if it is accidentally over-scoped.
+    """
+    if type(rid) is not int or rid <= 0:
+        raise ValueError("Invalid ruleset identity")
+    route = f"/rulesets/{rid}?includes_parents=false"
+    detail = admission.api("GET", route)
+    if "bypass_actors" in detail:
+        return detail
+    token = os.getenv("GASLUX_POLICY_READ_TOKEN")
+    if not token:
+        return detail
+    # Do not change os.environ or pass policy credentials to gh or git.
+    import urllib.request
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{admission.REPO}" + route,
+        method="GET", headers={"Authorization": "Bearer " + token,
+                               "Accept": "application/vnd.github+json",
+                               "X-GitHub-Api-Version": "2022-11-28"})
+    with urllib.request.urlopen(req, timeout=20) as response:
+        if response.geturl() != req.full_url:
+            raise ValueError("Unexpected policy endpoint")
+        raw = response.read(262145)
+    if len(raw) > 262144:
+        raise ValueError("Oversized ruleset response")
+    verified = json.loads(raw)
+    # Both identities must observe the same active policy; the policy reader
+    # contributes only the otherwise-hidden bypass list.
+    for field in ("id", "source_type", "source", "target", "enforcement", "conditions", "rules"):
+        if field not in detail or field not in verified or detail[field] != verified[field]:
+            raise ValueError("Policy reader disagrees with merge identity")
+    return verified
+
+
 def strict_ruleset_protected(base):
     """Accept only an active exact-dev repository ruleset with visible no-bypass policy.
 
@@ -393,7 +432,7 @@ def strict_ruleset_protected(base):
             if not {"deletion", "non_fast_forward", "pull_request",
                     "required_status_checks"} <= kinds:
                 continue
-            detail = admission.api("GET", f"/rulesets/{rid}?includes_parents=false")
+            detail = read_ruleset_detail(rid)
             if (detail.get("id") != rid or detail.get("source_type") != "Repository"
                     or detail.get("source") != admission.REPO
                     or detail.get("target") != "branch" or detail.get("enforcement") != "active"
@@ -409,6 +448,9 @@ def strict_ruleset_protected(base):
                     or any(row.get("parameters", {}) != active_by_type[kind].get("parameters", {})
                            for kind, row in by_type.items())):
                 continue
+            # Do not accept a ruleset that restricts all updates, even PR merges.
+            if "update" in by_type:
+                continue
             params = by_type["required_status_checks"]["parameters"]
             checks = params["required_status_checks"]
             if (params.get("strict_required_status_checks_policy") is not True
@@ -416,7 +458,9 @@ def strict_ruleset_protected(base):
                     or not isinstance(checks, list) or not 0 < len(checks) < 100
                     or not all(isinstance(x, dict) and isinstance(x.get("context"), str)
                                and x["context"].strip() for x in checks)
-                    or not admission.COMMON_CHECKS <= {x["context"] for x in checks}):
+                    or not admission.COMMON_CHECKS <= {x["context"] for x in checks}
+                    or (os.getenv("GASLUX_POLICY_READ_TOKEN") and
+                        any(x.get("integration_id") != 15368 for x in checks))):
                 continue
             # Recheck the exact base, not an inferred merge base. The GitHub
             # server enforces the strict rule at merge time.
