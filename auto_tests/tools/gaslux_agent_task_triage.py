@@ -541,7 +541,11 @@ def sync_implementation_gap(root, *, dry_run=False, eligible_reason=None):
     for row in candidates:
         marker = f"<!-- GASLUX-IMPLEMENTATION-GAP-V1:{row['key']} -->"
         title = f"[GASLUX-GAP] {row['role']}: implement {row['symbol']}"
-        if tracked(issues, marker, title):
+        # An already routed open issue is a development request, not a
+        # prohibition on a separately isolated dry-run selection. A closed
+        # tracked issue must not be silently reopened by the worker.
+        if tracked(issues, marker, title) and (eligible_reason is None or
+                not tracked([i for i in issues if i.get("state") == "open"], marker, title)):
             continue
         # Defer if another same-repository candidate changes the actual file.
         overlap = False
