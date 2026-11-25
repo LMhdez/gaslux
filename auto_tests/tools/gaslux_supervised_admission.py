@@ -2,10 +2,12 @@
 """Inspect generated supervised scopes without executing candidate files."""
 from __future__ import annotations
 
+import argparse
 import json
 import os
 from pathlib import Path
 import re
+import subprocess
 import sys
 import tempfile
 
@@ -66,7 +68,7 @@ def canonical_scope(pr, role, scope, head):
     return parent
 
 
-def inspect(number, role, scope, head, reviewer=None, owner=None):
+def inspect(number, role, scope, head, reviewer=None, owner=None, *, allow_ready=False):
     row = {"pr": number, "role": role, "scope": scope, "head": head,
            "base": None, "exact_scope_verified": False, "current_base_verified": False,
            "ci_workflow_provenance_verified": False, "ci_verified": False,
@@ -80,7 +82,8 @@ def inspect(number, role, scope, head, reviewer=None, owner=None):
         base = admission.api("GET", "/git/ref/heads/dev")["object"]["sha"]
         row["base"] = base
         if (not admission.valid_sha(base) or pr.get("number") != number
-                or pr.get("state") != "open" or pr.get("draft") is not True
+                or pr.get("state") != "open"
+                or (pr.get("draft") is not True and not (allow_ready and pr.get("draft") is False))
                 or not admission.publisher_ok(pr.get("user") or {})
                 or pr["head"]["sha"] != head or pr["base"]["ref"] != "dev"
                 or pr["head"]["repo"]["full_name"] != admission.REPO
@@ -116,7 +119,7 @@ def inspect(number, role, scope, head, reviewer=None, owner=None):
             "INDEPENDENT_SAFETY_REVIEW" if not row["safety_review_verified"] else
             "BACKEND_OWNER_REVIEW" if not row["backend_owner_verified"] else
             "COLLECT_VM_EVIDENCE" if scope == factory.SUPERVISED_MEDIA_SCOPE else
-            "TEST_ONLY_INTEGRATION_POLICY_REQUIRED"
+            "TEST_ONLY_INTEGRATION_ELIGIBLE"
         )
     except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError, SyntaxError):
         for key in row:
@@ -127,12 +130,17 @@ def inspect(number, role, scope, head, reviewer=None, owner=None):
     return row
 
 
-def inventory():
+def configured_reviewers():
     raw = os.getenv("GASLUX_SAFETY_REVIEWER_ID", "")
     reviewer = int(raw) if re.fullmatch(r"[1-9][0-9]{0,18}", raw) else None
     owners = admission.parse_owner_ids(
         os.getenv("GASLUX_SUPERVISED_OWNER_IDS") or os.getenv("GASLUX_BACKEND_OWNER_IDS", ""),
         allowed_roles=factory.TASKS)
+    return reviewer, owners
+
+
+def inventory():
+    reviewer, owners = configured_reviewers()
     try:
         candidates = discover()
         return {"schema": "gaslux-supervised-admission-v1", "inventory_verified": True,
@@ -144,5 +152,65 @@ def inventory():
                 "merge_authorized": False, "release_eligible": False, "candidates": []}
 
 
+def eligible_test(row):
+    """A read-only receipt is never merge authority on its own."""
+    return (
+        row.get("scope") == factory.SUPERVISED_TEST_SCOPE
+        and row.get("next_action") == "TEST_ONLY_INTEGRATION_ELIGIBLE"
+        and all(row.get(key) is True for key in (
+            "exact_scope_verified", "current_base_verified",
+            "ci_workflow_provenance_verified", "ci_verified",
+            "safety_review_verified", "backend_owner_verified"))
+        and row.get("technical_objection") is False
+        and admission.valid_sha(row.get("head"))
+        and admission.valid_sha(row.get("base"))
+    )
+
+
+def integrate_one():
+    """Trusted-main-only bounded integration, never executes candidate code."""
+    if (os.getenv("GITHUB_REPOSITORY") != admission.REPO
+            or os.getenv("GITHUB_REF") != "refs/heads/main"
+            or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
+            or os.getenv("GASLUX_AUTONOMY_PAUSED", "").lower() == "true"):
+        raise ValueError("Untrusted integration context")
+    reviewer, owners = configured_reviewers()
+    for number, (role, scope, head) in sorted(discover().items()):
+        if scope != factory.SUPERVISED_TEST_SCOPE:
+            continue
+        row = inspect(number, role, scope, head, reviewer, owners.get(role), allow_ready=True)
+        if not eligible_test(row):
+            continue
+        base = row["base"]
+        pr = admission.api("GET", f"/pulls/{number}")
+        if pr["head"]["sha"] != head or pr["base"]["sha"] != base:
+            raise ValueError("Candidate drift before ready")
+        if pr.get("draft") is True:
+            # No candidate code, no shell interpolation, fixed repository.
+            subprocess.run(["gh", "pr", "ready", str(number), "--repo", admission.REPO],
+                           check=True, timeout=60)
+        checked = inspect(number, role, scope, head, reviewer, owners.get(role), allow_ready=True)
+        if not eligible_test(checked) or checked["base"] != base:
+            return {"status": "drift_before_merge", "pr": number, "head": head}
+        pr = admission.api("GET", f"/pulls/{number}")
+        if (pr.get("draft") is not False or pr.get("mergeable_state") != "clean"
+                or pr["head"]["sha"] != head or pr["base"]["sha"] != base
+                or admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != base):
+            return {"status": "waiting_for_github", "pr": number, "head": head}
+        # GitHub enforces its branch rules and the candidate HEAD precondition.
+        # REST does not supply an atomic base-SHA precondition.
+        result = admission.api("PUT", f"/pulls/{number}/merge",
+                               {"sha": head, "merge_method": "squash"})
+        if result.get("merged") is not True or not admission.valid_sha(result.get("sha")):
+            raise RuntimeError("GitHub did not confirm merge")
+        return {"status": "merged", "pr": number, "head": head,
+                "reviewed_base": base, "merge_sha": result["sha"]}
+    return {"status": "idle"}
+
+
 if __name__ == "__main__":
-    print(json.dumps(inventory(), indent=2, sort_keys=True))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--integrate-test", action="store_true")
+    args = parser.parse_args()
+    print(json.dumps(integrate_one() if args.integrate_test else inventory(),
+                     indent=2, sort_keys=True))
