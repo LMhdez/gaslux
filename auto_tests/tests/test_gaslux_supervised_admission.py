@@ -313,8 +313,8 @@ class FullVmAcceptanceTests(unittest.TestCase):
                 self.assertEqual(method, "GET")
                 if route == "/actions/workflows/1234":
                     return {"id": 1234, "state": "active",
-                            "path": ".github/workflows/gaslux-agent-lifecycle-research.yml" if scenario == "wrong_workflow"
-                            else ".github/workflows/gaslux-full-vm-acceptance.yml"}
+                            "path": ".github/workflows/unrelated.yml" if scenario == "wrong_workflow"
+                            else ".github/workflows/gaslux-agent-lifecycle-research.yml"}
                 if route == "/git/ref/heads/main":
                     return {"object": {"sha": BASE}}
                 run = int(route.split("/")[3])
