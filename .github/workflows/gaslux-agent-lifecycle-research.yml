@@ -96,7 +96,11 @@ jobs:
           assert 'environment: gaslux-windows-media' in media and 'GH_TOKEN:' not in media
           assert 'path: evidence/windows-media-preflight.json' in media
           assert 'path: evidence/windows-vm-and-safety-readiness.json' in readiness
-          assert text.count('    - cron:') == 2
+          assert len(re.findall(r'^    - cron:', text, re.M)) == 2
+          # Compile the readiness heredoc without executing it or accessing GitHub.
+          source = readiness.split("python3 - <<'PY'\n", 1)[1].split('\n          PY', 1)[0]
+          import textwrap
+          compile(textwrap.dedent(source), '<readiness>', 'exec')
           print('Six unique read-only jobs, independent media and readiness')
           PY
       - name: Verify private media transport contracts (no credentials or network)
