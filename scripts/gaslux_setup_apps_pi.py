@@ -174,7 +174,7 @@ def install(app, key):
 
 def variables():
     return {v["name"]:v["value"] for v in json.loads(gh("variable", "list", "-R", REPO,
-                                                       "--json", "name,value", "--limit", "100"))}
+                                                       "--json", "name,value"))}
 def setvar(name, value):
     gh("variable", "set", name, "-R", REPO, "--body", value)
 
