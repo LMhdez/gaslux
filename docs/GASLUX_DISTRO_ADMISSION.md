@@ -317,3 +317,108 @@ never attempts publication or merge. New exact HEAD CI required.
 #419 has an unresolved OpenCode containment/event-audit finding and
 failed current CI; do not combine its unapproved changes to claim a
 fully autonomous cycle. No changes to #417/#421 or old closed PRs.
+
+
+## Supervisor automatic test-scope discovery (2026-11-25)
+
+The goal Supervisor in dev is a read-only reporting producer, not a code
+authorization source. The trusted main Factory now has an additional
+bounded supervisory planner: after existing proposal and repair selection
+are blocked, inspect the actual integrated helper AST and its actual
+persistent backend regression suite. For an existing lifecycle classifier
+with no direct regression reference, create one canonical test-only task.
+The scope is derived from fixed trusted backend paths, not instructions
+from an issue, dev goal JSON, model or artifact.
+
+Confirmed first gap at dev d89f1547c50787e4640164e34bfd1863134e2908:
+Mint's assess_mint_lifecycle exists but test_distribution_capabilities.py
+does not reference it. Cover all 256 boolean combinations of eight gates,
+strict non-boolean/missing rejection, result shape, no input mutation and
+literal False authorization flags. No installer behavior is added; the
+same mechanism can select another backend when its helper is actually
+integrated and lacks regression coverage. A test reference suppresses
+work conservatively; it does not certify test completeness.
+
+Reuse existing Factory worker, product tests, independent runner Safety
+verification and main-only publisher; no Ollama inference for canonical
+test scope. Verify exact target test path, producer, base, product and
+test digests, canonical addition bytes; publisher only appends the test,
+rechecks live eligibility with workflow token, requires exact current dev,
+and exclusively creates a new Draft branch. Existing open role test
+proposals, prior same-branch PR or existing ref block publication.
+No production source writes, new write scopes, merges, VM or release
+authority. The PR-only probe uses read-only permissions, executes tests
+on disposable dev checkout and retains evidence, not a publication proof.
+Main review/CI and #419 workflow reconciliation remain necessary.
+This is the first deliberately narrow automatic development scope,
+not arbitrary autonomous installer implementation or a general
+automatic merge/close policy.
+
+Historical Zorin reconciliation: exact #395 and #409 original prefixes
+and appended semantics equivalent (only local missingGates name differs);
+#409 current-base CI and live admission 45592368724 PASS. #395 closed
+as redundant, no merge, branch and evidence retained; #424 resolved.
+#409 still requires applicable independent owner/Safety/VM gates.
+
+
+## Development completion boundary: autonomous scopes and duplicate reconciliation
+
+The supervised planner now has two task classes, selected from actual
+missing code/test symbols and authenticated candidate inventory:
+- Persistent regression for integrated lifecycle helpers (six backend
+  roles, 256 boolean combinations, non-boolean and missing evidence).
+- Pinned release descriptor comparison for the existing Mint/Zorin
+  catalogue entries. Known version-specific pins are trusted main policy;
+  drift, duplicate IDs/keys, unsupported roles and an existing competing
+  candidate symbol fail closed. No image download, signature or genuine
+  source-authenticity assertion is made. Independent positive/negative
+  fixtures run before Draft publication. The actual Zorin source and
+  product suite were exercised on dev d89f1547c50787e4640164e34bfd1863134e2908.
+
+The same Factory select/worker/Safety/publisher jobs process both scopes.
+No issue text or per-task approval is needed within this policy. Canonical
+generation avoids unnecessary inference; existing inference scope and
+validator remain unchanged. The publisher independently recomputes
+eligibility, accepts only exact canonical bytes, requires unchanged dev
+and creates an absent scoped branch exclusively (including concurrent and
+identical-ref rejection). A separate read-only supervised admission
+inventory in the existing Integrator verifies the actual single-commit
+append, exact CI provenance, current base and independent reviewer/owner
+gates. It does not execute candidate code or grant merge authority.
+GASLUX_SUPERVISED_OWNER_IDS may specify independent owner IDs including
+Mint without changing the legacy five-role configuration.
+
+The Integrator now has a bounded metadata-only duplicate reconciliation job:
+two authenticated open lifecycle Drafts for the same role, one stale and
+one current; both exact scope, normal CI and provenance verified; same
+original source/test bytes and fixed AST semantics; no holds or objections.
+Recheck the whole decision before closing at most one redundant old Draft.
+Retain its branch, commits, discussions and evidence. No merge, ref deletion,
+automatic reopen or approval transfer. GitHub's close endpoint has no
+atomic expected-head CAS: revalidate before/after, emit a failure if
+concurrent metadata drift occurs and preserve refs for manual reconciliation.
+Additional job permission is pull-requests:write (metadata closure and
+comment only); no contents write. It remains inactive until this Draft is
+reviewed and integrated. Historical closed successor collisions remain
+blocked; do not blindly reopen a rejected proposal.
+
+Development evidence:
+- 95680a3d6d90aa7efe315d2d3a27f6684ea6e3a0: runs 45594947349 /
+  45594947811, 53 + 72 contracts PASS and both live read-only scope probes PASS.
+- 87e9ad4c5a25aa03b6a688258c686f691e14d185: runs 45595567059 /
+  45595566625, 56 + 73 contracts PASS; both scope probes passed again.
+  Real local Git publish tests for each scope exercise new branch creation,
+  concurrent ref rejection, exact candidate bytes, untouched dev and Draft
+  creation command; GitHub PR API is mocked in those tests, not a real
+  publication. Later duplicate AST-equivalence test requires fresh CI.
+
+Non-goals and unresolved dependencies: no general arbitrary model scope or
+installer integration is authorized. #419 is the separate isolated OpenCode
+agent development and overlaps the Factory workflow; exact composition must
+be reconciled before activation. Product VM acceptance and formal independent
+review/owner gates remain required where applicable. Test-only integration
+policy is distinct from automatic publication/duplicate closure. The PR
+remains Draft until the maintainer's requested development phase is complete
+and subsequent Safety review approves activation. Do not treat a green
+build-only probe, mocked PR request, or technical diagnostic as actual
+autonomous publication, closure, merge or a production installer result.

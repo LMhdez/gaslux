@@ -40,6 +40,20 @@ TASKS = {
 # scope requires independent Safety review before its code is merged to main.
 # Issue #404 remains a task request, not an executable authorization itself.
 SCOPE2B_ID = "mint-iso-pins-v1"
+SUPERVISED_TEST_SCOPE = "supervised-lifecycle-tests-v1"
+SUPERVISED_MEDIA_SCOPE = "supervised-media-pins-v1"
+SUPERVISED_SCOPES = (SUPERVISED_TEST_SCOPE, SUPERVISED_MEDIA_SCOPE)
+# Only reviewed, concrete release descriptors; no download or signing authority.
+SUPERVISED_MEDIA = {
+    "mint": ("match_mint_223_iso_descriptor",
+             "https://pub.linuxmint.io/stable/22.3/linuxmint-22.3-cinnamon-64bit.iso",
+             "a081ab202cfda17f6924128dbd2de8b63518ac0531bcfe3f1a1b88097c459bd4",
+             3091660800),
+    "zorin": ("match_zorin_181_iso_descriptor",
+              "https://mirrors.univ-reims.fr/IMAGES/zorinos/18/Zorin-OS-18.1-Core-64-bit.iso",
+              "44649b97bd307fc4c8529205d098ebbf98575a1e1ba2ee7d7005b697af1721d5",
+              3909091328),
+}
 SCOPE2B_ISSUE = 404
 SCOPE2B_FN = "match_mint_223_iso_descriptor"
 SCOPE2B_TARGET = TASKS["mint"][0]
@@ -647,12 +661,314 @@ def generate_repair(root, evidence_dir, role, base, number, head):
         json.dumps(report, sort_keys=True, indent=2) + "\n", encoding="utf-8")
 
 
+def supervised_test_branch(role, base):
+    if role not in TASKS or not SHA.fullmatch(base):
+        raise ValueError("Invalid supervised regression identity")
+    return f"bot/gaslux-test-{role}-{base[:12]}"
+
+
+def supervised_media_pins(role):
+    name, url, digest, size = SUPERVISED_MEDIA[role]
+    return name, {"id": role, "isoInstaller": url,
+                  "isoInstallerSha256": digest, "isoInstallerSizeBytes": size}
+
+
+def supervised_media_gap(root, role):
+    if role not in SUPERVISED_MEDIA:
+        return False
+    name, pins = supervised_media_pins(role)
+    product = root / TASKS[role][0]
+    suite = root / "auto_tests/tests" / TASKS[role][1]
+    descriptor = root / "release-config.json"
+    if not all(p.is_file() and p.stat().st_size <= 25000
+               for p in (product, suite, descriptor)):
+        return False
+    raw = product.read_bytes()
+    if b"\r" in raw or name.encode() in raw:
+        return False
+    # Reject duplicate JSON keys and drift rather than deriving new pins from
+    # an untrusted candidate descriptor.
+    def unique(pairs):
+        result = {}
+        for key, value in pairs:
+            if key in result:
+                raise ValueError("Duplicate release descriptor key")
+            result[key] = value
+        return result
+    cfg = json.loads(descriptor.read_text(), object_pairs_hook=unique)
+    rows = cfg.get("distributions")
+    if type(rows) is not list:
+        return False
+    match = [row for row in rows if type(row) is dict and row.get("id") == role]
+    return len(match) == 1 and all(
+        type(match[0].get(k)) is type(v) and match[0][k] == v
+        for k, v in pins.items())
+
+
+def supervised_media_addition(role):
+    name, pins = supervised_media_pins(role)
+    return (
+        f"def {name}(candidate: dict) -> dict:\n"
+        f"    expected_url = {json.dumps(pins['isoInstaller'])}\n"
+        f"    expected_sha256 = {json.dumps(pins['isoInstallerSha256'])}\n"
+        "    matched = (\n"
+        "        type(candidate) is dict\n"
+        + "".join(f"        and type(candidate.get({json.dumps(k)})) is {type(v).__name__}\n"
+                  f"        and candidate.get({json.dumps(k)}) == "
+                  + {"isoInstaller": "expected_url", "isoInstallerSha256": "expected_sha256"}.get(k, json.dumps(v))
+                  + "\n" for k, v in pins.items())
+        + "    )\n"
+        "    return {\n"
+        f'        "backend": "{role}",\n'
+        '        "pinnedDescriptorMatches": matched,\n'
+        '        "sourceAuthenticityVerified": False,\n'
+        '        "installationAuthorized": False,\n'
+        '        "releaseEligible": False,\n'
+        "    }\n"
+    )
+
+
+def supervised_media_acceptance(role, addition):
+    # Run only exact trusted canonical code in an unprivileged worker.
+    if addition != supervised_media_addition(role):
+        raise ValueError("Noncanonical media descriptor addition")
+    name, pins = supervised_media_pins(role)
+    namespace = {}
+    exec(compile(addition, "<trusted-descriptor>", "exec"),
+         {"__builtins__": {"dict": dict, "str": str, "int": int, "type": type}}, namespace)
+    fn = namespace[name]
+    class UntrustedDict(dict):
+        def get(self, *_args):
+            raise AssertionError("Subclass method must not execute")
+    variants = [(dict(pins), True), ({}, False), (None, False), ([], False),
+                (UntrustedDict(pins), False)]
+    for key, value in pins.items():
+        variants += [({**pins, key: None}, False),
+                     ({**pins, key: True}, False),
+                     ({**pins, key: str(value) + "x"}, False)]
+    variants += [({**pins, "isoInstallerSizeBytes": float(pins["isoInstallerSizeBytes"])}, False)]
+    for candidate, expected in variants:
+        before = dict(candidate) if type(candidate) is dict else candidate
+        result = fn(candidate)
+        if (type(candidate) is dict and candidate != before) or result != {
+            "backend": role, "pinnedDescriptorMatches": expected,
+            "sourceAuthenticityVerified": False, "installationAuthorized": False,
+            "releaseEligible": False,
+        } or any(type(result[k]) is not bool for k in
+                 ("pinnedDescriptorMatches", "sourceAuthenticityVerified",
+                  "installationAuthorized", "releaseEligible")):
+            raise ValueError("Descriptor fixture failed")
+
+
+def supervised_branch(role, base, scope):
+    if scope == SUPERVISED_TEST_SCOPE:
+        return supervised_test_branch(role, base)
+    if scope != SUPERVISED_MEDIA_SCOPE or role not in SUPERVISED_MEDIA or not SHA.fullmatch(base):
+        raise ValueError("Unknown supervised scope")
+    return f"bot/gaslux-pins-{role}-{base[:12]}"
+
+
+def supervised_addition(role, scope):
+    if scope == SUPERVISED_TEST_SCOPE:
+        return supervised_test_addition(role)
+    if scope == SUPERVISED_MEDIA_SCOPE:
+        return supervised_media_addition(role)
+    raise ValueError("Unknown supervised scope")
+
+
+def supervised_scope_gap(root, role, scope):
+    if scope == SUPERVISED_TEST_SCOPE:
+        return supervised_gap(root, role)
+    if scope == SUPERVISED_MEDIA_SCOPE:
+        return supervised_media_gap(root, role)
+    raise ValueError("Unknown supervised scope")
+
+
+def scope_target(role, scope):
+    if scope == SUPERVISED_TEST_SCOPE:
+        return "auto_tests/tests/" + TASKS[role][1]
+    return TASKS[role][0]
+
+
+def supervised_test_addition(role):
+    if role not in TASKS:
+        raise ValueError("Unknown supervised regression backend")
+    name = f"assess_{role}_lifecycle"
+    module = Path(TASKS[role][0]).stem
+    loader = (f"    fn = load_helper().{name}\n"
+              if role in ("mint", "cachyos") else
+              f"    from {module} import {name}\n\n    fn = {name}\n")
+    return (
+        f"def test_supervisor_{role}_lifecycle_truth_table():\n"
+        + loader
+        + "    gates = (\n"
+        + "".join(f'        "{gate}",\n' for gate in GATES)
+        + "    )\n"
+        "    for mask in range(1 << len(gates)):\n"
+        "        evidence = {gate: bool(mask & (1 << i)) for i, gate in enumerate(gates)}\n"
+        "        before = dict(evidence)\n"
+        "        result = fn(evidence)\n"
+        "        assert evidence == before\n"
+        "        assert result == {\n"
+        f'            "backend": "{role}",\n'
+        '            "missingGates": sorted(gate for gate in gates if not evidence[gate]),\n'
+        '            "installationAuthorized": False,\n'
+        '            "releaseEligible": False,\n'
+        "        }\n"
+        '        assert result["installationAuthorized"] is False\n'
+        '        assert result["releaseEligible"] is False\n'
+        '    for value in (None, 0, 1, "true", [], {}):\n'
+        "        result = fn(dict.fromkeys(gates, value))\n"
+        '        assert result["missingGates"] == sorted(gates)\n'
+        '        assert result["installationAuthorized"] is False\n'
+        '        assert result["releaseEligible"] is False\n'
+        "    assert fn({})[\"missingGates\"] == sorted(gates)\n"
+    )
+
+
+def supervised_gap(root, role):
+    """Static source/test discovery, not authority inferred from dev JSON."""
+    source, test, _ = TASKS[role]
+    product = root / source
+    suite = root / "auto_tests/tests" / test
+    if not product.is_file() or not suite.is_file():
+        return False
+    raw, tests = product.read_bytes(), suite.read_bytes()
+    if max(len(raw), len(tests)) > 25000 or b"\r" in raw + tests:
+        return False
+    name = f"assess_{role}_lifecycle"
+    tree = ast.parse(raw)
+    functions = [node for node in tree.body
+                 if isinstance(node, ast.FunctionDef) and node.name == name]
+    if len(functions) != 1:
+        return False
+    # Scope only an integrated helper with no existing direct regression
+    # reference; don't generate a duplicate test merely to get a PR.
+    if name.encode() in tests or f"test_supervisor_{role}_".encode() in tests:
+        return False
+    if role in ("mint", "cachyos"):
+        if not any(isinstance(n, ast.FunctionDef) and n.name == "load_helper"
+                   for n in ast.parse(tests).body):
+            return False
+    return True
+
+
+def supervised_scope_plan(root, base, scope, *, requested_role=None):
+    if git(root, "rev-parse", "HEAD") != base or not SHA.fullmatch(base):
+        raise ValueError("Wrong supervised source checkout")
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    import gaslux_distro_admission as admission
+    if admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != base:
+        return None
+    rows = admission.complete_page(admission.api(
+        "GET", "/pulls?state=open&base=dev&per_page=100"))
+    for role in TASKS:
+        if requested_role is not None and role != requested_role:
+            continue
+        if not supervised_scope_gap(root, role, scope):
+            continue
+        # Any same-repo open test proposal for the role blocks duplicates,
+        # independent of source revision or author-provided PR text.
+        prefix = (f"bot/gaslux-test-{role}-" if scope == SUPERVISED_TEST_SCOPE
+                  else f"bot/gaslux-pins-{role}-")
+        if any(isinstance(p["head"].get("ref"), str)
+               and p["head"]["ref"].startswith(prefix)
+               and (p["head"].get("repo") or {}).get("full_name") == REPO
+               for p in rows):
+            continue
+        # For product scopes, check every open same-repo dev PR's exact
+        # changed-path patch for a duplicate function, not just bot names.
+        if scope == SUPERVISED_MEDIA_SCOPE:
+            name, _ = supervised_media_pins(role)
+            target = scope_target(role, scope)
+            duplicate = False
+            for pr in rows:
+                if (pr["head"].get("repo") or {}).get("full_name") != REPO:
+                    continue
+                number = pr.get("number")
+                if type(number) is not int or not 1 <= number <= 1000000:
+                    raise ValueError("Malformed open candidate identity")
+                files = admission.complete_page(admission.api(
+                    "GET", f"/pulls/{number}/files?per_page=100"))
+                for item in files:
+                    if item.get("filename") != target:
+                        continue
+                    # Inspect exact candidate bytes, not potentially truncated
+                    # diff text. A deletion/unknown source blocks this scope.
+                    if item.get("status") not in ("added", "modified"):
+                        duplicate = True
+                    elif name.encode() in admission.source_at(target, pr["head"]["sha"]):
+                        duplicate = True
+            if duplicate:
+                continue
+        branch = supervised_branch(role, base, scope)
+        if admission.complete_page(admission.api(
+                "GET", f"/pulls?state=all&head=LMhdez:{branch}&base=dev&per_page=100")):
+            continue
+        ref = subprocess.run(
+            ["gh", "api", f"repos/{REPO}/git/ref/heads/{branch}"],
+            text=True, capture_output=True, check=False, timeout=20)
+        if ref.returncode == 0:
+            continue
+        if "404" not in ref.stderr and "Not Found" not in ref.stderr:
+            raise RuntimeError("Cannot establish regression branch absence")
+        return {"status": "pending", "role": role, "base": base,
+                "scope": scope,
+                "task": ("Add missing persistent lifecycle helper regression" if scope == SUPERVISED_TEST_SCOPE
+                         else "Add missing pinned release descriptor comparison"),
+                "code_authorized": ("canonical-test-only" if scope == SUPERVISED_TEST_SCOPE
+                                    else "canonical-read-only-product"),
+                "installation_authorized": False, "release_eligible": False}
+    return None
+
+
+def supervised_test_plan(root, base, *, requested_role=None):
+    return supervised_scope_plan(root, base, SUPERVISED_TEST_SCOPE, requested_role=requested_role)
+
+
+def supervised_test_report(root, role, base, *, scope=SUPERVISED_TEST_SCOPE):
+    if git(root, "rev-parse", "HEAD") != base or not SHA.fullmatch(base):
+        raise ValueError("Wrong supervised test base")
+    if not supervised_scope_gap(root, role, scope):
+        raise ValueError("Supervised scope gap no longer exists")
+    addition = supervised_addition(role, scope)
+    before, after = expected_source(root, role, addition, scope=scope)
+    return {
+        **({"release_descriptor_sha256": sha256((root / "release-config.json").read_bytes()),
+            "regression_suite_sha256": sha256((root / "auto_tests/tests" / TASKS[role][1]).read_bytes())}
+           if scope == SUPERVISED_MEDIA_SCOPE else {}),
+        "role": role, "base": base, "scope": scope,
+        "producer": ("trusted-supervisor-regression-v1" if scope == SUPERVISED_TEST_SCOPE
+                     else "trusted-supervisor-media-v1"),
+        "task": ("Add missing persistent lifecycle helper regression" if scope == SUPERVISED_TEST_SCOPE
+                 else "Add missing pinned release descriptor comparison"),
+        "target": scope_target(role, scope),
+        "product_sha256": sha256((root / TASKS[role][0]).read_bytes()),
+        "source_sha256": sha256(before), "candidate_sha256": sha256(after),
+        "addition_sha256": sha256(addition.encode()),
+    }
+
+
+def generate_supervised_test(root, evidence_dir, role, base, *, scope=SUPERVISED_TEST_SCOPE):
+    report = supervised_test_report(root, role, base, scope=scope)
+    if scope == SUPERVISED_MEDIA_SCOPE:
+        supervised_media_acceptance(role, supervised_addition(role, scope))
+    evidence_dir.mkdir(parents=True, exist_ok=True)
+    (evidence_dir / "addition.py").write_bytes(supervised_addition(role, scope).encode())
+    (evidence_dir / "report.json").write_text(
+        json.dumps(report, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+
+
 def expected_source(root: Path, role: str, addition: str, *, scope: str = "lifecycle",
                     formatted_repair: bool = False) -> tuple[bytes, bytes]:
-    path = root / TASKS[role][0]
+    path = root / scope_target(role, scope)
     original = path.read_bytes()
     if len(original) > 25000 or b"\r" in original:
         raise ValueError("Unexpected source file format")
+    if scope in SUPERVISED_SCOPES:
+        if addition != supervised_addition(role, scope) or not supervised_scope_gap(root, role, scope):
+            raise ValueError("Unexpected supervised regression source")
+        return original, original.rstrip(b"\n") + b"\n\n\n" + addition.encode()
     if scope not in ("lifecycle", SCOPE2B_ID) or (scope == SCOPE2B_ID and role != "mint"):
         raise ValueError("Unexpected code scope")
     function_name = SCOPE2B_FN if scope == SCOPE2B_ID else f"assess_{role}_lifecycle"
@@ -679,8 +995,18 @@ def verify(root: Path, evidence_dir: Path, role: str, base: str, *, execute: boo
         if report != expected or addition_raw != repair_addition(role).encode():
             raise ValueError("Repair artifact differs from trusted canonical source")
         return report
+    if scope in SUPERVISED_SCOPES:
+        expected = supervised_test_report(root, role, base, scope=scope)
+        if report != expected or addition_raw != supervised_addition(role, scope).encode():
+            raise ValueError("Supervised artifact differs from trusted canonical bytes")
+        if execute and scope == SUPERVISED_MEDIA_SCOPE:
+            supervised_media_acceptance(role, addition)
+        return report
     if any(k in report for k in ("producer", "repair_pr", "repair_head")):
         raise ValueError("Unexpected repair evidence in model path")
+    composition = report.get("composition")
+    if composition not in (None, "opencode-python-v1") or (composition is not None and scope != "lifecycle"):
+        raise ValueError("Unexpected model composition")
     expected_task = SCOPE2B_TASK if scope == SCOPE2B_ID else TASKS[role][2]
     if scope not in ("lifecycle", SCOPE2B_ID):
         raise ValueError("Unapproved source scope")
@@ -697,7 +1023,8 @@ def verify(root: Path, evidence_dir: Path, role: str, base: str, *, execute: boo
         report.get("addition_sha256") != sha256(addition_raw)):
         raise ValueError("Untrusted source/report identity")
     validate_addition(role, addition, execute=execute, scope=scope)
-    before, after = expected_source(root, role, addition, scope=scope)
+    before, after = expected_source(root, role, addition, scope=scope,
+                                    formatted_repair=composition == "opencode-python-v1")
     if (report.get("source_sha256") != sha256(before) or
         report.get("candidate_sha256") != sha256(after)):
         raise ValueError("Model artifact/source digest mismatch")
@@ -943,9 +1270,10 @@ def safe_forward_draft_base(root: Path, role: str, old: str, current: str) -> bo
             return False
     return True
 
-def create_successor_ref(root: Path, role: str, base: str) -> None:
+def create_successor_ref(root: Path, role: str, base: str, *, scope="lifecycle") -> None:
     """Create an absent ref only; an existing ref is never overwritten."""
-    branch = origin_branch(role, base)
+    branch = (supervised_branch(role, base, scope) if scope in SUPERVISED_SCOPES
+              else origin_branch(role, base))
     ref = "refs/heads/" + branch
     # Empty expected value is a compare-and-create lease, NOT permission
     # to replace an existing ref, even if that update is fast-forward.
@@ -973,9 +1301,11 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
         raise ValueError("Only trusted default-branch Actions may publish")
     # Static-only checks: never execute model text in a token-bearing job.
     is_repair = repair_identity(repair_pr, repair_head)
-    verify(root, evidence_dir, role, base, execute=False, scope=scope,
-           repair_pr=repair_pr, repair_head=repair_head)
-    if is_repair:
+    verified = verify(root, evidence_dir, role, base, execute=False, scope=scope,
+                      repair_pr=repair_pr, repair_head=repair_head)
+    is_opencode = verified.get("composition") == "opencode-python-v1"
+    is_supervised = scope in SUPERVISED_SCOPES
+    if is_repair or is_supervised:
         # Recheck with the workflow token, not the publication App identity.
         read_token = os.environ.get("GASLUX_REPAIR_READ_TOKEN")
         publish_token = os.environ.get("GH_TOKEN")
@@ -983,14 +1313,15 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
             raise RuntimeError("Repair provenance token missing")
         try:
             os.environ["GH_TOKEN"] = read_token
-            picked = repair_plan(root, base, number=repair_pr, head=repair_head)
+            picked = (supervised_scope_plan(root, base, scope, requested_role=role) if is_supervised
+                      else repair_plan(root, base, number=repair_pr, head=repair_head))
         finally:
             os.environ["GH_TOKEN"] = publish_token
         if not picked or picked["role"] != role:
             raise RuntimeError("Repair candidate no longer eligible")
     git(root, "fetch", "origin", "refs/heads/dev:refs/remotes/origin/dev")
     live = git(root, "rev-parse", "refs/remotes/origin/dev")
-    if (is_repair and live != base) or not safe_forward_draft_base(root, role, base, live):
+    if ((is_repair or is_supervised or is_opencode) and live != base) or not safe_forward_draft_base(root, role, base, live):
         print(json.dumps({"status": "stale_or_relevant_dev_change", "role": role}))
         return
     if scope == SCOPE2B_ID:
@@ -1010,28 +1341,36 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
                                   mint[0].get(k) != v for k, v in SCOPE2B_PINS.items())):
             raise ValueError("Mint release pins drifted; regenerate under new review")
         branch = scope2b_branch(base)
+    elif is_supervised:
+        branch = supervised_branch(role, base, scope)
     else:
         branch = origin_branch(role, base)
     addition = (evidence_dir / "addition.py").read_text(encoding="utf-8")
     # Safe forward-only changes are included by ancestry, but this review PR
     # is still always Draft. No model text runs with publication credentials.
     git(root, "checkout", "-b", branch, live)
-    _, proposed = expected_source(root, role, addition, scope=scope, formatted_repair=is_repair)
-    (root / TASKS[role][0]).write_bytes(proposed)
-    if git(root, "diff", "--name-only") != TASKS[role][0]:
+    _, proposed = expected_source(root, role, addition, scope=scope,
+                                  formatted_repair=is_repair or is_opencode)
+    target = scope_target(role, scope)
+    (root / target).write_bytes(proposed)
+    if git(root, "diff", "--name-only") != target:
         raise ValueError("Unexpected changed product path")
     subprocess.run(["git", "-C", str(root), "diff", "--check"], check=True)
-    git(root, "add", "--", TASKS[role][0])
+    git(root, "add", "--", target)
     subprocess.run(["git", "-C", str(root), "config", "user.name", "github-actions[bot]"], check=True)
     subprocess.run(["git", "-C", str(root), "config", "user.email", "41898282+github-actions[bot]@users.noreply.github.com"], check=True)
     commit_subject = (f"feat({role}): check pinned Mint 22.3 ISO descriptor"
                       if scope == SCOPE2B_ID else
                       f"feat({role}): isolated lifecycle evidence proposal")
+    if is_supervised:
+        commit_subject = (f"test({role}): persist lifecycle evidence truth-table regression"
+                          if scope == SUPERVISED_TEST_SCOPE else
+                          f"feat({role}): compare pinned release descriptor without authorization")
     subprocess.run(["git", "-C", str(root), "commit", "-m", commit_subject], check=True)
     # No implicit token is available in any model-inference or test runner.
     subprocess.run(["gh", "auth", "setup-git"], check=True)
-    if is_repair:
-        create_successor_ref(root, role, base)
+    if is_repair or is_supervised or is_opencode:
+        create_successor_ref(root, role, base, scope=scope)
     else:
         subprocess.run(["git", "-C", str(root), "push", "origin", f"HEAD:refs/heads/{branch}"], check=True)
     body = (f"Unprivileged Qwen3.5 9B proposal for {role}, pinned base {base}.\n\n"
@@ -1062,6 +1401,23 @@ def publish(root: Path, evidence_dir: Path, role: str, base: str, *, scope: str 
             "inference or inherited CI/approval. Fresh regression checks required. "
             "Original PR retained for evidence; no automatic merge, installation or release."
         )
+    if scope == SUPERVISED_TEST_SCOPE:
+        title = f"test({role}): persist lifecycle helper regression"
+        body = (
+            f"Autonomously discovered missing persistent regression on dev {base}. "
+            "Test-only canonical proposal; 256 truth-table combinations, non-boolean "
+            "and absent evidence; protected flags remain false. Existing product "
+            "suite passed in isolated runner. No new inference, product modification, "
+            "independent review attestation, merge, VM or release authority."
+        )
+    if scope == SUPERVISED_MEDIA_SCOPE:
+        title = f"feat({role}): compare pinned release descriptor"
+        body = (
+            f"Autonomous read-only product scope selected from missing descriptor helper on dev {base}. "
+            "Exact trusted pins, strict scalar types, no download, no signature or authenticity proof. "
+            "Negative fixtures and existing backend regression suite passed; separate review required. "
+            "No merge, installation, VM writer or release authority."
+        )
     subprocess.run(["gh", "pr", "create", "--repo", REPO, "--draft", "--base", "dev",
                     "--head", branch, "--title", title, "--body", body], check=True)
 
@@ -1072,9 +1428,10 @@ def main() -> None:
     cli.add_argument("--repo", type=Path, required=True)
     cli.add_argument("--evidence", type=Path, default=Path("evidence/feature-factory"))
     cli.add_argument("--role", choices=tuple(TASKS))
-    cli.add_argument("--scope", choices=("lifecycle", SCOPE2B_ID), default="lifecycle")
+    cli.add_argument("--scope", choices=("lifecycle", SCOPE2B_ID, *SUPERVISED_SCOPES), default="lifecycle")
     cli.add_argument("--base")
     cli.add_argument("--enable-stale-repair", action="store_true")
+    cli.add_argument("--enable-supervised-tests", action="store_true")
     cli.add_argument("--repair-pr", type=int)
     cli.add_argument("--repair-head")
     args = cli.parse_args()
@@ -1083,6 +1440,9 @@ def main() -> None:
         row = plan(root)
         if args.enable_stale_repair and row["status"] == "blocked":
             row = repair_plan(root, row["base"]) or row
+        if args.enable_supervised_tests and row["status"] == "blocked":
+            row = (supervised_test_plan(root, row["base"])
+                   or supervised_scope_plan(root, row["base"], SUPERVISED_MEDIA_SCOPE) or row)
         print(json.dumps(row, sort_keys=True))
         return
     if not args.role or not args.base:
@@ -1092,6 +1452,8 @@ def main() -> None:
             if args.scope != "lifecycle":
                 cli.error("Invalid repair scope")
             generate_repair(root, args.evidence, args.role, args.base, args.repair_pr, args.repair_head)
+        elif args.scope in SUPERVISED_SCOPES:
+            generate_supervised_test(root, args.evidence, args.role, args.base, scope=args.scope)
         else:
             generate(root, args.evidence, args.role, args.base, scope=args.scope)
     elif args.action == "verify":

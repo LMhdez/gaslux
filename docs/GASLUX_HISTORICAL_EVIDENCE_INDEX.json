@@ -1,0 +1,356 @@
+{
+  "schema_version": 1,
+  "kind": "historical_discovery_only",
+  "observed_utc": "2026-11-24T20:40:00Z",
+  "repository": "LMhdez/gaslux",
+  "main": "d408ffa603272007d9cb0c2c896ed1789f775a80",
+  "dev": "d89f1547c50787e4640164e34bfd1863134e2908",
+  "inventory": {
+    "snapshot_pr_range": "1–420",
+    "visible_prs": 414,
+    "merged": 71,
+    "open": 89,
+    "closed_unmerged": 254,
+    "individually_audited_all": false
+  },
+  "records": [
+    {
+      "pr": 113,
+      "run": 44085976726,
+      "source_head_sha": "10478282dbb6f503c01451f503409b8b9ba81fce",
+      "job": 134048590508,
+      "conclusion": "success",
+      "level": "WINDOWS_GUEST",
+      "observation": "Windows 10 Enterprise Evaluation 22H2 x64: official ISO SHA256 verified; KVM DVD then disk-only Windows client and clean shutdown; no Linux, rollback or authenticated guest origin.",
+      "artifact": {
+        "id": 14329558083,
+        "availability_at_audit": "not_listed",
+        "expires_at": null,
+        "github_digest_sha256": null,
+        "archive_reverified_this_audit": false
+      },
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "pr": 117,
+      "run": 44094951108,
+      "source_head_sha": "35ef6de46b71524c6c05c8d9f3a9f87564529ce7",
+      "job": 134079724829,
+      "conclusion": "success",
+      "level": "WINDOWS_GUEST",
+      "observation": "Windows 11 Enterprise Evaluation 26H2 x64: official ISO SHA256 verified; KVM two-stage installed client and clean shutdown, private TPM. No dual boot or rollback.",
+      "artifact": {
+        "id": 14335490721,
+        "availability_at_audit": "not_listed",
+        "expires_at": null,
+        "github_digest_sha256": null,
+        "archive_reverified_this_audit": false
+      },
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "pr": 119,
+      "run": 44095873813,
+      "source_head_sha": "cd9e61bb8c0fc7d5985e5b90ff621c2a04d8f9a9",
+      "job": 134082720201,
+      "conclusion": "success",
+      "level": "ARCHIVE_CONSISTENCY",
+      "observation": "Pinned historical Win10 archive candidate verifier; successful job, no guest or disk; document consistency not origin authentication.",
+      "artifact": {
+        "id": null,
+        "availability_at_audit": "not_listed",
+        "expires_at": null,
+        "github_digest_sha256": null,
+        "archive_reverified_this_audit": false
+      },
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "pr": 260,
+      "run": 44704787925,
+      "source_head_sha": "98d7b450a275d6150406e3feb9f4947cc2d2c388",
+      "job": 136182418950,
+      "conclusion": "success",
+      "level": "EXPERIMENTAL_SAME_COW_BOOT",
+      "observation": "Windows 10 then Mint 22.3 direct-kernel then Windows in same disposable COW; fourth Windows ESP/BCD/WinRE proof true; native GRUB, updates, rollback false; not production Gaslux installation.",
+      "artifact": {
+        "id": 14617010437,
+        "availability_at_audit": "listed_unexpired",
+        "expires_at": "2026-11-27T09:16:57Z",
+        "github_digest_sha256": "2bcf1d1b8277bbaed7c0c7aa7545275412f2e8ebcd570cad07535996f5b0cab3",
+        "archive_reverified_this_audit": true,
+        "archive_verification_date": "2026-11-25",
+        "archive_verification_manifest": "GASLUX_HISTORICAL_ARCHIVE_VERIFICATION.json",
+        "raw_archive_committed": false
+      },
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "pr": 269,
+      "run": 44713947097,
+      "source_head_sha": "dbc0ff99a6c63366c63763eac822fdb5900ca427",
+      "job": 136212559794,
+      "conclusion": "success",
+      "level": "READONLY_GUEST_DENIED",
+      "observation": "Pinned historical Windows/Pop live QEMU witness; REFUSED_UNAUTHENTICATED_PROVENANCE, DENY_NO_WRITER, transaction missing or invalid.",
+      "artifact": {
+        "id": 14618774049,
+        "availability_at_audit": "listed_unexpired",
+        "expires_at": "2026-11-27T10:02:22Z",
+        "github_digest_sha256": "2a8cf4d29781538a15dad6965aa35251bae29a3c3146d0cc7442f35e48cbd021",
+        "archive_reverified_this_audit": true,
+        "archive_verification_date": "2026-11-25",
+        "archive_verification_manifest": "GASLUX_HISTORICAL_ARCHIVE_VERIFICATION.json",
+        "raw_archive_committed": false
+      },
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "pr": 383,
+      "run": 45064724367,
+      "source_head_sha": "f6c79778b780d8abdfaf73a8beeef664dbca6a5c",
+      "job": 137339698888,
+      "conclusion": "success",
+      "level": "SYNTHETIC_DISK_RESTORE_ONLY",
+      "observation": "QCOW2/OVMF fixture; F-383-01 and F-383-02 open, Safety changes required; no guest boot.",
+      "artifact": {
+        "id": 14770149177,
+        "availability_at_audit": "listed_unexpired",
+        "expires_at": "2026-12-06T20:13:45Z",
+        "github_digest_sha256": "9f387e95c5fe1e9d7166aa150a2eb11fbf91411224d4ac982c92827af06a2a82",
+        "archive_reverified_this_audit": true,
+        "archive_verification_date": "2026-11-25",
+        "archive_verification_manifest": "GASLUX_HISTORICAL_ARCHIVE_VERIFICATION.json",
+        "raw_archive_committed": false
+      },
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    },
+    {
+      "pr": 388,
+      "run": 45067845469,
+      "source_head_sha": "ba1817d41330d33e500c36dc17c2f88e313c5fee",
+      "job": 137347940576,
+      "conclusion": "success",
+      "level": "PRIVATE_QUOTA_FIXTURE",
+      "observation": "60 GiB physical reservation, actual overlay write and reset, 384 MiB ENOSPC; full-size exhaustion not tested; compact Portuguese media absent, 2/11 checkpoints; no Windows boot or writer.",
+      "artifact": {
+        "id": 14771887332,
+        "availability_at_audit": "listed_unexpired",
+        "expires_at": "2026-12-06T20:41:46Z",
+        "github_digest_sha256": "63c48150bb0108be5934c5b24dc9079780ec316dc319ce11cfb68258d69229e0",
+        "archive_reverified_this_audit": true,
+        "archive_verification_date": "2026-11-25",
+        "archive_verification_manifest": "GASLUX_HISTORICAL_ARCHIVE_VERIFICATION.json",
+        "raw_archive_committed": false
+      },
+      "formal_gate_verified": false,
+      "merge_authorized": false,
+      "writer_authorized": false,
+      "release_eligible": false
+    }
+  ],
+  "guardrails": {
+    "formal_registry": "dev:docs/autonomy/evidence.json",
+    "formal_registry_records_at_audit": 0,
+    "automatic_import_allowed": false,
+    "require_current_head_and_independent_scope_review": true,
+    "require_artifact_revalidation": true,
+    "no_new_authority": true
+  },
+  "next_missions": [
+    {
+      "id": "HISTORY-EVIDENCE-PRESERVE",
+      "depends_on": [],
+      "scope": "Preserve bounded non-sensitive JSON/log/hash evidence before listed artifacts expire; verify run, artifact digest, allowed members and original source using #119/#125 pattern; never retain ISO/QCOW2/TPM/keys.",
+      "priority": "P0"
+    },
+    {
+      "id": "LAB-383-REMEDIATION",
+      "depends_on": [],
+      "scope": "Fix F-383-01 report path confinement and F-383-02 OVMF copy TOCTOU on existing #383; independent Safety exact HEAD.",
+      "priority": "P0"
+    },
+    {
+      "id": "LAB-388-COMPOSITION",
+      "depends_on": [
+        "LAB-383-REMEDIATION"
+      ],
+      "scope": "Reconcile #383 and #388, validate final composition and quota across phases; preserve 2/11 evidence limit.",
+      "priority": "P0"
+    },
+    {
+      "id": "LAB-HISTORICAL-WINDOWS-REUSE",
+      "depends_on": [
+        "HISTORY-EVIDENCE-PRESERVE"
+      ],
+      "scope": "Recover historical official evaluation ISO and two-stage Windows lab, #113/#117/#260/#269, and revalidate current license/media/runner/guest safety. Do not require new private URL solely because historical branch is closed.",
+      "priority": "P0"
+    },
+    {
+      "id": "AUTONOMY-ADMISSION-RECONCILE",
+      "depends_on": [
+        "HISTORY-EVIDENCE-PRESERVE"
+      ],
+      "scope": "Reconcile #416–#418 with #408 and existing AGENTS/AI_POLICY. Shared-account technical reviews can be valid when independently reproducible; do not fabricate formal APPROVE. Automated authority requires authenticated provenance. Review multi-commit Ruff branches and stale base.",
+      "priority": "P0"
+    }
+  ],
+  "role_pr_leads": {
+    "mint": [
+      174,
+      181,
+      185,
+      190,
+      197,
+      204,
+      233,
+      260,
+      271,
+      274,
+      276,
+      278,
+      330,
+      350,
+      369,
+      383,
+      388,
+      393,
+      407
+    ],
+    "zorin": [
+      176,
+      219,
+      224,
+      264,
+      277,
+      281,
+      328,
+      332,
+      333,
+      395
+    ],
+    "cachyos": [
+      36,
+      42,
+      56,
+      165,
+      171,
+      180,
+      193,
+      218,
+      225,
+      248,
+      263,
+      279,
+      314,
+      335,
+      358,
+      411
+    ],
+    "popos": [
+      32,
+      38,
+      39,
+      50,
+      63,
+      221,
+      223,
+      232,
+      269,
+      291,
+      293,
+      296,
+      298,
+      323,
+      324,
+      329,
+      343,
+      353,
+      412
+    ],
+    "q4os": [
+      40,
+      182,
+      186,
+      187,
+      188,
+      189,
+      198,
+      206,
+      231,
+      244,
+      256,
+      266,
+      299,
+      309,
+      317,
+      318,
+      338,
+      345,
+      351,
+      413
+    ],
+    "bazzite": [
+      179,
+      214,
+      250,
+      262,
+      280,
+      295,
+      320,
+      327,
+      357,
+      400
+    ]
+  },
+  "shared_pr_leads": [
+    46,
+    113,
+    117,
+    119,
+    125,
+    136,
+    155,
+    157,
+    163,
+    192,
+    217,
+    269,
+    300,
+    302,
+    307,
+    319,
+    325,
+    337,
+    346,
+    356,
+    361,
+    368,
+    369,
+    383,
+    388,
+    408,
+    414,
+    416,
+    417,
+    418
+  ]
+}
