@@ -111,3 +111,30 @@ class AppStatusGateTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 L.pilot_publish("owner")
             api.assert_not_called()
+
+    def test_activation_audit_is_not_merge_authority(self):
+        with patch.object(L, "context"), patch.object(L.a, "api", return_value={"object": {"sha": self.base}}) as api, \
+             patch.object(L.gate, "production_policy_observed", return_value=True), \
+             patch.object(L.gate, "strict_ruleset_protected", return_value=True):
+            report = L.activation_audit()
+            self.assertTrue(report["main_and_target_policy_observed"])
+            self.assertTrue(report["source_pinned_dev_policy_observed"])
+            self.assertFalse(report["production_merge_authorized"])
+            self.assertTrue(all(c.args[0] == "GET" for c in api.call_args_list))
+
+    def test_exact_production_receipts_required_twice(self):
+        valid = {kind: {"actor": L.ACTORS[kind], "type": "Bot",
+                        "login": "gaslux-independent-" + kind + "[bot]", "state": "success",
+                        "description": L.marker(42, "mint", self.base), "id": idx}
+                 for idx, kind in enumerate(L.ROLES, 1)}
+        for first, second, accepted in (
+            (valid, valid, True),
+            ({"safety": valid["safety"]}, valid, False),
+            ({**valid, "owner": {**valid["owner"], "actor": L.ACTORS["safety"]}}, valid, False),
+            ({**valid, "safety": {**valid["safety"], "description": L.PILOT_DESCRIPTION}}, valid, False),
+            (valid, {**valid, "safety": {**valid["safety"], "state": "failure"}}, False),
+            (valid, {**valid, "owner": {**valid["owner"], "id": 99}}, False),
+        ):
+            with patch.object(L, "frozen"), patch.object(L, "status_receipts", side_effect=[first, second]):
+                self.assertEqual(L.gate.independent_status_receipts_verified(
+                    42, "mint", self.head, self.base), accepted)

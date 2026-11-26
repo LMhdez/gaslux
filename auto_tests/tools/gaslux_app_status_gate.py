@@ -180,6 +180,23 @@ def publish(kind):
     return {"schema": "gaslux-app-status-publication-v1", "kind": kind, "receipts": receipts,
             "merge_authorized": False, "release_eligible": False}
 
+def activation_audit():
+    """Read-only preflight even during pause. Never emits merge authority."""
+    context()
+    base = a.api("GET", "/git/ref/heads/dev")["object"]["sha"]
+    require(a.valid_sha(base), "Invalid dev")
+    report = {
+        "schema": "gaslux-production-activation-audit-v1", "base": base,
+        "main_and_target_policy_observed": gate.production_policy_observed(base),
+        "source_pinned_dev_policy_observed": gate.strict_ruleset_protected(
+            base, require_app_statuses=True),
+        "native_named_role_gate_retained": True,
+        "production_merge_authorized": False, "release_eligible": False,
+    }
+    require(a.api("GET", "/git/ref/heads/dev")["object"]["sha"] == base, "Audit base changed")
+    return report
+
+
 def pilot_context():
     lab.context()
     require(os.getenv("GASLUX_STATUS_PILOT_ENABLED") == "true"
@@ -242,11 +259,14 @@ if __name__ == "__main__":
     modes.add_argument("--publish", choices=ROLES)
     modes.add_argument("--pilot-publish", choices=ROLES)
     modes.add_argument("--pilot-audit", action="store_true")
+    modes.add_argument("--activation-audit", action="store_true")
     args = p.parse_args()
     if args.pilot_publish:
         report = pilot_publish(args.pilot_publish)
     elif args.pilot_audit:
         report = pilot_audit()
+    elif args.activation_audit:
+        report = activation_audit()
     else:
         context(publish=bool(args.publish))
         report = publish(args.publish) if args.publish else plan()

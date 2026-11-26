@@ -29,3 +29,20 @@ policy observation cannot establish this. No stable or physical writer authority
 2026-11-26 baseline: main ruleset 28152434 lacks required CI/reviews;
 dev ruleset 28107915 lacks the source-pinned Safety/Owner status checks.
 The current production pause remains true. Lab PR #431 remains inert.
+
+## Follow-up: production App source compatibility
+The paused credential pilot run 45899011473 verified distinct exact inert
+receipts 60004875747 (Safety) and 60004894056 (Owner). These are not
+production authorization. The strict dev validator now recognizes the two
+source-pinned production contexts gaslux-dev/safety-v1 (App 5938492) and
+gaslux-dev/owner-v1 (App 5938509), rejects partial or wrong-source policies,
+and still requires both native reviews and existing CI. Production supervised
+integration also checks both live exact receipts twice around readiness/merge.
+The legacy keyboard path has no matching production status publisher and
+remains closed. Native named-role protection is not replaced: changing a
+review to dismissed does not atomically revoke a separately published status.
+A future reviewed authorization design must resolve that race before replacing
+native named-role enforcement. The activation audit is GET-only, works while
+paused, and never grants merge authority. Main PRs always trigger the
+adversarial_contracts CI check, avoiding path-filter deadlocks. No server
+configuration has been changed by this proposal.

@@ -731,13 +731,41 @@ def credential_probe(kind):
         return {**report, "status": "probe_unavailable"}
 
 
-def strict_ruleset_protected(base, *, role_ids=None, candidate_head=None):
+# App registration IDs from the isolated repository's source-pinned ruleset.
+# Bot user IDs are distinct and must not be used as integration_id.
+APP_STATUS_SOURCES = {"gaslux-dev/safety-v1": 5938492, "gaslux-dev/owner-v1": 5938509}
+MAIN_REQUIRED_CHECK = "adversarial_contracts"
+
+
+def exact_required_checks(checks, *, require_app_statuses=False):
+    if not isinstance(checks, list) or not 0 < len(checks) < 100:
+        return False
+    sources = {}
+    for item in checks:
+        if not isinstance(item, dict):
+            return False
+        context, source = item.get("context"), item.get("integration_id")
+        if (not isinstance(context, str) or not context.strip() or context in sources
+                or type(source) is not int
+                or source != APP_STATUS_SOURCES.get(context, 15368)):
+            return False
+        sources[context] = source
+    pinned = set(sources) & set(APP_STATUS_SOURCES)
+    return (admission.COMMON_CHECKS <= sources.keys()
+            and (pinned == set(APP_STATUS_SOURCES) if require_app_statuses
+                 else not pinned or pinned == set(APP_STATUS_SOURCES)))
+
+
+def strict_ruleset_protected(base, *, role_ids=None, candidate_head=None,
+                             require_app_statuses=None):
     """Accept only an active exact-dev repository ruleset with visible no-bypass policy.
 
     Effective rule listing alone does not expose bypass actors. Never infer
     that a missing bypass_actors field means an empty list, and never acquire
     administrative credentials to make this check succeed.
     """
+    if require_app_statuses is None:
+        require_app_statuses = os.getenv("GASLUX_APP_STATUS_GATES_ENABLED") == "true"
     try:
         if not admission.valid_sha(base):
             return False
@@ -790,11 +818,7 @@ def strict_ruleset_protected(base, *, role_ids=None, candidate_head=None):
             checks = params["required_status_checks"]
             if (params.get("strict_required_status_checks_policy") is not True
                     or params.get("do_not_enforce_on_create") is True
-                    or not isinstance(checks, list) or not 0 < len(checks) < 100
-                    or not all(isinstance(x, dict) and isinstance(x.get("context"), str)
-                               and x["context"].strip() for x in checks)
-                    or not admission.COMMON_CHECKS <= {x["context"] for x in checks}
-                    or any(x.get("integration_id") != 15368 for x in checks)):
+                    or not exact_required_checks(checks, require_app_statuses=require_app_statuses)):
                 continue
             if ruleset_bypass_evidence(detail) not in ("rest_empty", "graphql_empty"):
                 continue
@@ -822,6 +846,8 @@ def strict_dev_protected(base):
     try:
         if not admission.valid_sha(base):
             return False
+        if os.getenv("GASLUX_APP_STATUS_GATES_ENABLED") == "true":
+            return strict_ruleset_protected(base, require_app_statuses=True)
         raw = subprocess.run(
             ["gh", "api", "graphql", "-f", "query=" + STRICT_DEV_QUERY],
             check=True, timeout=30, capture_output=True,
@@ -865,16 +891,23 @@ def strict_dev_protected(base):
 
 
 def production_merge_policy(base):
-    """Fail closed unless the actual merge credential is confined to dev.
+    """Explicit opt-in is necessary but never sufficient for a production merge."""
+    return (os.getenv("GASLUX_PRODUCTION_MERGE_ENABLED") == "true"
+            and os.getenv("GASLUX_AUTONOMY_PAUSED") == "false"
+            and os.getenv("GASLUX_APP_STATUS_GATES_ENABLED") == "true"
+            and production_policy_observed(base)
+            and strict_ruleset_protected(base, require_app_statuses=True))
+
+
+def production_policy_observed(base):
+    """Read-only observation of trusted main and target confinement policy.
 
     A SHA-pinned PR merge does not atomically pin its target ref. Require
     an active server-side all-branches update restriction excluding only dev.
     Policy administrators are trusted not to edit rules during the operation.
     This is a policy observation, not proof of a successful live pilot.
     """
-    if (os.getenv("GASLUX_PRODUCTION_MERGE_ENABLED") != "true"
-            or os.getenv("GASLUX_AUTONOMY_PAUSED") != "false"
-            or not admission.valid_sha(base)):
+    if not admission.valid_sha(base):
         return False
     api = admission.api
     try:
@@ -936,8 +969,11 @@ def production_merge_policy(base):
                         and checks.get("strict_required_status_checks_policy") is True
                         and checks.get("do_not_enforce_on_create") is False
                         and isinstance(required, list) and 0 < len(required) < 100
-                        and all(isinstance(row.get("context"), str) and row["context"].strip()
-                                and row.get("integration_id") == 15368 for row in required)):
+                        and all(isinstance(row, dict) and isinstance(row.get("context"), str)
+                                and row["context"].strip()
+                                and row.get("integration_id") == 15368 for row in required)
+                        and MAIN_REQUIRED_CHECK in {row["context"] for row in required}
+                        and len({row["context"] for row in required}) == len(required)):
                     trusted_main = True
                     matched.append((rid, detail))
         return (trusted_main and confined
@@ -945,6 +981,21 @@ def production_merge_policy(base):
                         for rid, detail in matched)
                 and api("GET", "/git/ref/heads/main")["object"]["sha"] == main
                 and api("GET", "/git/ref/heads/dev")["object"]["sha"] == base)
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
+        return False
+
+
+def independent_status_receipts_verified(number, role, head, base):
+    """Require the exact two live production receipts, not the inert pilot."""
+    try:
+        import gaslux_app_status_gate as statuses
+        statuses.frozen(number, head, base)
+        first = statuses.status_receipts(head)
+        if not all(statuses.receipt_ok(first.get(k), k, number, role, base)
+                   for k in statuses.ROLES):
+            return False
+        statuses.frozen(number, head, base)
+        return statuses.status_receipts(head) == first
     except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
         return False
 
@@ -972,6 +1023,8 @@ def integrate_one(*, product=False):
             return {"status": "strict_base_protection_required", "pr": number, "head": head}
         if not role_review_protected(base, reviewer, owners.get(role), head=head):
             return {"status": "server_role_review_protection_required", "pr": number, "head": head}
+        if not independent_status_receipts_verified(number, role, head, base):
+            return {"status": "independent_status_receipts_required", "pr": number, "head": head}
         pr = admission.api("GET", f"/pulls/{number}")
         if pr["head"]["sha"] != head or pr["base"]["sha"] != base:
             raise ValueError("Candidate drift before ready")
@@ -991,6 +1044,8 @@ def integrate_one(*, product=False):
             return {"status": "strict_base_protection_required", "pr": number, "head": head}
         if not role_review_protected(base, reviewer, owners.get(role), head=head):
             return {"status": "server_role_review_protection_required", "pr": number, "head": head}
+        if not independent_status_receipts_verified(number, role, head, base):
+            return {"status": "independent_status_receipts_required", "pr": number, "head": head}
         if not production_merge_policy(base):
             return {"status": "production_merge_policy_required", "pr": number, "head": head}
         # Do not retry with an updated base or bypass protection. A concurrent

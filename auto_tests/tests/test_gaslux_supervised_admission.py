@@ -241,7 +241,7 @@ class SupervisedIntegrationTests(unittest.TestCase):
                "GITHUB_EVENT_NAME": "schedule", "GASLUX_AUTONOMY_PAUSED": ""}
         for scenario in ("valid", "already_ready", "denied", "drift", "blocked",
                          "base_drift", "media", "paused", "untrusted", "no_policy",
-                         "policy_drift", "no_confinement", "confinement_drift", "role_policy_missing", "role_policy_drift", "server_base_race", "wrong_parent", "wrong_tree",
+                         "policy_drift", "no_confinement", "confinement_drift", "no_receipts", "receipt_drift", "role_policy_missing", "role_policy_drift", "server_base_race", "wrong_parent", "wrong_tree",
                          "unclosed", "missing_dev_ancestry", "advanced_dev"):
             row = self.receipt()
             second = dict(row)
@@ -296,6 +296,8 @@ class SupervisedIntegrationTests(unittest.TestCase):
                  patch.object(A, "api", side_effect=api), \
                  patch.object(gate, "production_merge_policy",
                               side_effect=[scenario != "no_confinement", scenario != "confinement_drift"]), \
+                 patch.object(gate, "independent_status_receipts_verified",
+                              side_effect=[scenario != "no_receipts", scenario != "receipt_drift"]), \
                  patch.object(gate, "strict_dev_protected",
                               side_effect=[scenario != "no_policy", scenario != "policy_drift"]), \
                  patch.object(gate, "role_review_protected",
@@ -320,7 +322,7 @@ class SupervisedIntegrationTests(unittest.TestCase):
                         self.assertEqual(writes, [("/pulls/500/merge", {"sha": HEAD, "merge_method": "squash"})])
                     else:
                         self.assertNotEqual(result["status"], "merged")
-                    if scenario in ("already_ready", "denied", "media", "no_policy", "no_confinement", "role_policy_missing"):
+                    if scenario in ("already_ready", "denied", "media", "no_policy", "no_confinement", "no_receipts", "role_policy_missing"):
                         mark.assert_not_called()
             if scenario not in ("valid", "already_ready", "advanced_dev", "server_base_race",
                                 "wrong_parent", "wrong_tree", "unclosed", "missing_dev_ancestry"):
@@ -343,7 +345,7 @@ class ProductionConfinementTests(unittest.TestCase):
                 {"type": "required_status_checks", "parameters": {
                     "strict_required_status_checks_policy": True, "do_not_enforce_on_create": False,
                     "required_status_checks": [] if scenario == "missing_ci" else [
-                        {"context": "trusted-ci", "integration_id": 15368}]}}]
+                        {"context": "adversarial_contracts", "integration_id": 15368}]}}]
             common = {"source": A.REPO, "source_type": "Repository", "target": "branch",
                       "enforcement": "active", "current_user_can_bypass": "never"}
             details = {
@@ -393,8 +395,28 @@ class ProductionConfinementTests(unittest.TestCase):
             env = {"GASLUX_PRODUCTION_MERGE_ENABLED": "" if scenario == "disabled" else "true",
                    "GASLUX_AUTONOMY_PAUSED": "true" if scenario == "paused" else "false",
                    "GITHUB_SHA": HEAD if scenario == "stale_checkout" else main}
-            with patch.dict(os.environ, env), patch.object(A, "api", side_effect=api):
+            with patch.dict(os.environ, env, clear=True), patch.object(A, "api", side_effect=api), \
+                 patch.object(gate, "strict_ruleset_protected", return_value=True):
+                os.environ["GASLUX_APP_STATUS_GATES_ENABLED"] = "true"
                 self.assertEqual(gate.production_merge_policy(BASE), scenario == "valid", scenario)
+                if scenario == "valid":
+                    os.environ["GASLUX_APP_STATUS_GATES_ENABLED"] = "false"
+                    self.assertFalse(gate.production_merge_policy(BASE))
+
+
+    def test_exact_source_pinned_required_statuses(self):
+        baseline = [{"context": n, "integration_id": 15368} for n in sorted(A.COMMON_CHECKS)]
+        app = [{"context": n, "integration_id": i} for n, i in gate.APP_STATUS_SOURCES.items()]
+        self.assertTrue(gate.exact_required_checks(baseline))
+        self.assertFalse(gate.exact_required_checks(baseline, require_app_statuses=True))
+        self.assertTrue(gate.exact_required_checks(baseline + app, require_app_statuses=True))
+        for bad in (baseline + app[:1], baseline + app + app[:1],
+                    baseline + [{**app[0], "integration_id": 15368}, app[1]],
+                    baseline + [app[0], {**app[1], "integration_id": 361556198}],
+                    baseline + app + [{"context": "unrecognized", "integration_id": 5938492}],
+                    baseline[1:] + app):
+            self.assertFalse(gate.exact_required_checks(bad, require_app_statuses=True))
+
 
 
 class IndependentSafetyTests(unittest.TestCase):
