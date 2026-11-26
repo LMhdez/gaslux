@@ -184,11 +184,21 @@ def main():
     parser.add_argument("--port", type=int, default=8765)
     args = parser.parse_args()
     address = ipaddress.ip_address(args.bind)
+    tailnet = False
+    if address.version == 4 and address in ipaddress.ip_network("100.64.0.0/10"):
+        try:
+            actual = subprocess.run(["tailscale", "ip", "-4"], check=True,
+                                    capture_output=True, text=True, timeout=10).stdout.splitlines()
+            tailnet = str(address) in actual
+        except (OSError, subprocess.SubprocessError):
+            pass
     if (address.version != 4 or not 1024 <= args.port <= 65535 or
-            not (address.is_loopback or any(address in ipaddress.ip_network(n)
+            not (tailnet or address.is_loopback or any(address in ipaddress.ip_network(n)
                        for n in ("10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16")))):
-        raise RuntimeError("Only loopback or RFC1918 private IPv4 and unprivileged port allowed")
-    if not address.is_loopback:
+        raise RuntimeError("Use loopback, private LAN IPv4, or the actual Tailscale IPv4")
+    if tailnet:
+        print("Tailscale: liga o telemovel a mesma tailnet. Nao exponhas a porta na Internet.", flush=True)
+    elif not address.is_loopback:
         print("ATENCAO: usa apenas Wi-Fi/LAN privada de confianca. Callback HTTP local; nunca exponhas a porta na Internet.", flush=True)
     os.umask(0o077)
     if gh("api", "user", "--jq", ".login").lower() != "lmhdez":
