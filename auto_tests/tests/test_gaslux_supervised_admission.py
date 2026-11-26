@@ -524,7 +524,7 @@ class DynamicAdmissionTests(unittest.TestCase):
                "GH_TOKEN": "fixture"}
         with patch.dict(os.environ, env), \
              patch.object(gate, "configured_reviewers", return_value=(123, {role: 456})), \
-             patch.object(gate.subprocess, "run", return_value=type("Response", (), {"stdout": '{"id": 123}'})()), \
+             patch.object(gate, "review_app_actor", return_value=123), \
              patch.object(gate, "discover", return_value={500: (role, gate.DYNAMIC_SCOPE, HEAD)}), \
              patch.object(gate, "inspect", return_value={"technical_objection": True}) as inspect:
             self.assertEqual(gate.independent_safety_review()["status"], "idle")
