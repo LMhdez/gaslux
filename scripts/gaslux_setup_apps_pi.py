@@ -137,10 +137,17 @@ def register(role, bind, port):
 def install(app, key):
     live = api("/app", token=jwt(app, key))
     if (not live or live.get("id") != app["id"] or live.get("client_id") != app["client_id"]
-            or live.get("slug") != app["slug"] or live.get("public") is not False
+            or live.get("slug") != app["slug"] or live.get("public") is True
+            or app.get("public") is True
             or live.get("owner", {}).get("login", "").lower() != "lmhdez"
             or live.get("permissions") != PERMS):
         raise RuntimeError("App identity/private permissions not verified")
+    if live.get("public") is None:
+        # GitHub may omit visibility; a private manifest is not live proof.
+        # Reject a publicly accessible app before continuing.
+        if api("/apps/" + quote(app["slug"], safe="")) is not None:
+            raise RuntimeError("App is publicly accessible; verify private registration")
+        print("App not publicly accessible; identity and permissions verified.", flush=True)
     def find():
         return api("/repos/" + REPO + "/installation", token=jwt(app, key))
     inst = find()
@@ -155,6 +162,10 @@ def install(app, key):
             or inst.get("account", {}).get("login", "").lower() != "lmhdez"
             or inst.get("permissions") != PERMS or inst.get("suspended_at")):
         raise RuntimeError("Installation not verified; select only gaslux and retry")
+    installations = api("/app/installations?per_page=100", token=jwt(app, key))
+    if (not isinstance(installations, list) or len(installations) != 1
+            or installations[0].get("id") != inst["id"]):
+        raise RuntimeError("Unexpected additional App installations")
     response = api(f"/app/installations/{inst['id']}/access_tokens", method="POST",
                    token=jwt(app,key), body={"repositories":["gaslux"],
                    "permissions":{k:v for k,v in PERMS.items() if k != "metadata"}})
