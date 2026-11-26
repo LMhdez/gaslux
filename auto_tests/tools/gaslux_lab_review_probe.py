@@ -191,7 +191,7 @@ def merged_receipt(pr):
     return sha
 
 
-def audit():
+def audit(*, allow_merge=False):
     context()
     ids = actors()
     pr = candidate()
@@ -204,8 +204,8 @@ def audit():
               "server_named_role_enforcement_verified": False,
               "lab_merge_verified": False}
     if pr["state"] == "closed":
-        return {**report, "status": "lab_already_merged", "merge_sha": merged_receipt(pr),
-                "lab_merge_verified": True}
+        # A closed PR and exact tree alone cannot attribute a past merge to this job.
+        return {**report, "status": "lab_merge_observed", "merge_sha": merged_receipt(pr)}
     rid = protected()
     if rid is None:
         return {**report, "status": "lab_rule_missing_no_merge"}
@@ -215,6 +215,8 @@ def audit():
         return {**report, "status": "server_merge_not_ready", "lab_ruleset": rid,
                 "review_decision": state.get("reviewDecision"),
                 "merge_state": state.get("mergeStateStatus")}
+    if not allow_merge:
+        return {**report, "status": "lab_merge_ready", "lab_ruleset": rid}
     # Only the inert lab target can be changed; the existing dev gate is untouched.
     # Count-based lab success does not establish named-role server enforcement.
     context()
@@ -236,7 +238,13 @@ def audit():
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("mode", choices=("safety", "owner", "audit"))
+    p.add_argument("mode", choices=("safety", "owner", "audit", "merge"))
     args = p.parse_args()
-    print("GASLUX_LAB_REVIEW_PROBE " + json.dumps(
-        audit() if args.mode == "audit" else approve(args.mode), sort_keys=True))
+    report = (audit(allow_merge=args.mode == "merge") if args.mode in ("audit", "merge")
+              else approve(args.mode))
+    print("GASLUX_LAB_REVIEW_PROBE " + json.dumps(report, sort_keys=True))
+    if args.mode == "audit" and os.getenv("GITHUB_OUTPUT"):
+        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
+            output.write("ready=" + ("true" if report["status"] == "lab_merge_ready" else "false") + "\n")
+    if args.mode == "merge" and not report.get("lab_merge_verified"):
+        raise SystemExit("Exact laboratory merge not executed and verified")

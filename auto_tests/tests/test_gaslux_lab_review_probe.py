@@ -132,3 +132,57 @@ class LabReviewTests(unittest.TestCase):
                 patch.object(L.A, "api", side_effect=self.api), self.assertRaises(ValueError):
             L.approve("safety")
         self.assertEqual(self.writes, [])
+
+    def test_read_only_ready_does_not_write(self):
+        self.reviews = [self.row("safety"), self.row("owner")]
+        state = {"reviewDecision": "APPROVED", "mergeable": "MERGEABLE",
+                 "mergeStateStatus": "CLEAN"}
+        with patch.object(L, "context"), patch.object(L, "actors", return_value=self.ids), \
+                patch.object(L, "protected", return_value=33), \
+                patch.object(L, "decision", return_value=state), \
+                patch.object(L.A, "api", side_effect=self.api):
+            self.assertEqual(L.audit()["status"], "lab_merge_ready")
+        self.assertEqual(self.writes, [])
+
+    def test_exact_merge_and_observation_distinct(self):
+        self.reviews = [self.row("safety"), self.row("owner")]
+        sha = "d"*40
+        state = {"reviewDecision": "APPROVED", "mergeable": "MERGEABLE",
+                 "mergeStateStatus": "CLEAN"}
+        def api(method, route, body=None):
+            if method == "PUT":
+                self.assertEqual(route, L.ROUTE + "/merge")
+                self.assertEqual(body["sha"], L.HEAD)
+                self.assertEqual(body["merge_method"], "merge")
+                self.writes.append((method, route, body))
+                self.pr.update(state="closed", merged=True, merge_commit_sha=sha)
+                self.pr["base"]["sha"] = sha
+                return {"merged": True, "sha": sha}
+            if route == "/git/ref/heads/" + L.BASE_REF and self.pr["state"] == "closed":
+                return {"object": {"sha": sha}}
+            if route == "/git/commits/" + sha:
+                return {"sha": sha, "tree": {"sha": L.TREE},
+                        "parents": [{"sha": L.BASE}, {"sha": L.HEAD}]}
+            return self.api(method, route, body)
+        with patch.object(L, "context"), patch.object(L, "actors", return_value=self.ids), \
+                patch.object(L, "protected", return_value=33), \
+                patch.object(L, "decision", return_value=state), \
+                patch.object(L.A, "api", side_effect=api):
+            result = L.audit(allow_merge=True)
+            self.assertTrue(result["lab_merge_verified"])
+            self.assertEqual(result["merge_sha"], sha)
+            observed = L.audit()
+            self.assertEqual(observed["status"], "lab_merge_observed")
+            self.assertFalse(observed["lab_merge_verified"])
+        self.assertEqual(len(self.writes), 1)
+
+    def test_changed_protection_before_merge_denies(self):
+        self.reviews = [self.row("safety"), self.row("owner")]
+        state = {"reviewDecision": "APPROVED", "mergeable": "MERGEABLE",
+                 "mergeStateStatus": "CLEAN"}
+        with patch.object(L, "context"), patch.object(L, "actors", return_value=self.ids), \
+                patch.object(L, "protected", side_effect=[33, None]), \
+                patch.object(L, "decision", return_value=state), \
+                patch.object(L.A, "api", side_effect=self.api), self.assertRaises(ValueError):
+            L.audit(allow_merge=True)
+        self.assertEqual(self.writes, [])
