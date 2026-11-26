@@ -231,7 +231,8 @@ def strict_merge_policy(base: str) -> bool:
 def server_role_protection(checked: dict) -> bool:
     gate = shared_admission()
     reviewer, owners = gate.configured_reviewers()
-    return gate.role_review_protected(checked["base"], reviewer, owners.get(checked["role"]))
+    return gate.role_review_protected(checked["base"], reviewer, owners.get(checked["role"]),
+                                      head=checked["head"])
 
 
 def independent_merge_reviews(checked: dict) -> bool:

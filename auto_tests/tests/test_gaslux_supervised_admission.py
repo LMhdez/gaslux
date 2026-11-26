@@ -726,7 +726,42 @@ class ActivationGateTests(unittest.TestCase):
         self.assertFalse(gate.required_role_teams_verified(policy, (101, 101)))
         with patch.object(gate, "strict_ruleset_protected", return_value=False) as strict:
             self.assertFalse(gate.role_review_protected(BASE, 101, 202))
-            strict.assert_called_once_with(BASE, role_ids=(101, 202))
+            strict.assert_called_once_with(BASE, role_ids=(101, 202), candidate_head=None)
+
+    def test_personal_repo_requires_two_distinct_codeowners_and_immutable_manifest(self):
+        one, two = "assets/live/gaslux_alpha.py", "assets/live/gaslux_beta.py"
+        rows = [{"filename": name, "status": "modified"} for name in (one, two)]
+        manifest = (f"/.github/CODEOWNERS @safety\n/{one} @safety\n/{two} @owner\n").encode()
+        for scenario in ("valid", "one_file", "same_owner", "wildcard", "changed_policy",
+                         "no_codeowner_rule", "invalid_owner", "codeowner_errors", "wrong_identity"):
+            diff = {"status": "ahead", "ahead_by": 1, "behind_by": 0, "total_commits": 1,
+                    "merge_base_commit": {"sha": BASE},
+                    "files": rows[:1] if scenario == "one_file" else rows}
+            raw = manifest
+            if scenario == "same_owner":
+                raw = raw.replace(b"@owner", b"@safety")
+            if scenario == "wildcard":
+                raw += b"* @owner\n"
+            def source(path, ref):
+                self.assertEqual(path, ".github/CODEOWNERS")
+                return raw + (b"# drift\n" if scenario == "changed_policy" and ref == HEAD else b"")
+            def read(endpoint):
+                if endpoint == "user/101":
+                    return {"id": 999 if scenario == "wrong_identity" else 101, "login": "safety", "type": "User"}
+                if endpoint == "user/202":
+                    return {"id": 202, "login": "owner", "type": "User"}
+                if endpoint.endswith("/safety/permission"):
+                    return {"user": {"id": 101}, "permission": "write"}
+                if endpoint.endswith("/owner/permission"):
+                    return {"user": {"id": 202}, "permission": "read" if scenario == "invalid_owner" else "write"}
+                if "/codeowners/errors?" in endpoint:
+                    return {"errors": [{"kind": "invalid"}] if scenario == "codeowner_errors" else []}
+                self.fail(endpoint)
+            with patch.object(A, "api", return_value=diff), patch.object(A, "source_at", side_effect=source), \
+                    patch.object(gate, "readonly_gh_json", side_effect=read):
+                result = gate.required_role_codeowners_verified(
+                    BASE, HEAD, {"require_code_owner_review": scenario != "no_codeowner_rule"}, (101, 202))
+                self.assertEqual(result, scenario == "valid", scenario)
 
     def test_paused_probe_validates_actual_identity_without_writes(self):
         env = {"GITHUB_REPOSITORY": A.REPO, "GITHUB_REF": "refs/heads/main",

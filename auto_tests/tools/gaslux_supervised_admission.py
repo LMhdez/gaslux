@@ -579,9 +579,79 @@ def required_role_teams_verified(reviews, role_ids):
     return matched == set(role_ids)
 
 
-def role_review_protected(base, reviewer, owner):
+def required_role_codeowners_verified(base, head, reviews, role_ids):
+    """Personal-repository alternative for distinct existing changed files.
+
+    Accept a deliberately small, unambiguous CODEOWNERS grammar: rooted
+    literal file paths and exactly one individual owner per line. The base
+    branch policy must be server-enforced, error-free and immutable within
+    this candidate. Single-file proposals cannot meet both roles this way.
+    """
+    if (reviews.get("require_code_owner_review") is not True
+            or not admission.valid_sha(base) or not admission.valid_sha(head)
+            or len(role_ids) != 2 or len(set(role_ids)) != 2
+            or any(type(x) is not int or x <= 0 or x in admission.BOTS.values()
+                   for x in role_ids)):
+        return False
+    comparison = admission.api("GET", f"/compare/{base}...{head}")
+    changed = admission.complete_page(comparison["files"])
+    if (comparison.get("status") != "ahead" or comparison.get("ahead_by") != 1
+            or comparison.get("behind_by") != 0 or comparison.get("total_commits") != 1
+            or comparison.get("merge_base_commit", {}).get("sha") != base
+            or not 2 <= len(changed) <= 3):
+        return False
+    names = set()
+    for row in changed:
+        name = row.get("filename")
+        if (not isinstance(name, str)
+                or not re.fullmatch(r"assets/live/gaslux_[a-z0-9_]{1,75}\.py", name)
+                or row.get("status") != "modified" or row.get("previous_filename") is not None
+                or name in names):
+            return False
+        names.add(name)
+    # .github/CODEOWNERS has GitHub's highest lookup precedence.
+    manifest = admission.source_at(".github/CODEOWNERS", base)
+    if not 0 < len(manifest) <= 32768 or admission.source_at(".github/CODEOWNERS", head) != manifest:
+        return False
+    mapping = {}
+    for line in manifest.decode("utf-8").splitlines():
+        if not line.strip() or line.startswith("#"):
+            continue
+        match = re.fullmatch(r"/([A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*)[ \t]+@([A-Za-z0-9-]{1,39})", line)
+        if not match:
+            return False
+        path, login = match.groups()
+        if any(part in (".", "..") for part in path.split("/")) or path in mapping:
+            return False
+        mapping[path] = login.lower()
+    if ".github/CODEOWNERS" not in mapping or not names <= mapping.keys():
+        return False
+    identities = {}
+    for actor in role_ids:
+        user = readonly_gh_json(f"user/{actor}")
+        login = user.get("login")
+        if (user.get("id") != actor or user.get("type") != "User"
+                or not isinstance(login, str) or not re.fullmatch(r"[A-Za-z0-9-]{1,39}", login)):
+            return False
+        # Read live collaborator permissions; an invalid code owner must never
+        # be mistaken for an enforced one. Missing access fails closed.
+        permission = readonly_gh_json(f"repos/{admission.REPO}/collaborators/{login}/permission")
+        if (permission.get("user", {}).get("id") != actor
+                or permission.get("permission") != "write"):
+            return False
+        identities[login.lower()] = actor
+    if len(identities) != 2 or mapping[".github/CODEOWNERS"] != next(
+            login for login, actor in identities.items() if actor == role_ids[0]):
+        return False
+    if {identities.get(mapping[name]) for name in names} != set(role_ids):
+        return False
+    errors = readonly_gh_json(f"repos/{admission.REPO}/codeowners/errors?ref={base}")
+    return errors.get("errors") == []
+
+
+def role_review_protected(base, reviewer, owner, *, head=None):
     """No classic count-only fallback for named-role authorization."""
-    return strict_ruleset_protected(base, role_ids=(reviewer, owner))
+    return strict_ruleset_protected(base, role_ids=(reviewer, owner), candidate_head=head)
 
 
 def credential_probe(kind):
@@ -619,7 +689,7 @@ def credential_probe(kind):
         return {**report, "status": "probe_unavailable"}
 
 
-def strict_ruleset_protected(base, *, role_ids=None):
+def strict_ruleset_protected(base, *, role_ids=None, candidate_head=None):
     """Accept only an active exact-dev repository ruleset with visible no-bypass policy.
 
     Effective rule listing alone does not expose bypass actors. Never infer
@@ -686,7 +756,9 @@ def strict_ruleset_protected(base, *, role_ids=None):
                 continue
             if ruleset_bypass_evidence(detail) not in ("rest_empty", "graphql_empty"):
                 continue
-            if role_ids is not None and not required_role_teams_verified(reviews, role_ids):
+            if role_ids is not None and not (
+                    required_role_teams_verified(reviews, role_ids)
+                    or required_role_codeowners_verified(base, candidate_head, reviews, role_ids)):
                 continue
             # Recheck the exact base, not an inferred merge base. The GitHub
             # server enforces the strict rule at merge time.
@@ -769,7 +841,7 @@ def integrate_one(*, product=False):
         base = row["base"]
         if not strict_dev_protected(base):
             return {"status": "strict_base_protection_required", "pr": number, "head": head}
-        if not role_review_protected(base, reviewer, owners.get(role)):
+        if not role_review_protected(base, reviewer, owners.get(role), head=head):
             return {"status": "server_role_review_protection_required", "pr": number, "head": head}
         pr = admission.api("GET", f"/pulls/{number}")
         if pr["head"]["sha"] != head or pr["base"]["sha"] != base:
@@ -788,7 +860,7 @@ def integrate_one(*, product=False):
             return {"status": "waiting_for_github", "pr": number, "head": head}
         if not strict_dev_protected(base):
             return {"status": "strict_base_protection_required", "pr": number, "head": head}
-        if not role_review_protected(base, reviewer, owners.get(role)):
+        if not role_review_protected(base, reviewer, owners.get(role), head=head):
             return {"status": "server_role_review_protection_required", "pr": number, "head": head}
         # Do not retry with an updated base or bypass protection. A concurrent
         # dev advance makes the exact single-parent head out of date; GitHub's
