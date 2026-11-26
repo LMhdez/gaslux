@@ -26,20 +26,9 @@ on:
       - auto_tests/tools/gaslux_app_status_gate.py
       - auto_tests/tests/test_gaslux_app_status_gate.py
   pull_request:
-    paths:
-      - .github/workflows/gaslux-agent-integrator.yml
-      - auto_tests/tools/gaslux_agent_integrate.py
-      - auto_tests/tests/test_gaslux_agent_integrate.py
-      - auto_tests/tools/gaslux_distro_admission.py
-      - auto_tests/tests/test_gaslux_distro_admission.py
-      - auto_tests/tools/gaslux_agent_reconcile.py
-      - auto_tests/tests/test_gaslux_agent_reconcile.py
-      - auto_tests/tools/gaslux_supervised_admission.py
-      - auto_tests/tests/test_gaslux_supervised_admission.py
-      - auto_tests/tools/gaslux_lab_review_probe.py
-      - auto_tests/tests/test_gaslux_lab_review_probe.py
-      - auto_tests/tools/gaslux_app_status_gate.py
-      - auto_tests/tests/test_gaslux_app_status_gate.py
+    # Always emit the required infrastructure CI check on main PRs,
+    # including documentation-only changes. Never use pull_request_target.
+    branches: [main]
 
 permissions:
   contents: read
@@ -220,6 +209,8 @@ jobs:
     needs: [select, windows_acceptance]
     if: >-
       github.repository == 'LMhdez/gaslux' &&
+      vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'true' &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'false' &&
       needs.select.outputs.selected == 'true' &&
       needs.windows_acceptance.result == 'success' &&
       github.ref == 'refs/heads/main'
@@ -238,6 +229,10 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_PRODUCTION_MERGE_ENABLED: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
+          GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
           GASLUX_WINDOWS_ACCEPTANCE: success
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
@@ -447,6 +442,8 @@ jobs:
           GH_TOKEN: ${{ steps.review_identity.outputs.token }}
           GASLUX_STATUS_PILOT_ENABLED: ${{ vars.GASLUX_STATUS_PILOT_ENABLED }}
           GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
           GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
           GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
           GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
@@ -512,6 +509,8 @@ jobs:
           GH_TOKEN: ${{ steps.review_identity.outputs.token }}
           GASLUX_STATUS_PILOT_ENABLED: ${{ vars.GASLUX_STATUS_PILOT_ENABLED }}
           GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
           GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
           GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
           GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
@@ -537,17 +536,24 @@ jobs:
           retention-days: 14
 
   integrate_supervised_tests:
-    needs: [trusted_integrator, reconcile_duplicates, independent_supervised_safety]
+    needs: [trusted_integrator, reconcile_duplicates, independent_supervised_owner,
+            independent_supervised_safety, app_status_safety, app_status_owner]
     if: >-
       always() && !cancelled() &&
       github.repository == 'LMhdez/gaslux' &&
+      vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'true' &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'false' &&
       github.ref == 'refs/heads/main' &&
       vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
        github.event_name == 'push') &&
       (needs.trusted_integrator.result == 'success' || needs.trusted_integrator.result == 'skipped') &&
       needs.reconcile_duplicates.result == 'success' &&
-      (needs.independent_supervised_safety.result == 'success' || needs.independent_supervised_safety.result == 'skipped')
+      needs.independent_supervised_owner.result == 'success' &&
+      needs.independent_supervised_safety.result == 'success' &&
+      needs.app_status_safety.result == 'success' &&
+      needs.app_status_owner.result == 'success' &&
+      vars.GASLUX_APP_STATUS_GATES_ENABLED == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 8
     permissions:
@@ -556,6 +562,7 @@ jobs:
       checks: read
       actions: read
       issues: read
+      statuses: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -619,6 +626,10 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_PRODUCTION_MERGE_ENABLED: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
+          GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
@@ -673,6 +684,17 @@ jobs:
           mkdir -p evidence
           python3 -I auto_tests/tools/gaslux_app_status_gate.py > evidence/app-status-plan.json
           cat evidence/app-status-plan.json
+      - name: Read-only production activation policy audit
+        if: always() && !cancelled()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
+        run: |
+          set -euo pipefail
+          mkdir -p evidence
+          python3 -I auto_tests/tools/gaslux_app_status_gate.py --activation-audit > evidence/production-activation.json
+          cat evidence/production-activation.json
       - name: Independently audit historical inventory
         if: always() && !cancelled()
         env:
@@ -691,13 +713,11 @@ jobs:
           retention-days: 14
 
   app_status_owner:
-    needs: independent_supervised_safety
+    needs: [independent_supervised_owner, independent_supervised_safety]
     if: >-
       always() && !cancelled() &&
-      needs.independent_supervised_safety.result == 'success' &&
       github.repository == 'LMhdez/gaslux' &&
       github.ref == 'refs/heads/main' &&
-      vars.GASLUX_AUTONOMY_PAUSED == 'false' &&
       vars.GASLUX_APP_STATUS_GATES_ENABLED == 'true' &&
       vars.GASLUX_INDEPENDENT_OWNER_ENABLED == 'true' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
@@ -726,7 +746,7 @@ jobs:
           permission-checks: read
           permission-issues: read
           permission-statuses: write
-      - name: Publish independently authenticated exact candidate status (no merge)
+      - name: Revoke stale own authorizations and publish only after successful reviews
         env:
           GH_TOKEN: ${{ steps.review_identity.outputs.token }}
           GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
@@ -736,21 +756,30 @@ jobs:
           GASLUX_PUBLISH_APP_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
           GASLUX_VM_OBSERVER_ID: ${{ vars.GASLUX_VM_OBSERVER_ID }}
           GASLUX_VM_ACCEPTANCE_WORKFLOW_ID: ${{ vars.GASLUX_VM_ACCEPTANCE_WORKFLOW_ID }}
-        run: python3 -I auto_tests/tools/gaslux_app_status_gate.py --publish owner
+          GASLUX_REVIEW_JOBS_OK: ${{ needs.independent_supervised_owner.result == 'success' && needs.independent_supervised_safety.result == 'success' }}
+        run: |
+          set -euo pipefail
+          python3 -I auto_tests/tools/gaslux_app_status_gate.py --revoke-stale owner
+          if [[ "$GASLUX_AUTONOMY_PAUSED" == "false" && "$GASLUX_REVIEW_JOBS_OK" == "true" ]]; then
+            python3 -I auto_tests/tools/gaslux_app_status_gate.py --publish owner
+          elif [[ "$GASLUX_AUTONOMY_PAUSED" != "true" ]]; then
+            echo "::error::Both independent review jobs must succeed before publication"
+            exit 1
+          fi
 
   app_status_safety:
-    needs: independent_supervised_safety
+    needs: [independent_supervised_owner, independent_supervised_safety]
     if: >-
       always() && !cancelled() &&
-      needs.independent_supervised_safety.result == 'success' &&
       github.repository == 'LMhdez/gaslux' &&
       github.ref == 'refs/heads/main' &&
-      vars.GASLUX_AUTONOMY_PAUSED == 'false' &&
       vars.GASLUX_APP_STATUS_GATES_ENABLED == 'true' &&
       vars.GASLUX_INDEPENDENT_SAFETY_ENABLED == 'true' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch' || github.event_name == 'schedule')
@@ -779,7 +808,7 @@ jobs:
           permission-checks: read
           permission-issues: read
           permission-statuses: write
-      - name: Publish independently authenticated exact candidate status (no merge)
+      - name: Revoke stale own authorizations and publish only after successful reviews
         env:
           GH_TOKEN: ${{ steps.review_identity.outputs.token }}
           GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
@@ -789,12 +818,23 @@ jobs:
           GASLUX_PUBLISH_APP_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
           GASLUX_VM_OBSERVER_ID: ${{ vars.GASLUX_VM_OBSERVER_ID }}
           GASLUX_VM_ACCEPTANCE_WORKFLOW_ID: ${{ vars.GASLUX_VM_ACCEPTANCE_WORKFLOW_ID }}
-        run: python3 -I auto_tests/tools/gaslux_app_status_gate.py --publish safety
+          GASLUX_REVIEW_JOBS_OK: ${{ needs.independent_supervised_owner.result == 'success' && needs.independent_supervised_safety.result == 'success' }}
+        run: |
+          set -euo pipefail
+          python3 -I auto_tests/tools/gaslux_app_status_gate.py --revoke-stale safety
+          if [[ "$GASLUX_AUTONOMY_PAUSED" == "false" && "$GASLUX_REVIEW_JOBS_OK" == "true" ]]; then
+            python3 -I auto_tests/tools/gaslux_app_status_gate.py --publish safety
+          elif [[ "$GASLUX_AUTONOMY_PAUSED" != "true" ]]; then
+            echo "::error::Both independent review jobs must succeed before publication"
+            exit 1
+          fi
 
 
   paused_status_pilot_safety:
@@ -843,6 +883,8 @@ jobs:
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           GASLUX_STATUS_PILOT_ENABLED: ${{ vars.GASLUX_STATUS_PILOT_ENABLED }}
           GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
@@ -898,6 +940,8 @@ jobs:
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           GASLUX_STATUS_PILOT_ENABLED: ${{ vars.GASLUX_STATUS_PILOT_ENABLED }}
           GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
@@ -932,6 +976,8 @@ jobs:
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           GASLUX_STATUS_PILOT_ENABLED: ${{ vars.GASLUX_STATUS_PILOT_ENABLED }}
           GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
@@ -972,6 +1018,8 @@ jobs:
           GH_TOKEN: ${{ steps.review_identity.outputs.token }}
           GASLUX_STATUS_PILOT_ENABLED: ${{ vars.GASLUX_STATUS_PILOT_ENABLED }}
           GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
           GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
           GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
           GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
@@ -987,6 +1035,8 @@ jobs:
           GH_TOKEN: ${{ steps.review_identity.outputs.token }}
           GASLUX_STATUS_PILOT_ENABLED: ${{ vars.GASLUX_STATUS_PILOT_ENABLED }}
           GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
           GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
           GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
           GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
@@ -1033,6 +1083,8 @@ jobs:
           GH_TOKEN: ${{ steps.review_identity.outputs.token }}
           GASLUX_STATUS_PILOT_ENABLED: ${{ vars.GASLUX_STATUS_PILOT_ENABLED }}
           GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
           GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
           GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
           GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
@@ -1048,6 +1100,8 @@ jobs:
           GH_TOKEN: ${{ steps.review_identity.outputs.token }}
           GASLUX_STATUS_PILOT_ENABLED: ${{ vars.GASLUX_STATUS_PILOT_ENABLED }}
           GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
           GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
           GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
           GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}

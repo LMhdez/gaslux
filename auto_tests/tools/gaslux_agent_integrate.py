@@ -225,7 +225,12 @@ def shared_admission():
 
 
 def strict_merge_policy(base: str) -> bool:
-    return shared_admission().strict_dev_protected(base)
+    gate = shared_admission()
+    # The staged App publisher does not recognize legacy keyboard proposals.
+    # Keep this route closed under production migration until it has its own
+    # exact independently reviewed status adapter.
+    return (os.getenv("GASLUX_APP_STATUS_GATES_ENABLED") != "true"
+            and gate.strict_dev_protected(base) and gate.production_merge_policy(base))
 
 
 def server_role_protection(checked: dict) -> bool:

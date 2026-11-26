@@ -17,6 +17,7 @@ assert SPEC and SPEC.loader
 integ = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(integ)
 REAL_REVIEWS = integ.independent_merge_reviews
+REAL_POLICY = integ.strict_merge_policy
 
 
 class IntegratorContractTests(unittest.TestCase):
@@ -95,6 +96,14 @@ class IntegratorContractTests(unittest.TestCase):
             self.pr.update(state="closed", merged=True, merge_commit_sha=self.merged)
             return {"merged": True, "sha": self.merged}
         raise AssertionError((method, path))
+
+    def test_legacy_merge_policy_requires_confinement(self):
+        with patch.object(integ, "strict_merge_policy", wraps=REAL_POLICY), \
+             patch.object(integ, "shared_admission") as shared:
+            shared.return_value.strict_dev_protected.return_value = True
+            shared.return_value.production_merge_policy.return_value = False
+            self.assertFalse(integ.strict_merge_policy(self.dev))
+            shared.return_value.production_merge_policy.assert_called_once_with(self.dev)
 
     def test_live_compare_api_path_is_allowed_but_traversal_is_not(self):
         with patch.dict(os.environ, {"GH_TOKEN": "test"}):

@@ -94,11 +94,12 @@ class AppStatusGateTests(unittest.TestCase):
               "state":"success","description":L.PILOT_DESCRIPTION,"id":17}
         result={"creator":{"id":L.ACTORS[kind]},"context":L.PILOT_CONTEXTS[kind],
                 "state":"success","description":L.PILOT_DESCRIPTION,"id":17}
-        with patch.object(L,"pilot_context"), patch.object(L.gate,"review_app_actor",return_value=L.ACTORS[kind]), patch.object(L,"status_receipts",side_effect=[{}, {kind:live}]), patch.object(L.a,"api",return_value=result) as api:
+        with patch.object(L,"pilot_context"), patch.object(L.gate,"review_app_actor",return_value={"actor": L.ACTORS[kind], "app_id": 7000001, "slug": "gaslux-independent-safety"}), patch.object(L,"status_receipts",side_effect=[{}, {kind:live}]), patch.object(L.a,"api",return_value=result) as api:
             report=L.pilot_publish(kind)
             api.assert_called_once_with("POST","/statuses/"+L.lab.HEAD,{"context":L.PILOT_CONTEXTS[kind],"state":"success","description":L.PILOT_DESCRIPTION})
             self.assertFalse(report["merge_authorized"])
             self.assertFalse(report["production_gate_verified"])
+            self.assertEqual(report["app_registration_id"], 7000001)
             self.assertNotIn(L.PILOT_CONTEXTS[kind],L.CONTEXTS.values())
 
     def test_pilot_audit_requires_both_real_issuers(self):
@@ -111,3 +112,99 @@ class AppStatusGateTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 L.pilot_publish("owner")
             api.assert_not_called()
+
+    def test_activation_audit_is_not_merge_authority(self):
+        with patch.object(L, "context"), patch.object(L.a, "api", return_value={"object": {"sha": self.base}}) as api, \
+             patch.object(L.gate, "production_policy_observed", return_value=True), \
+             patch.object(L.gate, "strict_ruleset_protected", return_value=True):
+            report = L.activation_audit()
+            self.assertTrue(report["main_and_target_policy_observed"])
+            self.assertTrue(report["source_pinned_dev_policy_observed"])
+            self.assertFalse(report["production_merge_authorized"])
+            self.assertTrue(all(c.args[0] == "GET" for c in api.call_args_list))
+
+    def test_exact_production_receipts_required_twice(self):
+        valid = {kind: {"actor": L.ACTORS[kind], "type": "Bot",
+                        "login": "gaslux-independent-" + kind + "[bot]", "state": "success",
+                        "description": L.marker(42, "mint", self.base), "id": idx}
+                 for idx, kind in enumerate(L.ROLES, 1)}
+        for first, second, accepted in (
+            (valid, valid, True),
+            ({"safety": valid["safety"]}, valid, False),
+            ({**valid, "owner": {**valid["owner"], "actor": L.ACTORS["safety"]}}, valid, False),
+            ({**valid, "safety": {**valid["safety"], "description": L.PILOT_DESCRIPTION}}, valid, False),
+            (valid, {**valid, "safety": {**valid["safety"], "state": "failure"}}, False),
+            (valid, {**valid, "owner": {**valid["owner"], "id": 99}}, False),
+        ):
+            with patch.object(L, "frozen"), patch.object(L, "status_receipts", side_effect=[first, second]):
+                self.assertEqual(L.gate.independent_status_receipts_verified(
+                    42, "mint", self.head, self.base), accepted)
+
+    def test_production_registration_not_lab_or_bot_id(self):
+        for app_id in (5938492, 5938509, L.ACTORS["safety"], 15368, 0):
+            with patch.object(L.gate, "review_app_actor", return_value={
+                "actor": L.ACTORS["safety"], "slug": "gaslux-independent-safety", "app_id": app_id}):
+                with self.assertRaises(ValueError):
+                    L.app_registration("safety")
+
+
+    def test_revocation_scan_never_issues_success_and_keeps_exact_valid(self):
+        from contextlib import ExitStack
+        kind = "safety"
+        old = {"actor": L.ACTORS[kind], "type": "Bot",
+               "login": "gaslux-independent-safety[bot]", "state": "success",
+               "description": L.marker(42, "mint", self.base), "id": 17}
+        repo = {"id": L.a.REPOSITORY_ID}
+        pr = {"number": 42, "state": "open", "user": {},
+              "head": {"sha": self.head, "repo": repo},
+              "base": {"sha": self.base, "repo": repo, "ref": "dev"}}
+        rev = {"id": 18, "actor": L.ACTORS[kind], "state": "failure"}
+        for mode in ("valid", "paused", "dismissed", "wrong_issuer", "stale_base", "retargeted",
+                     "receipt_drift", "inventory_overflow"):
+            p = {**pr, "base": {**pr["base"], "ref": "main" if mode == "retargeted" else "dev"}}
+            issued = {**old, "actor": L.ACTORS["owner"]} if mode == "wrong_issuer" else old
+            base = "c"*40 if mode == "stale_base" else self.base
+            rows = [p]*100 if mode == "inventory_overflow" else [p]
+            calls = []
+            def api(method, path, body=None):
+                if method == "POST":
+                    calls.append((path, body))
+                    return {"id":18,"creator":{"id":L.ACTORS[kind]},
+                            "context":L.CONTEXTS[kind],"state":"failure",
+                            "description":"GASLUX dev authorization revoked"}
+                if path == "/git/ref/heads/dev": return {"object":{"sha":base}}
+                if path == "/pulls?state=open&per_page=100": return rows
+                if path == "/pulls/42": return p
+                raise AssertionError(path)
+            assessments = {**self.row(), "base": base,
+                           "safety_review_verified": mode != "dismissed"}
+            readings = [{kind:issued}, {kind:old if mode != "receipt_drift" else {**old,"id":99}},
+                        {kind:rev}]
+            with ExitStack() as stack:
+                stack.enter_context(patch.dict(L.os.environ, {
+                    "GASLUX_APP_STATUS_GATES_ENABLED":"true",
+                    "GASLUX_AUTONOMY_PAUSED":"true" if mode == "paused" else "false"}, clear=True))
+                stack.enter_context(patch.object(L,"context"))
+                stack.enter_context(patch.object(L,"app_registration",return_value={"app_id":7000001}))
+                stack.enter_context(patch.object(L.gate,"configured_status_sources",return_value={L.CONTEXTS[kind]:7000001}))
+                stack.enter_context(patch.object(L,"identities",return_value=(L.ACTORS[kind],{"mint":L.ACTORS["owner"]})))
+                stack.enter_context(patch.object(L.gate,"discover",return_value={42:("mint",L.gate.factory.SUPERVISED_TEST_SCOPE,self.head)}))
+                stack.enter_context(patch.object(L.gate,"inspect",return_value=assessments))
+                stack.enter_context(patch.object(L.a,"publisher_ok",return_value=True))
+                stack.enter_context(patch.object(L.a,"api",side_effect=api))
+                stack.enter_context(patch.object(L,"status_receipts",side_effect=readings))
+                if mode in ("receipt_drift", "inventory_overflow"):
+                    if mode == "receipt_drift":
+                        assessments["safety_review_verified"] = False
+                    with self.assertRaises(ValueError):
+                        L.revocation_scan(kind)
+                else:
+                    report = L.revocation_scan(kind)
+                    self.assertFalse(report["merge_authorized"])
+                    self.assertFalse(report["atomic_native_revocation_verified"])
+                expected = mode in ("paused","dismissed","stale_base","retargeted")
+                self.assertEqual(len(calls), int(expected), mode)
+                if expected:
+                    self.assertEqual(calls[0], ("/statuses/"+self.head, {
+                        "context":L.CONTEXTS[kind],"state":"failure",
+                        "description":"GASLUX dev authorization revoked"}))

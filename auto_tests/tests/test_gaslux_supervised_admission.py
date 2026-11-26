@@ -241,7 +241,7 @@ class SupervisedIntegrationTests(unittest.TestCase):
                "GITHUB_EVENT_NAME": "schedule", "GASLUX_AUTONOMY_PAUSED": ""}
         for scenario in ("valid", "already_ready", "denied", "drift", "blocked",
                          "base_drift", "media", "paused", "untrusted", "no_policy",
-                         "policy_drift", "role_policy_missing", "role_policy_drift", "server_base_race", "wrong_parent", "wrong_tree",
+                         "policy_drift", "no_confinement", "confinement_drift", "no_receipts", "receipt_drift", "role_policy_missing", "role_policy_drift", "server_base_race", "wrong_parent", "wrong_tree",
                          "unclosed", "missing_dev_ancestry", "advanced_dev"):
             row = self.receipt()
             second = dict(row)
@@ -294,6 +294,10 @@ class SupervisedIntegrationTests(unittest.TestCase):
                  patch.object(gate, "configured_reviewers", return_value=(1, {ROLE: 2})), \
                  patch.object(gate, "inspect", side_effect=[row, second]), \
                  patch.object(A, "api", side_effect=api), \
+                 patch.object(gate, "production_merge_policy",
+                              side_effect=[scenario != "no_confinement", scenario != "confinement_drift"]), \
+                 patch.object(gate, "independent_status_receipts_verified",
+                              side_effect=[scenario != "no_receipts", scenario != "receipt_drift"]), \
                  patch.object(gate, "strict_dev_protected",
                               side_effect=[scenario != "no_policy", scenario != "policy_drift"]), \
                  patch.object(gate, "role_review_protected",
@@ -318,11 +322,121 @@ class SupervisedIntegrationTests(unittest.TestCase):
                         self.assertEqual(writes, [("/pulls/500/merge", {"sha": HEAD, "merge_method": "squash"})])
                     else:
                         self.assertNotEqual(result["status"], "merged")
-                    if scenario in ("already_ready", "denied", "media", "no_policy", "role_policy_missing"):
+                    if scenario in ("already_ready", "denied", "media", "no_policy", "no_confinement", "no_receipts", "role_policy_missing"):
                         mark.assert_not_called()
             if scenario not in ("valid", "already_ready", "advanced_dev", "server_base_race",
                                 "wrong_parent", "wrong_tree", "unclosed", "missing_dev_ancestry"):
                 self.assertEqual(writes, [], scenario)
+
+
+class ProductionConfinementTests(unittest.TestCase):
+    def test_server_policy_must_cover_all_non_dev_targets(self):
+        for scenario in ("valid", "disabled", "paused", "no_main", "weak_main",
+                         "missing_confinement", "wrong_pattern", "bypass", "missing_bypass",
+                         "dev_covered", "missing_effective", "policy_drift", "main_drift",
+                         "stale_checkout", "unknown", "wrong_source", "missing_ci", "fetch_merge_exception",
+                         "parameterless", "fork", "unknown_fork", "foreign_repo", "unknown_update_parameters"):
+            main = "c" * 40
+            main_rules = [
+                {"type": "deletion"}, {"type": "non_fast_forward"},
+                {"type": "pull_request", "parameters": {
+                    "required_approving_review_count": 0 if scenario == "weak_main" else 1,
+                    "dismiss_stale_reviews_on_push": True, "require_last_push_approval": True,
+                    "required_review_thread_resolution": True}},
+                {"type": "required_status_checks", "parameters": {
+                    "strict_required_status_checks_policy": True, "do_not_enforce_on_create": False,
+                    "required_status_checks": [] if scenario == "missing_ci" else [
+                        {"context": "adversarial_contracts", "integration_id": 15368}]}}]
+            common = {"source": A.REPO, "source_type": "Repository", "target": "branch",
+                      "enforcement": "active", "current_user_can_bypass": "never"}
+            details = {
+                10: {**common, "id": 10, "bypass_actors": [],
+                     "conditions": {"ref_name": {"include": ["refs/heads/main"], "exclude": []}},
+                     "rules": main_rules},
+                20: {**common, "id": 20,
+                     "conditions": {"ref_name": {"include": ["~ALL"], "exclude": ["refs/heads/dev"]}},
+                     "rules": [{"type": "update", "parameters": {"update_allows_fetch_and_merge": False}}]},
+            }
+            if scenario == "no_main":
+                details.pop(10)
+            if scenario == "missing_confinement":
+                details.pop(20)
+            if scenario == "parameterless":
+                details[20]["rules"][0].pop("parameters")
+            if scenario == "fetch_merge_exception":
+                details[20]["rules"][0]["parameters"]["update_allows_fetch_and_merge"] = True
+            if scenario == "unknown_update_parameters":
+                details[20]["rules"][0]["parameters"]["other_exception"] = True
+            if scenario == "wrong_pattern":
+                details[20]["conditions"]["ref_name"]["include"] = ["refs/heads/main"]
+            if scenario == "bypass":
+                details[20]["current_user_can_bypass"] = "pull_requests_only"
+            if scenario == "missing_bypass":
+                details[20].pop("current_user_can_bypass")
+            if scenario == "wrong_source":
+                details[20]["source"] = "other/repo"
+            rows = [{**rule, "ruleset_id": rid, "ruleset_source": A.REPO,
+                     "ruleset_source_type": "Repository"}
+                    for rid, detail in details.items() for rule in detail["rules"]]
+            reads = {}
+            def api(method, route):
+                self.assertEqual(method, "GET")
+                reads[route] = reads.get(route, 0) + 1
+                if route == "":
+                    repo = {"id": A.REPOSITORY_ID if scenario != "foreign_repo" else 1,
+                            "full_name": A.REPO, "fork": scenario == "fork", "default_branch": "main"}
+                    if scenario == "unknown_fork":
+                        repo.pop("fork")
+                    return repo
+                if route == "/git/ref/heads/dev":
+                    return {"object": {"sha": BASE}}
+                if route == "/git/ref/heads/main":
+                    return {"object": {"sha": HEAD if scenario == "main_drift" and reads[route] > 1 else main}}
+                if route == "/rulesets?includes_parents=false&per_page=100":
+                    if scenario == "unknown":
+                        raise RuntimeError("403")
+                    return list(details.values())
+                if route == "/rules/branches/main?per_page=100":
+                    return [row for row in rows if scenario != "missing_effective" or row["ruleset_id"] != 20]
+                if route == "/rules/branches/dev?per_page=100":
+                    return [row for row in rows if row["ruleset_id"] == 20] if scenario == "dev_covered" else []
+                if route.startswith("/rulesets/"):
+                    rid = int(route.split("/")[2].split("?")[0])
+                    detail = details[rid]
+                    return {**detail, "enforcement": "disabled"} if scenario == "policy_drift" and reads[route] > 1 else detail
+                self.fail(route)
+            env = {"GASLUX_PRODUCTION_MERGE_ENABLED": "" if scenario == "disabled" else "true",
+                   "GASLUX_AUTONOMY_PAUSED": "true" if scenario == "paused" else "false",
+                   "GITHUB_SHA": HEAD if scenario == "stale_checkout" else main}
+            with patch.dict(os.environ, env, clear=True), patch.object(A, "api", side_effect=api), \
+                 patch.object(gate, "strict_ruleset_protected", return_value=True):
+                os.environ["GASLUX_APP_STATUS_GATES_ENABLED"] = "true"
+                self.assertEqual(gate.production_merge_policy(BASE), scenario in ("valid", "parameterless"), scenario)
+                if scenario == "valid":
+                    os.environ["GASLUX_APP_STATUS_GATES_ENABLED"] = "false"
+                    self.assertFalse(gate.production_merge_policy(BASE))
+
+
+    def test_exact_source_pinned_required_statuses(self):
+        baseline = [{"context": n, "integration_id": 15368} for n in sorted(A.COMMON_CHECKS)]
+        app = [{"context": gate.APP_STATUS_CONTEXTS[k], "integration_id": i}
+               for k, i in (("safety", 7000001), ("owner", 7000002))]
+        with patch.dict(os.environ, {"GASLUX_SAFETY_APP_ID": "7000001",
+                                    "GASLUX_OWNER_APP_ID": "7000002"}, clear=True):
+            self.assertTrue(gate.exact_required_checks(baseline))
+            self.assertFalse(gate.exact_required_checks(baseline, require_app_statuses=True))
+            self.assertTrue(gate.exact_required_checks(baseline + app, require_app_statuses=True))
+            for bad in (baseline + app[:1], baseline + app + app[:1],
+                        baseline + [{**app[0], "integration_id": 15368}, app[1]],
+                        baseline + [app[0], {**app[1], "integration_id": 361556198}],
+                        baseline + app + [{"context": "unrecognized", "integration_id": 5938492}],
+                        baseline[1:] + app):
+                self.assertFalse(gate.exact_required_checks(bad, require_app_statuses=True))
+        for ids in ({}, {"GASLUX_SAFETY_APP_ID": "5938492", "GASLUX_OWNER_APP_ID": "5938509"},
+                    {"GASLUX_SAFETY_APP_ID": "7000001", "GASLUX_OWNER_APP_ID": "7000001"}):
+            with patch.dict(os.environ, ids, clear=True):
+                self.assertFalse(gate.exact_required_checks(baseline + app, require_app_statuses=True))
+
 
 
 class IndependentSafetyTests(unittest.TestCase):

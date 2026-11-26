@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 from pathlib import Path
 import sys
 
@@ -146,8 +147,9 @@ def plan():
 
 def publish(kind):
     context(publish=True)
-    require(kind in ROLES and gate.review_app_actor(kind, status_permission=True) == ACTORS[kind],
-            "Wrong independent App credential")
+    registration = app_registration(kind)
+    require(gate.configured_status_sources().get(CONTEXTS[kind]) == registration["app_id"],
+            "Production App registration ID mismatch")
     safety, owners = identities()
     report = plan()
     receipts = []
@@ -180,6 +182,115 @@ def publish(kind):
     return {"schema": "gaslux-app-status-publication-v1", "kind": kind, "receipts": receipts,
             "merge_authorized": False, "release_eligible": False}
 
+def existing_success(kind, row, number):
+    """Only invalidate this App's previously issued production approval."""
+    if (not isinstance(row, dict) or row.get("actor") != ACTORS[kind]
+            or row.get("type") != "Bot" or row.get("state") != "success"
+            or row.get("login") != "gaslux-independent-" + kind + "[bot]"):
+        return None
+    m = re.fullmatch(r"GASLUX dev PR=([1-9][0-9]{0,6}) role=([a-z0-9]+) base=([a-f0-9]{40})",
+                     row.get("description") or "")
+    if not m or int(m[1]) != number or m[2] not in gate.factory.TASKS:
+        return None
+    return m[2], m[3]
+
+
+def revocation_scan(kind):
+    """Invalidate known stale production approvals on current open same-repo heads.
+
+    This is a defensive reconciliation pass, not atomic native review
+    revocation. Never issue success, never approve/merge, never write on
+    arbitrary heads or touch the inert pilot contexts. A missing/incomplete
+    scan fails the workflow and blocks the same-cycle Integrator.
+    """
+    context()
+    require(os.getenv("GASLUX_APP_STATUS_GATES_ENABLED") == "true",
+            "Production status migration not explicitly configured")
+    paused = os.getenv("GASLUX_AUTONOMY_PAUSED")
+    require(paused in ("true", "false"), "Explicit pause state required")
+    reg = app_registration(kind)
+    require(gate.configured_status_sources().get(CONTEXTS[kind]) == reg["app_id"],
+            "Unverified revocation identity")
+    safety, owners = identities()
+    base = a.api("GET", "/git/ref/heads/dev")["object"]["sha"]
+    require(a.valid_sha(base), "Invalid revocation base")
+    rows = a.complete_page(a.api("GET", "/pulls?state=open&per_page=100"))
+    require(len(rows) < 100, "Incomplete revocation inventory")
+    discovered = gate.discover() if paused == "false" else {}
+    seen = set()
+    invalidated = []
+    for pr in rows:
+        n = pr.get("number")
+        require(type(n) is int and 0 < n <= 1000000 and n not in seen,
+                "Malformed revocation inventory")
+        seen.add(n)
+        if ((pr.get("head", {}).get("repo") or {}).get("id") != a.REPOSITORY_ID
+                or (pr.get("base", {}).get("repo") or {}).get("id") != a.REPOSITORY_ID
+                or not a.publisher_ok(pr.get("user") or {})):
+            continue
+        head = pr["head"]["sha"]
+        require(a.valid_sha(head), "Malformed publisher head")
+        old = status_receipts(head).get(kind)
+        issued = existing_success(kind, old, n)
+        if issued is None:
+            continue
+        role, issued_base = issued
+        found = discovered.get(n)
+        keep = False
+        if (paused == "false" and pr["base"]["ref"] == "dev"
+                and pr["base"]["sha"] == base == issued_base
+                and found is not None and found[0] == role and found[2] == head):
+            row = gate.inspect(n, role, found[1], head, safety, owners[role], allow_ready=True)
+            keep = row["base"] == base and decision(row, kind) == "success"
+        if keep:
+            continue
+        context()
+        fresh = a.api("GET", f"/pulls/{n}")
+        require(fresh.get("state") == "open" and fresh["head"]["sha"] == head
+                and fresh["head"]["repo"]["id"] == a.REPOSITORY_ID
+                and fresh["base"]["repo"]["id"] == a.REPOSITORY_ID
+                and a.publisher_ok(fresh["user"])
+                and status_receipts(head).get(kind) == old,
+                "Revocation candidate or receipt changed")
+        description = "GASLUX dev authorization revoked"
+        result = a.api("POST", "/statuses/" + head, {
+            "context": CONTEXTS[kind], "state": "failure", "description": description})
+        live = status_receipts(head).get(kind)
+        require(result.get("creator", {}).get("id") == ACTORS[kind]
+                and result.get("context") == CONTEXTS[kind]
+                and result.get("state") == "failure"
+                and result.get("description") == description
+                and live and live["id"] == result["id"]
+                and live["actor"] == ACTORS[kind] and live["state"] == "failure",
+                "Revocation receipt unverified")
+        invalidated.append({"pr": n, "head": head, "status_id": result["id"]})
+    require(a.api("GET", "/git/ref/heads/dev")["object"]["sha"] == base,
+            "Revocation base changed")
+    return {"schema": "gaslux-status-revocation-scan-v1", "kind": kind,
+            "base": base, "paused": paused == "true", "scanned": len(rows),
+            "invalidated": invalidated, "atomic_native_revocation_verified": False,
+            "merge_authorized": False}
+
+
+def activation_audit():
+    """Read-only preflight even during pause. Never emits merge authority."""
+    context()
+    base = a.api("GET", "/git/ref/heads/dev")["object"]["sha"]
+    require(a.valid_sha(base), "Invalid dev")
+    report = {
+        "schema": "gaslux-production-activation-audit-v1", "base": base,
+        "main_and_target_policy_observed": gate.production_policy_observed(base),
+        "source_pinned_dev_policy_observed": gate.strict_ruleset_protected(
+            base, require_app_statuses=True),
+        "native_named_role_gate_retained": True,
+        "native_named_role_enforcement_verified": False,
+        "atomic_native_revocation_verified": False,
+        "production_merge_authorized": False, "release_eligible": False,
+    }
+    require(a.api("GET", "/git/ref/heads/dev")["object"]["sha"] == base, "Audit base changed")
+    return report
+
+
 def pilot_context():
     lab.context()
     require(os.getenv("GASLUX_STATUS_PILOT_ENABLED") == "true"
@@ -196,11 +307,21 @@ def pilot_ok(row, kind):
         and row.get("state") == "success" and row.get("description") == PILOT_DESCRIPTION)
 
 
+def app_registration(kind):
+    require(kind in ROLES, "Invalid App role")
+    reg = gate.review_app_actor(kind, status_permission=True, registration=True)
+    require(isinstance(reg, dict) and reg.get("actor") == ACTORS[kind]
+            and reg.get("slug") == "gaslux-independent-" + kind
+            and type(reg.get("app_id")) is int and reg["app_id"] > 0
+            and reg["app_id"] not in (15368, 5938492, 5938509, *ACTORS.values()),
+            "Wrong independent production App registration")
+    return reg
+
+
 def pilot_publish(kind):
     require(kind in ROLES, "Invalid pilot role")
     pilot_context()
-    require(gate.review_app_actor(kind, status_permission=True) == ACTORS[kind],
-            "Wrong pilot App credential")
+    registration = app_registration(kind)
     old = status_receipts(lab.HEAD, contexts=PILOT_CONTEXTS).get(kind)
     if not pilot_ok(old, kind):
         pilot_context()
@@ -221,6 +342,7 @@ def pilot_publish(kind):
     pilot_context()
     return {"schema": "gaslux-inert-status-pilot-v1", "pr": lab.NUMBER,
             "head": lab.HEAD, "base": lab.BASE, "kind": kind, "status_id": expected,
+            "app_registration_id": registration["app_id"],
             "credential_verified": True, "merge_authorized": False,
             "production_gate_verified": False, "release_eligible": False}
 
@@ -242,11 +364,17 @@ if __name__ == "__main__":
     modes.add_argument("--publish", choices=ROLES)
     modes.add_argument("--pilot-publish", choices=ROLES)
     modes.add_argument("--pilot-audit", action="store_true")
+    modes.add_argument("--activation-audit", action="store_true")
+    modes.add_argument("--revoke-stale", choices=ROLES)
     args = p.parse_args()
     if args.pilot_publish:
         report = pilot_publish(args.pilot_publish)
     elif args.pilot_audit:
         report = pilot_audit()
+    elif args.activation_audit:
+        report = activation_audit()
+    elif args.revoke_stale:
+        report = revocation_scan(args.revoke_stale)
     else:
         context(publish=bool(args.publish))
         report = publish(args.publish) if args.publish else plan()
