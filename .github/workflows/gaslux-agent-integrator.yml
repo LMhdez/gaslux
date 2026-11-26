@@ -417,9 +417,27 @@ jobs:
           persist-credentials: false
       - name: Validate owner review contracts without credential
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_supervised_admission.py -v
+      - name: Mint repository-scoped independent owner App token
+        id: review_identity
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_OWNER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: read
+          permission-pull-requests: write
+          permission-actions: read
+          permission-checks: read
+          permission-issues: read
       - name: Independent backend owner exact-HEAD review
         env:
-          GH_TOKEN: ${{ secrets.GASLUX_INDEPENDENT_OWNER_TOKEN }}
+          GH_TOKEN: ${{ steps.review_identity.outputs.token }}
+          GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
+          GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
+          GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          GASLUX_OWNER_APP_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          GASLUX_PUBLISH_APP_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
@@ -462,9 +480,27 @@ jobs:
           persist-credentials: false
       - name: Validate independent review contracts without credential
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_supervised_admission.py -v
+      - name: Mint repository-scoped independent safety App token
+        id: review_identity
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_SAFETY_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: read
+          permission-pull-requests: write
+          permission-actions: read
+          permission-checks: read
+          permission-issues: read
       - name: Independent canonical regression review with separate service identity
         env:
-          GH_TOKEN: ${{ secrets.GASLUX_INDEPENDENT_SAFETY_TOKEN }}
+          GH_TOKEN: ${{ steps.review_identity.outputs.token }}
+          GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
+          GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
+          GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          GASLUX_OWNER_APP_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          GASLUX_PUBLISH_APP_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
@@ -606,9 +642,27 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Mint repository-scoped independent safety App token
+        id: review_identity
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_SAFETY_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: read
+          permission-pull-requests: write
+          permission-actions: read
+          permission-checks: read
+          permission-issues: read
       - name: Validate credential with GET-only requests while paused
         env:
-          GH_TOKEN: ${{ secrets.GASLUX_INDEPENDENT_SAFETY_TOKEN }}
+          GH_TOKEN: ${{ steps.review_identity.outputs.token }}
+          GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
+          GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
+          GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          GASLUX_OWNER_APP_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          GASLUX_PUBLISH_APP_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
@@ -632,9 +686,27 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Mint repository-scoped independent owner App token
+        id: review_identity
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_OWNER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: read
+          permission-pull-requests: write
+          permission-actions: read
+          permission-checks: read
+          permission-issues: read
       - name: Validate credential with GET-only requests while paused
         env:
-          GH_TOKEN: ${{ secrets.GASLUX_INDEPENDENT_OWNER_TOKEN }}
+          GH_TOKEN: ${{ steps.review_identity.outputs.token }}
+          GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
+          GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
+          GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          GASLUX_OWNER_APP_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          GASLUX_PUBLISH_APP_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}

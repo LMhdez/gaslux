@@ -352,13 +352,13 @@ class IndependentSafetyTests(unittest.TestCase):
                 if route == "/git/ref/heads/dev":
                     return {"object": {"sha": BASE}}
                 self.fail(route)
-            actor = type("Response", (), {"stdout": '{"id": %d}' % (999 if scenario == "wrong_actor" else 123)})()
+            actor = 999 if scenario == "wrong_actor" else 123
             owners = {ROLE: 123 if scenario == "shared_owner" else 456}
             current = dict(env)
             if scenario == "missing_token":
                 current["GH_TOKEN"] = ""
             scope = F.SUPERVISED_MEDIA_SCOPE if scenario == "product" else SCOPE
-            with patch.dict(os.environ, current), patch.object(gate, "configured_reviewers", return_value=(123, owners)), patch.object(gate.subprocess, "run", return_value=actor), patch.object(gate, "discover", return_value={500: (ROLE, scope, HEAD)}), patch.object(gate, "inspect", side_effect=[candidate, {} if scenario == "drift" else candidate]), patch.object(A, "api", side_effect=api):
+            with patch.dict(os.environ, current), patch.object(gate, "configured_reviewers", return_value=(123, owners)), patch.object(gate, "review_app_actor", return_value=actor), patch.object(gate, "discover", return_value={500: (ROLE, scope, HEAD)}), patch.object(gate, "inspect", side_effect=[candidate, {} if scenario == "drift" else candidate]), patch.object(A, "api", side_effect=api):
                 if scenario == "wrong_actor":
                     with self.assertRaises(ValueError):
                         gate.independent_safety_review()
@@ -456,11 +456,11 @@ class IndependentOwnerTests(unittest.TestCase):
                 if route == "/git/ref/heads/dev":
                     return {"object": {"sha": BASE}}
                 self.fail(route)
-            actor = type("Response", (), {"stdout": '{"id": 456}'})()
+            actor = 456
             owners = {ROLE: 999, "zorin": 456} if scenario == "wrong_role" else {ROLE: 456}
             scope = F.SUPERVISED_MEDIA_SCOPE if scenario == "product_without_vm" else SCOPE
             with patch.dict(os.environ, env), patch.object(gate, "configured_reviewers", return_value=(456 if scenario == "same_safety" else 123, owners)), \
-                 patch.object(gate.subprocess, "run", return_value=actor), \
+                 patch.object(gate, "review_app_actor", return_value=actor), \
                  patch.object(gate, "discover", return_value={500: (ROLE, scope, HEAD)}), \
                  patch.object(gate, "inspect", side_effect=[row, {} if scenario == "drift" else row]), \
                  patch.object(gate, "vm_acceptance_verified", return_value=False), patch.object(A, "api", side_effect=api):
@@ -763,19 +763,60 @@ class ActivationGateTests(unittest.TestCase):
                     BASE, HEAD, {"require_code_owner_review": scenario != "no_codeowner_rule"}, (101, 202))
                 self.assertEqual(result, scenario == "valid", scenario)
 
+    def test_app_mint_identity_and_scope_fail_closed(self):
+        env = {"GH_TOKEN": "fixture-only",
+               "GASLUX_SAFETY_APP_CLIENT_ID": "Iv1.safety123",
+               "GASLUX_OWNER_APP_CLIENT_ID": "Iv1.owner123",
+               "GASLUX_PUBLISH_APP_CLIENT_ID": "Iv1.publisher123",
+               "GASLUX_MINTED_APP_SLUG": "gaslux-safety",
+               "GASLUX_MINTED_INSTALLATION_ID": "12345"}
+        for scenario in ("valid", "same_client", "publisher_slug", "wrong_client",
+                         "write_contents", "admin_permission", "wrong_repo", "extra_repo",
+                         "wrong_bot", "publisher_id", "missing_installation"):
+            current = dict(env)
+            if scenario == "same_client":
+                current["GASLUX_OWNER_APP_CLIENT_ID"] = current["GASLUX_SAFETY_APP_CLIENT_ID"]
+            if scenario == "publisher_slug":
+                current["GASLUX_MINTED_APP_SLUG"] = "gaslux-autonomous-publisher"
+            if scenario == "missing_installation":
+                current["GASLUX_MINTED_INSTALLATION_ID"] = ""
+            permissions = dict(gate.REVIEW_APP_PERMISSIONS)
+            if scenario == "write_contents":
+                permissions["contents"] = "write"
+            if scenario == "admin_permission":
+                permissions["administration"] = "write"
+            def read(path):
+                if path == "apps/gaslux-safety":
+                    return {"id": 70, "slug": "gaslux-safety", "permissions": permissions,
+                            "client_id": "wrong" if scenario == "wrong_client" else env["GASLUX_SAFETY_APP_CLIENT_ID"]}
+                if path == "installation/repositories?per_page=100":
+                    return {"total_count": 2 if scenario == "extra_repo" else 1,
+                            "repositories": [{"full_name": "other/repo" if scenario == "wrong_repo" else A.REPO}]}
+                if path == "users/gaslux-safety%5Bbot%5D":
+                    return {"type": "User" if scenario == "wrong_bot" else "Bot",
+                            "login": "gaslux-safety[bot]", "id": 41898282 if scenario == "publisher_id" else 101}
+                self.fail(path)
+            with patch.dict(os.environ, current), patch.object(gate, "readonly_gh_json", side_effect=read):
+                if scenario == "valid":
+                    self.assertEqual(gate.review_app_actor("safety"), 101)
+                else:
+                    with self.assertRaises(ValueError):
+                        gate.review_app_actor("safety")
+
     def test_paused_probe_validates_actual_identity_without_writes(self):
         env = {"GITHUB_REPOSITORY": A.REPO, "GITHUB_REF": "refs/heads/main",
                "GITHUB_EVENT_NAME": "workflow_dispatch", "GASLUX_AUTONOMY_PAUSED": "true",
                "GH_TOKEN": "fixture-only"}
-        repo = {"full_name": A.REPO, "permissions": {"push": True, "admin": False, "maintain": False}}
         for actor, kind, expected in ((101, "safety", True), (202, "owner", True),
                                        (202, "safety", False), (101, "owner", False)):
             with patch.dict(os.environ, env), patch.object(gate, "configured_reviewers",
-                    return_value=(101, {"mint": 202})), patch.object(gate, "readonly_gh_json",
-                    side_effect=[{"id": actor, "type": "User"}, repo]), patch.object(A, "api") as api:
+                    return_value=(101, {"mint": 202})), patch.object(gate, "review_app_actor",
+                    return_value=actor), patch.object(A, "api") as api:
                 out = gate.credential_probe(kind)
                 self.assertEqual(out["credential_verified"], expected)
                 self.assertFalse(out["merge_authorized"])
+                self.assertFalse(out["review_capability_verified"])
+                self.assertFalse(out["server_role_enforcement_verified"])
                 api.assert_not_called()
         with patch.dict(os.environ, {**env, "GASLUX_AUTONOMY_PAUSED": "false"}), \
                 patch.object(gate, "readonly_gh_json") as read:
