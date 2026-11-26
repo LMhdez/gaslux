@@ -257,5 +257,71 @@ class ReconcileTests(unittest.TestCase):
                     call.assert_not_called()
 
 
+    def test_historical_stack_exact_parent_and_root(self):
+        repo = {"full_name": rec.admission.REPO}
+        def pr(n, head, sha, base, base_sha):
+            return {"number": n, "state": "open", "draft": True,
+                    "head": {"ref": head, "sha": sha, "repo": repo},
+                    "base": {"ref": base, "sha": base_sha, "repo": repo}}
+        parent = pr(1, "feature/parent", OLD, "dev", BASE)
+        child = pr(2, "feature/child", NEW, "feature/parent", OLD)
+        leaf = pr(3, "feature/leaf", "d"*40, "feature/child", NEW)
+        refs = {"dev": BASE, "main": "e"*40}
+        prs = {1: parent, 2: child, 3: leaf}
+        result = rec.historical_dependency(prs, 3, refs)
+        self.assertEqual(result["dependency_state"], "ROOTED")
+        self.assertEqual(result["root_target"], "dev")
+        self.assertEqual([r["pr"] for r in result["dependency_chain"]], [2, 1])
+        self.assertEqual(rec.historical_dependency({2: child}, 2, refs)["dependency_state"], "ORPHAN_BRANCH")
+        duplicate = {**parent, "number": 4}
+        self.assertEqual(rec.historical_dependency({**prs, 4: duplicate}, 2, refs)["dependency_state"], "AMBIGUOUS_PARENT")
+        drift = {**child, "base": {**child["base"], "sha": BASE}}
+        self.assertEqual(rec.historical_dependency({1: parent, 2: drift}, 2, refs)["dependency_state"], "PARENT_HEAD_DRIFT")
+        cycle = {**parent, "base": {"ref": "feature/child", "sha": NEW, "repo": repo}}
+        self.assertEqual(rec.historical_dependency({1: cycle, 2: child}, 2, refs)["dependency_state"], "CYCLE")
+        foreign = {**parent, "base": {**parent["base"], "repo": {"full_name": "foreign/repo"}}}
+        self.assertEqual(rec.historical_dependency({1: foreign, 2: child}, 2, refs)["dependency_state"], "FOREIGN_OR_INVALID")
+
+    def test_historical_stack_inventory_is_read_only(self):
+        repo = {"full_name": rec.admission.REPO}
+        prs = [{"number": 1, "state": "open", "draft": True,
+                "head": {"ref": "feature/parent", "sha": OLD, "repo": repo},
+                "base": {"ref": "dev", "sha": BASE, "repo": repo}},
+               {"number": 2, "state": "open", "draft": True,
+                "head": {"ref": "feature/child", "sha": NEW, "repo": repo},
+                "base": {"ref": "feature/parent", "sha": OLD, "repo": repo}}]
+        def api(method, route):
+            self.assertEqual(method, "GET")
+            if route.startswith("/git/ref/heads/"):
+                return {"object": {"sha": BASE}}
+            if route.startswith("/pulls?"):
+                return prs
+            if route == f"/compare/{OLD}...{BASE}":
+                return {"base_commit": {"sha": OLD}, "merge_base_commit": {"sha": BASE},
+                        "status": "behind", "ahead_by": 0, "behind_by": 1}
+            self.fail(route)
+        with patch.object(rec.admission, "api", side_effect=api):
+            result = rec.historical_inventory(slot=0)
+        row = result["findings"][1]
+        self.assertEqual(row["status"], "STACKED_PR_REQUIRES_PARENT_RECONCILIATION")
+        self.assertEqual(row["dependency_chain"][0]["pr"], 1)
+        self.assertFalse(row["close_authorized"])
+        self.assertFalse(rec.historical_close_candidate(row))
+
+    def test_missing_or_invalid_pause_flag_denies_all_metadata_writes(self):
+        for value in (None, "", "unknown", "0"):
+            env = dict(ENV)
+            if value is None:
+                env.pop("GASLUX_AUTONOMY_PAUSED")
+            else:
+                env["GASLUX_AUTONOMY_PAUSED"] = value
+            with patch.dict("os.environ", env, clear=True), patch.object(rec.admission, "api") as api:
+                with self.assertRaises(RuntimeError):
+                    rec.reconcile(execute=True)
+                with self.assertRaises(RuntimeError):
+                    rec.close_integrated_history(execute=True)
+                api.assert_not_called()
+
+
 if __name__ == "__main__":
     unittest.main()
