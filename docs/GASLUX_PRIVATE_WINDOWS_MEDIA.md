@@ -77,3 +77,13 @@ Historical #388 (run 45067845469) reported actual 60-GiB physical
 reservation and synthetic overlay reset but BLOCKED_MEDIA, 2/11
 checkpoints. The current runner and exact candidate require fresh evidence.
 No live environment configuration or credentials are created by this PR.
+
+## Reconciliation repair (2026-11-26)
+
+Rebuilt the malformed repeated YAML from the exact #418 and #416 source jobs,
+retaining the trusted-main guard and two schedules. Contract CI rejects duplicate
+job keys. The readiness report now inventories current open same-repository dev
+lifecycle branches with bounded pagination instead of hardcoded PR numbers.
+Branch names are observational only; no review, merge or writer authority.
+Original media source and tests unchanged. Fresh exact-head CI and independent
+Safety remain required. No activation or media provisioning is asserted.

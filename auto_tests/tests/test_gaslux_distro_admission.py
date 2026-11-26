@@ -1,0 +1,430 @@
+"""Adversarial tests of the distro admission stage; no GitHub network."""
+import sys
+import unittest
+from pathlib import Path
+from unittest.mock import patch
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "tools"))
+import gaslux_distro_admission as gate
+
+HEAD = "a" * 40
+BASE = "b" * 40
+
+
+class AdmissionTests(unittest.TestCase):
+    def review(self, **updates):
+        return {"user": {"id": 2}, "state": "APPROVED", "commit_id": HEAD,
+                "body": f"GASLUX-SAFETY-V1 head={HEAD} base={BASE}", **updates}
+
+    def test_exact_review(self):
+        self.assertTrue(gate.review_ok([self.review()], 2, 1, HEAD, BASE))
+
+    def test_review_absent_self_or_unconfigured(self):
+        for rows, reviewer in [([], 2), ([self.review()], None), ([self.review()], 1)]:
+            self.assertFalse(gate.review_ok(rows, reviewer, 1, HEAD, BASE))
+
+    def test_stale_dismissed_wrong_actor_or_comment(self):
+        for changes in [{"commit_id": BASE}, {"body": "SAFETY_APPROVED"},
+                        {"state": "DISMISSED"}, {"state": "COMMENTED"},
+                        {"user": {"id": 3}}]:
+            self.assertFalse(gate.review_ok([self.review(**changes)], 2, 1, HEAD, BASE))
+
+    def test_objection(self):
+        self.assertFalse(gate.review_ok(
+            [self.review(), self.review(state="CHANGES_REQUESTED")], 2, 1, HEAD, BASE))
+
+    def test_page_truncation(self):
+        with self.assertRaises(ValueError):
+            gate.complete_page([{}] * 100)
+
+    def test_required_ci(self):
+        rows = [{"name": name, "head_sha": HEAD, "status": "completed",
+                 "conclusion": "success", "app": {"slug": "github-actions"}}
+                for name in gate.COMMON_CHECKS | {"read-only-contracts"}]
+        data = {"total_count": len(rows), "check_runs": rows}
+        self.assertTrue(gate.checks_ok(data, HEAD, "zorin"))
+        self.assertFalse(gate.checks_ok(data, HEAD, "cachyos"))
+        self.assertFalse(gate.checks_ok({"total_count": 0, "check_runs": []}, HEAD, "zorin"))
+        self.assertFalse(gate.checks_ok({**data, "total_count": 101}, HEAD, "zorin"))
+        for field, value in [("head_sha", BASE), ("conclusion", "skipped"),
+                             ("status", "in_progress"), ("app", {"slug": "other"})]:
+            modified = [{**rows[0], field: value}, *rows[1:]]
+            self.assertFalse(gate.checks_ok({**data, "check_runs": modified}, HEAD, "zorin"))
+
+    def test_append_no_execution(self):
+        before = b"# original\n"
+        after = before + b"\ndef assess_zorin_lifecycle(evidence: dict) -> dict:\n    return {}\n"
+        with patch.object(gate, "validate_addition") as validator:
+            gate.exact_append(before, after, "zorin")
+            self.assertEqual(validator.call_args.kwargs, {"execute": False})
+        with self.assertRaises(ValueError):
+            gate.exact_append(before, b"# replaced\n" + after, "zorin")
+
+    def test_formatted_append_requires_exact_separator(self):
+        before = b"# original\n"
+        after = before + b"\n\ndef assess_zorin_lifecycle(evidence: dict) -> dict:\n    return {}\n"
+        with patch.object(gate, "validate_addition"):
+            gate.exact_append(before, after, "zorin", formatted=True)
+            with self.assertRaises(ValueError):
+                gate.exact_append(before, after, "zorin")
+
+    def test_repaired_candidate_and_semantic_change(self):
+        generated = "c" * 40
+        path = "assets/live/example.py"
+        pr = {"commits": 2, "head": {"ref": f"bot/gaslux-feature-zorin-{BASE[:12]}"}}
+        before = b"# original\n"
+        original = before + (
+            b"\ndef assess_zorin_lifecycle(evidence: dict) -> dict:\n"
+            b"    return {'safe': False}\n"
+        )
+        formatted = before + (
+            b'\n\ndef assess_zorin_lifecycle(evidence: dict) -> dict:\n'
+            b'    return {"safe": False}\n'
+        )
+        for final in (formatted, formatted.replace(b"False", b"True")):
+            with (
+                patch.object(gate, "single_parent", side_effect=[generated, BASE]),
+                patch.object(gate, "one_path_commit") as scope,
+                patch.object(gate, "source_at", side_effect=[before, original, final]),
+                patch.object(gate, "validate_addition") as validator,
+                patch.object(gate, "require_fixed_lifecycle"),
+                patch.object(gate, "api", return_value={"author": {"id": 9}}),
+            ):
+                if final == formatted:
+                    self.assertEqual(gate.candidate_append(pr, "zorin", HEAD, path), (BASE, 9))
+                    self.assertEqual(scope.call_count, 2)
+                    self.assertEqual(validator.call_count, 2)
+                else:
+                    with self.assertRaises(ValueError):
+                        gate.candidate_append(pr, "zorin", HEAD, path)
+
+    def test_fixed_semantics_for_all_queued_roles(self):
+        for role in gate.QUEUE.values():
+            for local in ("missing", "missingGates"):
+                with self.subTest(role=role, local=local):
+                    source = (
+                        f"def assess_{role}_lifecycle(evidence: dict) -> dict:\n"
+                        f"    gates = {gate.LIFECYCLE_GATES!r}\n"
+                        f"    {local} = sorted([name for name in gates if evidence.get(name) is not True])\n"
+                        f"    return {{'backend': {role!r}, 'missingGates': {local}, "
+                        "'installationAuthorized': False, 'releaseEligible': False}\n"
+                    )
+                    gate.require_fixed_lifecycle(role, source)
+                    for changed in (
+                        source.replace("'installationAuthorized': False", "'installationAuthorized': True"),
+                        source.replace("'releaseEligible': False", "'releaseEligible': bool(evidence)"),
+                        source.replace("is not True", "!= True"),
+                        source.replace("'windows-return', ", ""),
+                        source.replace("evidence.get(name)", "evidence.get('install')"),
+                        source.replace(f"'missingGates': {local}", "'missingGates': []"),
+                        source.replace("'releaseEligible': False", "'releaseEligible': False, 'releaseEligible': True"),
+                        source.replace("    return", "    if evidence:\n        return {}\n    return"),
+                    ):
+                        self.assertNotEqual(changed, source)
+                        with self.assertRaises(ValueError):
+                            gate.require_fixed_lifecycle(role, changed)
+
+    def test_intermediate_offscope_commit_rejected(self):
+        good = {"status": "ahead", "ahead_by": 1, "behind_by": 0, "total_commits": 1,
+                "merge_base_commit": {"sha": BASE},
+                "files": [{"filename": "allowed.py", "status": "modified"}]}
+        with patch.object(gate, "api", return_value=good):
+            gate.one_path_commit(BASE, HEAD, "allowed.py")
+        for changed in ({**good, "files": good["files"] + [{"filename": "other.py"}]},
+                        {**good, "ahead_by": 2}, {**good, "behind_by": 1}):
+            with patch.object(gate, "api", return_value=changed):
+                with self.assertRaises(ValueError):
+                    gate.one_path_commit(BASE, HEAD, "allowed.py")
+
+    def test_unsupported_history_rejected(self):
+        for count in (0, 3, True, "2"):
+            with self.assertRaises(ValueError):
+                gate.candidate_append({"commits": count}, "zorin", HEAD, "allowed.py")
+
+    def workflow_fixture(self, role):
+        workflow_ids = (420402269, 420417743,
+                        420371034 if role == "cachyos" else 420471368)
+        runs = [{"workflow_id": workflow, "id": 100 + i, "run_attempt": 2,
+                 "head_sha": HEAD, "event": "pull_request",
+                 "repository": {"id": gate.REPOSITORY_ID},
+                 "head_repository": {"id": gate.REPOSITORY_ID},
+                 "status": "completed", "conclusion": "success"}
+                for i, workflow in enumerate(workflow_ids)]
+        jobs = {row["id"]: [{"run_id": row["id"], "run_attempt": 2,
+                            "head_sha": HEAD, "status": "completed",
+                            "conclusion": "success", "name": name}
+                           for name in sorted(gate.WORKFLOW_JOBS[row["workflow_id"]])]
+                for row in runs}
+        return runs, jobs
+
+    def workflow_api(self, runs, jobs, method, route):
+        self.assertEqual(method, "GET")
+        if route == f"/actions/runs?head_sha={HEAD}&event=pull_request&per_page=100":
+            return {"total_count": len(runs), "workflow_runs": runs}
+        for run_id, rows in jobs.items():
+            if route == f"/actions/runs/{run_id}/attempts/2/jobs?per_page=100":
+                return {"total_count": len(rows), "jobs": rows}
+        self.fail(f"Unexpected workflow API route: {route}")
+
+    def test_workflow_provenance_exact_run_and_attempt(self):
+        for role in gate.QUEUE.values():
+            runs, jobs = self.workflow_fixture(role)
+            with patch.object(gate, "api",
+                              side_effect=lambda m, r: self.workflow_api(runs, jobs, m, r)):
+                self.assertTrue(gate.ci_workflow_provenance(HEAD, role))
+
+    def test_workflow_provenance_rejects_spoof_and_wrong_attempt(self):
+        for variant in ("lookalike", "foreign", "fork", "stale", "wrong_event",
+                        "failed", "missing", "wrong_attempt", "skipped_job",
+                        "wrong_job_head", "wrong_job_name", "wrong_job_run",
+                        "duplicate_job"):
+            with self.subTest(variant=variant):
+                runs, jobs = self.workflow_fixture("zorin")
+                row = runs[0]
+                job = jobs[row["id"]][0]
+                if variant == "lookalike":
+                    row["workflow_id"] = 987654321
+                elif variant == "foreign":
+                    row["repository"] = {"id": 10}
+                elif variant == "fork":
+                    row["head_repository"] = {"id": 10}
+                elif variant == "stale":
+                    row["head_sha"] = BASE
+                elif variant == "wrong_event":
+                    row["event"] = "workflow_dispatch"
+                elif variant == "failed":
+                    row["conclusion"] = "failure"
+                elif variant == "missing":
+                    runs.pop()
+                elif variant == "wrong_attempt":
+                    job["run_attempt"] = 1
+                elif variant == "skipped_job":
+                    job["conclusion"] = "skipped"
+                elif variant == "wrong_job_head":
+                    job["head_sha"] = BASE
+                elif variant == "wrong_job_name":
+                    job["name"] = "unrelated"
+                elif variant == "wrong_job_run":
+                    job["run_id"] = 999
+                elif variant == "duplicate_job":
+                    jobs[row["id"]].append(dict(job))
+                with patch.object(gate, "api",
+                                  side_effect=lambda m, r: self.workflow_api(runs, jobs, m, r)):
+                    self.assertFalse(gate.ci_workflow_provenance(HEAD, "zorin"))
+
+    def test_full_read_only_admission_for_repaired_history(self):
+        generated = "c" * 40
+        drift = "d" * 40
+        path = gate.TASKS["zorin"][0]
+        before = b"# existing source\n"
+        gates = (
+            "source-authenticity", "windows-preflight", "install",
+            "linux-first-boot", "windows-return", "linux-update-reboot",
+            "uninstall-windows-integrity", "fault-injection-rollback",
+        )
+        function = (
+            "def assess_zorin_lifecycle(evidence: dict) -> dict:\n"
+            f"    gates = {gates!r}\n"
+            "    missing = sorted([name for name in gates if evidence.get(name) is not True])\n"
+            "    return {'backend': 'zorin', 'missingGates': missing, "
+            "'installationAuthorized': False, 'releaseEligible': False}\n"
+        ).encode()
+        initial = before + b"\n" + function
+        repaired = before + b"\n\n" + function.replace(b"'", b'"')
+        pr = {
+            "number": 395, "state": "open", "draft": True, "commits": 2,
+            "user": {"login": "gaslux-autonomous-publisher[bot]", "id": 360620437},
+            "head": {"sha": HEAD, "repo": {"full_name": gate.REPO},
+                     "ref": f"bot/gaslux-feature-zorin-{BASE[:12]}"},
+            "base": {"ref": "dev", "repo": {"full_name": gate.REPO}},
+        }
+        file_row = {"filename": path, "status": "modified",
+                    "additions": 20, "deletions": 0}
+        checks = [{"name": name, "head_sha": HEAD, "status": "completed",
+                   "conclusion": "success", "app": {"slug": "github-actions"}}
+                  for name in gate.COMMON_CHECKS | {"read-only-contracts"}]
+
+        workflow_runs, workflow_jobs = self.workflow_fixture("zorin")
+        for scenario in ("valid", "self_repair_review", "no_review",
+                         "stale_base", "head_drift", "offscope_intermediate",
+                         "owner_approved", "owner_wrong_role", "owner_self_review",
+                         "owner_stale_base", "owner_objection"):
+            with self.subTest(scenario=scenario):
+                live_dev = drift if scenario in ("stale_base", "owner_stale_base") else BASE
+                reviewer = 9 if scenario == "self_repair_review" else 2
+                reviews = [] if scenario == "no_review" else [{
+                    "user": {"id": reviewer}, "state": "APPROVED", "commit_id": HEAD,
+                    "body": f"GASLUX-SAFETY-V1 head={HEAD} base={live_dev}",
+                }]
+                owner_id = None
+                if scenario.startswith("owner_"):
+                    owner_id = 9 if scenario == "owner_self_review" else 3
+                    owner_role = "bazzite" if scenario == "owner_wrong_role" else "zorin"
+                    reviews.append({
+                        "user": {"id": owner_id}, "state": "APPROVED", "commit_id": HEAD,
+                        "body": f"GASLUX-BACKEND-OWNER-V1 role={owner_role} head={HEAD} base={live_dev}",
+                    })
+                    if scenario == "owner_objection":
+                        reviews.append({"user": {"id": 5}, "state": "CHANGES_REQUESTED"})
+                pr_reads = 0
+
+                def api(method, route):
+                    nonlocal pr_reads
+                    self.assertEqual(method, "GET")
+                    if route == "/pulls/395":
+                        pr_reads += 1
+                        if scenario == "head_drift" and pr_reads > 1:
+                            return {**pr, "head": {**pr["head"], "sha": drift}}
+                        return pr
+                    if route == "/git/ref/heads/dev":
+                        return {"object": {"sha": live_dev}}
+                    if route == "/pulls/395/files?per_page=100":
+                        return [file_row]
+                    if route == f"/git/commits/{HEAD}":
+                        return {"parents": [{"sha": generated}]}
+                    if route == f"/git/commits/{generated}":
+                        return {"parents": [{"sha": BASE}]}
+                    for parent, child in ((BASE, generated), (generated, HEAD)):
+                        if route == f"/compare/{parent}...{child}":
+                            files = [file_row]
+                            if scenario == "offscope_intermediate" and child == generated:
+                                files.append({"filename": "other.py", "status": "modified"})
+                            return {"status": "ahead", "ahead_by": 1, "behind_by": 0,
+                                    "total_commits": 1, "merge_base_commit": {"sha": parent},
+                                    "files": files}
+                    for ref, raw in ((BASE, before), (generated, initial), (HEAD, repaired)):
+                        if route == f"/contents/{path}?ref={ref}":
+                            return {"type": "file", "encoding": "base64",
+                                    "content": gate.base64.b64encode(raw).decode()}
+                    if route == f"/commits/{HEAD}":
+                        return {"author": {"id": 9}}
+                    if route.startswith("/actions/runs"):
+                        return self.workflow_api(workflow_runs, workflow_jobs, method, route)
+                    if route == f"/commits/{HEAD}/check-runs?per_page=100":
+                        return {"total_count": len(checks), "check_runs": checks}
+                    if route == "/pulls/395/reviews?per_page=100":
+                        return reviews
+                    if route == "/issues/395/comments?per_page=100":
+                        return []
+                    self.fail(f"Unexpected API route: {route}")
+
+                # Only the API transport is mocked; real source checks and AST
+                # validation run without executing the proposed helper.
+                with patch.object(gate, "api", side_effect=api):
+                    row = gate.inspect(395, "zorin", reviewer, owner_id)
+                self.assertEqual(row["status"], "blocked")
+                for key in ("merge_authorized", "release_eligible",
+                            "full_vm_acceptance_verified"):
+                    self.assertFalse(row[key])
+                self.assertEqual(row["backend_owner_verified"], scenario == "owner_approved")
+                self.assertEqual(row["automatic_technical_safety_passed"],
+                                 scenario not in ("stale_base", "head_drift",
+                                                  "offscope_intermediate", "owner_stale_base",
+                                                  "owner_objection"))
+                if scenario in ("head_drift", "offscope_intermediate"):
+                    self.assertFalse(row["exact_scope_verified"])
+                    self.assertFalse(row["safety_review_verified"])
+                else:
+                    self.assertTrue(row["exact_scope_verified"])
+                    self.assertTrue(row["ci_workflow_provenance_verified"])
+                    self.assertTrue(row["ci_verified"])
+                    self.assertEqual(row["current_base_verified"], scenario not in ("stale_base", "owner_stale_base"))
+                    self.assertEqual(row["safety_review_verified"],
+                                     scenario not in ("self_repair_review", "no_review", "owner_objection"))
+
+    def inventory_candidate(self, number=500, role="zorin", **changes):
+        return {"number": number, "state": "open", "draft": True,
+                "user": {"login": "gaslux-autonomous-publisher[bot]", "id": 360620437},
+                "head": {"sha": HEAD, "repo": {"full_name": gate.REPO},
+                         "ref": f"bot/gaslux-feature-{role}-{BASE[:12]}"},
+                "base": {"ref": "dev", "repo": {"full_name": gate.REPO}},
+                **changes}
+
+    def test_discovery_accepts_new_numbers_and_rejects_impersonation(self):
+        good = self.inventory_candidate()
+        other = self.inventory_candidate(501, "bazzite",
+            user={"login": "github-actions[bot]", "id": 41898282})
+        rows = [other, good,
+                self.inventory_candidate(502, "mint"),
+                self.inventory_candidate(503, draft=False),
+                self.inventory_candidate(504, user={"login": "gaslux-autonomous-publisher[bot]", "id": 1}),
+                self.inventory_candidate(505, head={**good["head"], "repo": {"full_name": "fork/gaslux"}}),
+                self.inventory_candidate(506, base={**good["base"], "ref": "main"}),
+                self.inventory_candidate(507, head={**good["head"], "sha": "bad"})]
+        with patch.object(gate, "api", return_value=rows) as api:
+            self.assertEqual(gate.discover_candidates(), {500: ("zorin", HEAD), 501: ("bazzite", HEAD)})
+            api.assert_called_once_with("GET", "/pulls?state=open&base=dev&per_page=100")
+
+    def test_discovery_fails_closed_on_truncation_duplicates_and_overflow(self):
+        good = self.inventory_candidate()
+        for rows in ([good] * 100, [good, good],
+                     [self.inventory_candidate(500 + i) for i in range(11)], [None]):
+            with patch.object(gate, "api", return_value=rows):
+                with self.assertRaises(ValueError):
+                    gate.discover_candidates()
+
+    def test_discovered_head_drift_rejected_before_scope(self):
+        pr = self.inventory_candidate()
+        with patch.object(gate, "api", side_effect=[pr, {"object": {"sha": BASE}}]):
+            row = gate.inspect(500, "zorin", None, expected_head=BASE)
+        self.assertFalse(row["automatic_technical_safety_passed"])
+        self.assertFalse(row["merge_authorized"])
+        self.assertEqual(row["next_action"], "VERIFY_IDENTITY_AND_SCOPE")
+
+    def test_technical_pass_is_not_an_approval_or_merge_grant(self):
+        row = gate.classify({
+            "exact_scope_verified": True, "current_base_verified": True,
+            "ci_verified": True, "ci_workflow_provenance_verified": True,
+            "technical_objection": False, "merge_authorized": False,
+        })
+        self.assertTrue(row["automatic_technical_safety_passed"])
+        self.assertFalse(row["merge_authorized"])
+        self.assertEqual(row["next_action"], "INDEPENDENT_SAFETY_REVIEW")
+        self.assertIn("COLLECT_VM_EVIDENCE", row["blockers"])
+        row["technical_objection"] = True
+        self.assertFalse(gate.classify(row)["automatic_technical_safety_passed"])
+        self.assertEqual(row["next_action"], "RESOLVE_TECHNICAL_OBJECTION")
+
+    def test_owner_config_is_strict(self):
+        self.assertEqual(gate.parse_owner_ids('{"zorin":3,"cachyos":4}'),
+                         {"zorin": 3, "cachyos": 4})
+        for raw in ('', '[]', 'null', '{"zorin":true}', '{"zorin":"3"}',
+                    '{"zorin":0}', '{"zorin":-1}', '{"mint":3}',
+                    '{"zorin":3,"zorin":4}', '{"zorin":10000000000000000000}',
+                    ' ' * 1025):
+            with self.subTest(raw=raw):
+                self.assertEqual(gate.parse_owner_ids(raw), {})
+
+    def test_owner_review_is_separate_and_exact(self):
+        marker = f"GASLUX-BACKEND-OWNER-V1 role=zorin head={HEAD} base={BASE}"
+        owner = {"user": {"id": 3}, "state": "APPROVED",
+                 "commit_id": HEAD, "body": marker}
+        self.assertTrue(gate.owner_review_ok([owner], 3, 2, 1, 9, "zorin", HEAD, BASE))
+        for owner_id, safety_id, author_id, repair_id in (
+            (None, 2, 1, 9), (True, 2, 1, 9), (3, None, 1, 9),
+            (3, 3, 1, 9), (3, 2, 3, 9), (3, 2, 1, 3), (3, 2, 1, 2),
+        ):
+            self.assertFalse(gate.owner_review_ok(
+                [owner], owner_id, safety_id, author_id, repair_id, "zorin", HEAD, BASE))
+        for reviews in (
+            [], [{**owner, "state": "COMMENTED"}],
+            [{**owner, "state": "DISMISSED"}],
+            [{**owner, "body": marker.replace("role=zorin", "role=bazzite")}],
+            [{**owner, "commit_id": BASE}],
+            [{**owner, "body": marker.replace(f"base={BASE}", f"base={HEAD}")}],
+            [owner, {**owner, "state": "DISMISSED"}],
+            [owner, {"user": {"id": 5}, "state": "CHANGES_REQUESTED"}],
+        ):
+            self.assertFalse(gate.owner_review_ok(reviews, 3, 2, 1, 9, "zorin", HEAD, BASE))
+
+    def test_api_failure_is_blocked(self):
+        with patch.object(gate, "api", side_effect=RuntimeError("offline")):
+            row = gate.inspect(395, "zorin", 2)
+        self.assertEqual(row["status"], "blocked")
+        self.assertFalse(row["merge_authorized"])
+        self.assertFalse(row["release_eligible"])
+        self.assertFalse(row["safety_review_verified"])
+
+
+if __name__ == "__main__":
+    unittest.main()

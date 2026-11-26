@@ -7,6 +7,8 @@ an evidence pass. The caller's job must have issues:write but no App private key
 from __future__ import annotations
 
 import argparse
+import ast
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -18,6 +20,8 @@ import urllib.request
 from gaslux_agent_feature_factory import (
     REPO, SHA, TASKS, discover_goal_backlog,
 )
+
+from gaslux_agent_history import review_hint
 
 API = "https://api.github.com/repos/" + REPO
 BOT_BRANCH = re.compile(
@@ -259,6 +263,7 @@ def issue_payload(task: dict, base: str) -> dict:
             f"- Existing regression suite: `auto_tests/tests/{test}`\n"
             "- Next step: backend owner defines a **real** missing capability, precise "
             "code paths and positive/negative tests. Reconcile existing PRs first.\n"
+            f"- {review_hint(role, task['gate'])}"
             "- Required evidence: authentic release/media provenance, Windows preflight "
             "and reproducible read-only contracts; do not confuse declared JSON with "
             "independent proof.\n"
@@ -314,13 +319,447 @@ def sync(root: Path, *, dry_run: bool = False) -> dict:
             "issue": created["number"]}
 
 
+# The existing issue publisher is reused; no PR/code/merge authority.
+REPAIR_KEY = re.compile(
+    r"<!-- GASLUX-STALE-CANDIDATE-V1:([1-9][0-9]{0,5}):([0-9a-f]{40}) -->"
+)
+
+
+def repair_eligible(row, number, role, head):
+    return (
+        type(row) is dict and row.get("pr") == number and row.get("role") == role
+        and row.get("head") == head and isinstance(row.get("base"), str)
+        and SHA.fullmatch(row["base"]) is not None
+        and row.get("exact_scope_verified") is True
+        and row.get("current_base_verified") is False
+        and row.get("ci_verified") is True
+        and row.get("ci_workflow_provenance_verified") is True
+        and row.get("technical_objection") is False
+        and row.get("merge_authorized") is False
+        and row.get("release_eligible") is False
+        and row.get("next_action") == "REFRESH_CANDIDATE_BASE"
+    )
+
+
+def repair_issue_payload(number, head, base, role):
+    if (type(number) is not int or not 1 <= number <= 999999
+            or not isinstance(head, str) or not SHA.fullmatch(head)
+            or not isinstance(base, str) or not SHA.fullmatch(base)
+            or role not in ("zorin", "bazzite", "cachyos", "popos", "q4os")):
+        raise ValueError("Invalid repair identity")
+    return {
+        "title": f"[GASLUX-REPAIR] #{number} stale candidate base",
+        "body": (
+            f"<!-- GASLUX-STALE-CANDIDATE-V1:{number}:{head} -->\n"
+            "Automatically routed by trusted Safety/Integrator triage. "
+            "NEEDS_SCOPE_REVIEW; not a code or merge authorization.\n\n"
+            f"- Backend: {role}; candidate: #{number}; exact HEAD: {head}\n"
+            f"- Observed dev: {base}\n"
+            "- Compare original parent to current dev, preserve the old PR and "
+            "any unique evidence; check if its helper is already integrated.\n"
+            "- If still needed, prepare a fresh exact-scope proposal only after "
+            "the applicable existing Factory/Safety gates. Re-run CI on its "
+            "new HEAD; previous CI cannot transfer.\n"
+            "- No automatic close, rebase, force-push, installation, disk writes, "
+            "approval, merge or release. Resolve this task in the same issue; "
+            "a changed dev alone must not create another issue.\n"
+        ),
+    }
+
+
+def repair_keys(issues):
+    keys = set()
+    for issue in issues:
+        if type(issue) is not dict:
+            raise ValueError("Malformed issue history")
+        user = issue.get("user") or {}
+        body = issue.get("body") or ""
+        if (issue.get("repository_url") != API or "pull_request" in issue
+                or user.get("login") != TRUSTED_TASK_BOT
+                or type(user.get("id")) is not int or user["id"] != 41898282
+                or not isinstance(body, str)):
+            continue
+        first, sep, _ = body.partition("\n")
+        match = REPAIR_KEY.fullmatch(first)
+        if sep and match and issue.get("title") == (
+                f"[GASLUX-REPAIR] #{match[1]} stale candidate base"):
+            keys.add((int(match[1]), match[2]))
+    return keys
+
+
+def sync_admission_repair(*, dry_run=False):
+    """Recompute current Safety result; never consume untrusted report artifacts."""
+    if (os.getenv("GITHUB_REPOSITORY") != REPO
+            or os.getenv("GITHUB_REF") != "refs/heads/main"
+            or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true"
+            or os.getenv("GITHUB_EVENT_NAME") not in ("push", "schedule", "workflow_dispatch")):
+        raise RuntimeError("Trusted unpaused main event required")
+    import gaslux_distro_admission as admission
+    candidates = admission.discover_candidates()
+    tracked = repair_keys(all_issues())
+    for number, (role, head) in candidates.items():
+        if (number, head) in tracked:
+            continue
+        row = admission.inspect(number, role, None, expected_head=head)
+        if not repair_eligible(row, number, role, head):
+            continue
+        payload = repair_issue_payload(number, head, row["base"], role)
+        if dry_run:
+            return {"status": "repair_dry_run", "pr": number, "head": head}
+        # Recompute rather than trust the earlier assessment, then check live
+        # dev and dedup again. The ordinary issue API is the only write route.
+        fresh = admission.inspect(number, role, None, expected_head=head)
+        if not repair_eligible(fresh, number, role, head) or fresh["base"] != row["base"]:
+            return {"status": "repair_retry", "pr": number}
+        if (number, head) in repair_keys(all_issues()):
+            return {"status": "repair_already_queued", "pr": number}
+        if api("GET", "/git/ref/heads/dev").get("object", {}).get("sha") != row["base"]:
+            return {"status": "repair_retry", "pr": number}
+        if admission.discover_candidates().get(number) != (role, head):
+            return {"status": "repair_retry", "pr": number}
+        created = api("POST", "/issues", payload)
+        if (type(created) is not dict or type(created.get("number")) is not int
+                or created["number"] <= 0):
+            raise RuntimeError("GitHub did not confirm repair issue")
+        return {"status": "repair_issue_created", "pr": number, "head": head,
+                "issue": created["number"]}
+    return {"status": "no_repair_action"}
+
+
+def discover_missing_implementations(root):
+    """Discover explicit stubs and missing APIs demanded by existing tests."""
+    root = root.resolve(strict=True)
+    result = []
+    seen = set()
+    def read_python(path):
+        if path.resolve(strict=True) != path or path.stat().st_size > 262144:
+            raise ValueError("Untrusted or oversized Python source")
+        return path.read_bytes()
+    for role, (source, test, _) in TASKS.items():
+        path = root / source
+        if not path.is_file():
+            continue
+        raw = read_python(path)
+        tree = ast.parse(raw, filename=source)
+        suite = "auto_tests/tests/" + test
+        def record(symbol, line, reason, witness):
+            if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]{0,79}", symbol):
+                return
+            identity = hashlib.sha256(f"{source}:{symbol}".encode()).hexdigest()
+            if identity in seen:
+                return
+            seen.add(identity)
+            result.append({"key": identity, "role": role, "source": source,
+                           "test": suite, "symbol": symbol, "line": line,
+                           "witness": witness, "source_sha256": hashlib.sha256(raw).hexdigest(),
+                           "reason": reason, "code_authorized": False,
+                           "installation_authorized": False, "release_eligible": False})
+            if len(result) > 64:
+                raise ValueError("Unbounded implementation gap inventory")
+        for node in tree.body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                continue
+            body = list(node.body)
+            if (body and isinstance(body[0], ast.Expr)
+                    and isinstance(body[0].value, ast.Constant)
+                    and isinstance(body[0].value.value, str)):
+                body.pop(0)
+            if len(body) != 1 or not isinstance(body[0], ast.Raise):
+                continue
+            exc = body[0].exc
+            if isinstance(exc, ast.Call):
+                exc = exc.func
+            if isinstance(exc, ast.Name) and exc.id == "NotImplementedError":
+                record(node.name, node.lineno, "EXPLICIT_NOT_IMPLEMENTED", source)
+        # Only direct top-level test imports and actual call sites, not comments,
+        # speculative model output or attributes of arbitrary objects. Skip
+        # modules with dynamic/conditional exports rather than guess absence.
+        test_path = root / suite
+        if not test_path.is_file():
+            continue
+        exported = set()
+        dynamic = False
+        for node in tree.body:
+            if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+                exported.add(node.name)
+                dynamic |= node.name == "__getattr__"
+            elif isinstance(node, (ast.Import, ast.ImportFrom)):
+                for alias in node.names:
+                    dynamic |= alias.name == "*"
+                    exported.add(alias.asname or alias.name.split(".")[0])
+            elif isinstance(node, (ast.Assign, ast.AnnAssign)):
+                targets = node.targets if isinstance(node, ast.Assign) else [node.target]
+                for target in targets:
+                    if isinstance(target, ast.Name):
+                        exported.add(target.id)
+                    else:
+                        dynamic = True
+            elif isinstance(node, (ast.If, ast.Try, ast.With, ast.For, ast.While, ast.Match)):
+                dynamic = True
+        if dynamic:
+            continue
+        test_tree = ast.parse(read_python(test_path), filename=suite)
+        called = {node.func.id for node in ast.walk(test_tree)
+                  if isinstance(node, ast.Call) and isinstance(node.func, ast.Name)}
+        module = Path(source).stem
+        for node in test_tree.body:
+            if not isinstance(node, ast.ImportFrom) or node.level or node.module != module:
+                continue
+            for alias in node.names:
+                if alias.name not in exported and (alias.asname or alias.name) in called:
+                    record(alias.name, node.lineno, "TEST_REQUIRES_MISSING_API", suite)
+    return result
+
+
+def sync_implementation_gap(root, *, dry_run=False, eligible_reason=None):
+    """Route one concrete source gap to the backend; never infer write authority."""
+    if (os.getenv("GITHUB_REPOSITORY") != REPO
+            or os.getenv("GITHUB_REF") != "refs/heads/main"
+            or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
+            or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true"):
+        raise RuntimeError("Trusted unpaused main event required")
+    base = subprocess.check_output(
+        ["git", "-C", str(root), "rev-parse", "HEAD"], text=True, timeout=12).strip()
+    if not SHA.fullmatch(base) or api("GET", "/git/ref/heads/dev")["object"]["sha"] != base:
+        raise ValueError("Unpinned source discovery")
+    candidates = discover_missing_implementations(root)
+    if eligible_reason is not None:
+        if not dry_run or eligible_reason != "TEST_REQUIRES_MISSING_API":
+            raise ValueError("Invalid dynamic development selection")
+        candidates = [row for row in candidates if row["reason"] == eligible_reason]
+    if not candidates:
+        return {"status": "no_unclaimed_implementation_gap", "discovered": 0}
+    def tracked(issues, marker, title):
+        return any((i.get("user") or {}).get("id") == 41898282
+                   and (i.get("user") or {}).get("login") == TRUSTED_TASK_BOT
+                   and i.get("repository_url") == API and i.get("title") == title
+                   and str(i.get("body", "")).splitlines()[:1] == [marker]
+                   for i in issues)
+    issues = all_issues()
+    import gaslux_distro_admission as admission
+    prs = admission.complete_page(admission.api("GET", "/pulls?state=open&base=dev&per_page=100"))
+    for row in candidates:
+        marker = f"<!-- GASLUX-IMPLEMENTATION-GAP-V1:{row['key']} -->"
+        title = f"[GASLUX-GAP] {row['role']}: implement {row['symbol']}"
+        # An already routed open issue is a development request, not a
+        # prohibition on a separately isolated dry-run selection. A closed
+        # tracked issue must not be silently reopened by the worker.
+        if tracked(issues, marker, title) and (eligible_reason is None or
+                not tracked([i for i in issues if i.get("state") == "open"], marker, title)):
+            continue
+        # Defer if another same-repository candidate changes the actual file.
+        overlap = False
+        for pr in prs:
+            if (pr["head"].get("repo") or {}).get("full_name") != REPO:
+                continue
+            n = pr["number"]
+            if type(n) is not int or not 1 <= n <= 1000000:
+                raise ValueError("Malformed PR identity")
+            files = admission.complete_page(admission.api("GET", f"/pulls/{n}/files?per_page=100"))
+            if any(item.get("filename") == row["source"] or
+                   item.get("previous_filename") == row["source"] for item in files):
+                overlap = True
+                break
+        if overlap:
+            continue
+        payload = {"title": title, "body": (
+            marker + "\n\n"
+            f"Concrete source gap, assigned backend: {row['role']}.\n"
+            f"Exact dev: {base}; source: {row['source']}; "
+            f"Witness: {row['witness']}:{row['line']} ({row['reason']}); "
+            f"symbol: {row['symbol']}; source SHA256: {row['source_sha256']}.\n"
+            f"Regression suite: {row['test']}.\n"
+            "Investigate callers and native semantics; reproduce the missing behavior, "
+            "define positive and adversarial tests, then propose the smallest isolated implementation. "
+            "This discovery does not authorize arbitrary code, protected writers, installation, "
+            "merge or release. Preserve independent Safety and backend acceptance.")}
+        if dry_run:
+            return {"status": "implementation_gap_dry_run", "base": base, **row}
+        if (api("GET", "/git/ref/heads/dev")["object"]["sha"] != base
+                or tracked(all_issues(), marker, title)):
+            return {"status": "implementation_gap_retry"}
+        created = api("POST", "/issues", payload)
+        if type(created.get("number")) is not int or created["number"] <= 0:
+            raise RuntimeError("GitHub did not confirm gap issue")
+        return {"status": "implementation_gap_routed", "issue": created["number"], "base": base, **row}
+    return {"status": "no_unclaimed_implementation_gap", "discovered": len(candidates)}
+
+
+def sync_supervised_feedback(*, dry_run=False):
+    """Route exact, independently authenticated negative review to correction.
+
+    The review's prose remains untrusted data: it is never passed as a shell
+    command, scope grant, or approval. Keep the rejected original intact.
+    """
+    if (os.getenv("GITHUB_REPOSITORY") != REPO
+            or os.getenv("GITHUB_REF") != "refs/heads/main"
+            or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
+            or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true"):
+        raise RuntimeError("Trusted unpaused main event required")
+    import gaslux_supervised_admission as gate
+    import gaslux_distro_admission as admission
+    reviewer, owners = gate.configured_reviewers()
+    if reviewer is None or reviewer in admission.BOTS.values() or reviewer in owners.values():
+        return {"status": "independent_safety_identity_required"}
+    issues = all_issues()
+
+    def tracked(rows, marker, title):
+        return any((i.get("user") or {}).get("id") == 41898282
+                   and (i.get("user") or {}).get("login") == TRUSTED_TASK_BOT
+                   and i.get("repository_url") == API and i.get("title") == title
+                   and str(i.get("body", "")).splitlines()[:1] == [marker] for i in rows)
+
+    for number, (role, scope, head) in sorted(gate.discover().items()):
+        owner = owners.get(role)
+        if owner is None or owner == reviewer or owner in admission.BOTS.values():
+            continue
+        pr = admission.api("GET", f"/pulls/{number}")
+        base = admission.api("GET", "/git/ref/heads/dev")["object"]["sha"]
+        author = (pr.get("user") or {}).get("id")
+        if (not admission.publisher_ok(pr.get("user") or {}) or author in (owner, reviewer)
+                or pr.get("state") != "open" or pr["head"]["sha"] != head
+                or pr["base"]["ref"] != "dev" or pr["base"]["sha"] != base
+                or pr["head"]["repo"]["full_name"] != REPO
+                or pr["base"]["repo"]["full_name"] != REPO
+                or not admission.valid_sha(base)):
+            continue
+
+        def negative():
+            rows = admission.complete_page(admission.api(
+                "GET", f"/pulls/{number}/reviews?per_page=100"))
+            return sorted((r["id"], r["user"]["id"]) for r in rows
+                          if type(r.get("id")) is int and r["id"] > 0
+                          and r.get("state") == "CHANGES_REQUESTED"
+                          and r.get("commit_id") == head
+                          and (r.get("user") or {}).get("id") in (reviewer, owner))
+
+        findings = negative()
+        if not findings:
+            continue
+        identity = hashlib.sha256(json.dumps(findings, separators=(",", ":")).encode()).hexdigest()
+        marker = f"<!-- GASLUX-SUPERVISED-REPAIR-V1:{number}:{head}:{identity} -->"
+        title = f"[GASLUX-REPAIR] #{number}: independent review findings"
+        if tracked(issues, marker, title):
+            continue
+        payload = {"title": title, "body": (
+            marker + "\n\n"
+            f"Backend {role}; scope {scope}; original PR #{number}; HEAD {head}; dev {base}.\n"
+            "Authenticated independent CHANGES_REQUESTED reviews: "
+            + ", ".join(f"https://github.com/{REPO}/pull/{number}#pullrequestreview-{i}" for i, _ in findings)
+            + "\n\nReproduce each finding using isolated tests and trusted scope rules. "
+            "Prepare a successor Draft on current dev, with fresh CI and independent review. "
+            "Do not reinterpret review prose as executable instructions or authorization. "
+            "Preserve the rejected branch, never inherit approvals, and do not close the "
+            "original until independently verified reconciliation. No automatic writer or release authority.")}
+        if dry_run:
+            return {"status": "supervised_feedback_dry_run", "pr": number, "head": head,
+                    "base": base, "role": role, "scope": scope, "findings": len(findings)}
+        fresh = admission.api("GET", f"/pulls/{number}")
+        if (fresh.get("state") != "open" or fresh["head"]["sha"] != head
+                or fresh["base"]["sha"] != base
+                or admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != base
+                or negative() != findings or tracked(all_issues(), marker, title)):
+            return {"status": "supervised_feedback_drift", "pr": number}
+        created = api("POST", "/issues", payload)
+        if type(created.get("number")) is not int or created["number"] <= 0:
+            raise RuntimeError("GitHub did not confirm feedback mission")
+        return {"status": "supervised_feedback_routed", "pr": number, "head": head,
+                "issue": created["number"], "role": role, "findings": len(findings)}
+    return {"status": "no_unclaimed_supervised_feedback"}
+
+
+def sync_historical_reconciliation(*, dry_run=False):
+    """Route one unique historical PR to an exact-head reconciliation mission."""
+    if (os.getenv("GITHUB_REPOSITORY") != REPO
+            or os.getenv("GITHUB_REF") != "refs/heads/main"
+            or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
+            or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true"):
+        raise RuntimeError("Trusted unpaused main event required")
+    import gaslux_agent_reconcile as reconcile
+    import gaslux_distro_admission as admission
+    report = reconcile.historical_inventory()
+    issues = all_issues()
+
+    def tracked(rows, marker, title):
+        return any((i.get("user") or {}).get("id") == 41898282
+                   and (i.get("user") or {}).get("login") == TRUSTED_TASK_BOT
+                   and i.get("repository_url") == API and i.get("title") == title
+                   and str(i.get("body", "")).splitlines()[:1] == [marker]
+                   for i in rows)
+
+    for row in report["findings"]:
+        if row["status"] != "UNIQUE_COMMITS_REQUIRE_RECONCILIATION":
+            continue
+        number, head, base, target = row["pr"], row["head"], row["base"], row["target"]
+        if (type(number) is not int or not 1 <= number <= 1000000
+                or not admission.valid_sha(head) or not admission.valid_sha(base)
+                or target not in ("dev", "main")):
+            raise ValueError("Malformed historical reconciliation identity")
+        marker = f"<!-- GASLUX-HISTORICAL-RECONCILE-V1:{number}:{head} -->"
+        title = f"[GASLUX-RECONCILE] #{number}: preserve unique changes"
+        if tracked(issues, marker, title):
+            continue
+        pr = admission.api("GET", f"/pulls/{number}")
+        if (pr.get("state") != "open" or pr["head"]["sha"] != head
+                or pr["base"]["ref"] != target or pr["base"]["sha"] != base
+                or pr["head"]["repo"]["full_name"] != REPO
+                or pr["base"]["repo"]["full_name"] != REPO):
+            continue
+        relation = admission.api("GET", f"/compare/{head}...{base}")
+        if (type(relation.get("behind_by")) is not int
+                or relation["behind_by"] <= 0
+                or relation["behind_by"] != row["unique_head_commits"]):
+            continue
+        payload = {"title": title, "body": (
+            marker + "\n\n"
+            f"Historical PR #{number}, exact HEAD {head}, target {target} at {base}.\n"
+            f"Unique historical commits: {row['unique_head_commits']}.\n\n"
+            "Compare ancestry and exact changed paths; identify superseding work, "
+            "unresolved review findings, conflicting changes and distinct evidence. "
+            "Preserve the original branch and PR. If needed, prepare a minimal "
+            "successor Draft with fresh tests and independent review; do not transfer "
+            "historical approvals or close the original before proving equivalence. "
+            "No force-push, automatic merge, disk writes or release authorization.")}
+        if dry_run:
+            return {"status": "historical_reconciliation_dry_run", "pr": number,
+                    "head": head, "base": base, "target": target}
+        fresh = admission.api("GET", f"/pulls/{number}")
+        if (fresh["head"]["sha"] != head or fresh["base"]["sha"] != base
+                or fresh.get("state") != "open"
+                or admission.api("GET", f"/git/ref/heads/{target}")["object"]["sha"] != base
+                or tracked(all_issues(), marker, title)):
+            return {"status": "historical_reconciliation_drift"}
+        created = api("POST", "/issues", payload)
+        if type(created.get("number")) is not int or created["number"] <= 0:
+            raise RuntimeError("GitHub did not confirm reconciliation issue")
+        return {"status": "historical_reconciliation_routed", "pr": number,
+                "issue": created["number"], "head": head, "base": base, "target": target}
+    return {"status": "no_unclaimed_historical_reconciliation"}
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--repo", type=Path, required=True)
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--with-admission-repair", action="store_true")
+    parser.add_argument("--with-implementation-discovery", action="store_true")
+    parser.add_argument("--historical-reconciliation", action="store_true")
+    parser.add_argument("--supervised-feedback", action="store_true")
     args = parser.parse_args()
-    print(json.dumps(sync(args.repo.resolve(strict=True), dry_run=args.dry_run),
-                     sort_keys=True))
+    if args.supervised_feedback:
+        print(json.dumps(sync_supervised_feedback(dry_run=args.dry_run), sort_keys=True))
+        return
+    if args.historical_reconciliation:
+        print(json.dumps(sync_historical_reconciliation(dry_run=args.dry_run), sort_keys=True))
+        return
+    result = sync_admission_repair(dry_run=args.dry_run) if args.with_admission_repair else {
+        "status": "no_repair_action"
+    }
+    if result["status"] == "no_repair_action" and args.with_implementation_discovery:
+        result = sync_implementation_gap(args.repo.resolve(strict=True), dry_run=args.dry_run)
+    if result["status"] in ("no_repair_action", "no_unclaimed_implementation_gap"):
+        result = sync(args.repo.resolve(strict=True), dry_run=args.dry_run)
+    print(json.dumps(result, sort_keys=True))
 
 
 if __name__ == "__main__":

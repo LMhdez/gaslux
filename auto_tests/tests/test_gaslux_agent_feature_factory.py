@@ -726,5 +726,401 @@ class FeatureFactoryTests(unittest.TestCase):
                 publisher.index("GH_TOKEN: ${{ steps.publish_identity.outputs.token"),
             )
 
+class DeterministicRepairTests(unittest.TestCase):
+    HEAD, BASE = "a" * 40, "b" * 40
+
+    def test_repair_artifact_bound_to_identity_bytes_and_non_writer(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / factory.TASKS["zorin"][0]
+            path.parent.mkdir(parents=True)
+            path.write_text("# existing source\n")
+            evidence = root / "evidence"
+            with patch.object(factory, "git", return_value=self.BASE):
+                factory.generate_repair(root, evidence, "zorin", self.BASE, 395, self.HEAD)
+                result = factory.verify(root, evidence, "zorin", self.BASE, execute=True,
+                                        repair_pr=395, repair_head=self.HEAD)
+                self.assertEqual(result["producer"], "trusted-fixed-lifecycle-repair-v1")
+                self.assertNotIn("model", result)
+                for args in ({}, {"repair_pr": 396, "repair_head": self.HEAD},
+                             {"repair_pr": 395, "repair_head": self.BASE}):
+                    with self.assertRaises(ValueError):
+                        factory.verify(root, evidence, "zorin", self.BASE, execute=False, **args)
+                raw = (evidence / "addition.py").read_bytes()
+                (evidence / "addition.py").write_bytes(raw.replace(b"False", b"True"))
+                with self.assertRaises(ValueError):
+                    factory.verify(root, evidence, "zorin", self.BASE, execute=False,
+                                   repair_pr=395, repair_head=self.HEAD)
+
+    def test_repair_role_and_identity_fail_closed(self):
+        for number, head in ((True, self.HEAD), (0, self.HEAD), (395, None),
+                             (None, self.HEAD), (395, "bad")):
+            with self.assertRaises(ValueError):
+                factory.repair_identity(number, head)
+        with self.assertRaises(ValueError):
+            factory.repair_addition("mint")
+        for role in ("zorin", "cachyos", "popos", "q4os", "bazzite"):
+            factory.validate_addition(role, factory.repair_addition(role), execute=True)
+
+    def test_repair_publisher_denies_changed_eligibility_before_git_or_push(self):
+        env = {"GITHUB_REPOSITORY": factory.REPO, "GITHUB_REF": "refs/heads/main",
+               "GH_TOKEN": "fixture-publisher", "GASLUX_REPAIR_READ_TOKEN": "fixture-reader"}
+        with patch.dict("os.environ", env, clear=True), \
+             patch.object(factory, "verify"), \
+             patch.object(factory, "repair_plan", return_value=None) as plan, \
+             patch.object(factory, "git") as git:
+            with self.assertRaisesRegex(RuntimeError, "no longer eligible"):
+                factory.publish(Path("."), Path("."), "zorin", self.BASE,
+                                repair_pr=395, repair_head=self.HEAD)
+            plan.assert_called_once()
+            git.assert_not_called()
+            self.assertEqual(__import__("os").environ["GH_TOKEN"], "fixture-publisher")
+
+    def test_repair_planner_rejects_drift_duplicate_and_existing_helper(self):
+        import sys
+        sys.path.insert(0, str(SCRIPT.parent))
+        import gaslux_distro_admission as admission
+        old = "c" * 40
+        source, test, _ = factory.TASKS["zorin"]
+        original = {
+            "number": 395,
+            "head": {"sha": self.HEAD, "ref": factory.origin_branch("zorin", old),
+                     "repo": {"full_name": factory.REPO}},
+            "base": {"ref": "dev", "repo": {"full_name": factory.REPO}},
+        }
+        good = {"pr": 395, "role": "zorin", "head": self.HEAD, "base": self.BASE,
+                "exact_scope_verified": True, "current_base_verified": False,
+                "ci_verified": True, "ci_workflow_provenance_verified": True,
+                "technical_objection": False, "merge_authorized": False,
+                "release_eligible": False, "next_action": "REFRESH_CANDIDATE_BASE"}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            target = root / source
+            target.parent.mkdir(parents=True)
+            for scenario in ("valid", "duplicate", "source_drift", "test_drift",
+                             "diverged", "objection", "history", "ref_exists", "already_done"):
+                with self.subTest(scenario=scenario):
+                    target.write_text(factory.repair_addition("zorin") if scenario == "already_done"
+                                      else "# existing source\n")
+                    rows = [original, {**original, "number": 500}] if scenario == "duplicate" else [original]
+                    def get(method, route):
+                        self.assertEqual(method, "GET")
+                        if route == "/git/ref/heads/dev":
+                            return {"object": {"sha": self.BASE}}
+                        if route == "/pulls?state=open&base=dev&per_page=100":
+                            return rows
+                        if route == "/pulls/395":
+                            return original
+                        if route == f"/compare/{old}...{self.BASE}":
+                            return {"status": "diverged" if scenario == "diverged" else "ahead",
+                                    "merge_base_commit": {"sha": old}}
+                        if route.startswith("/contents/"):
+                            drift = (scenario == "source_drift" and source in route
+                                     or scenario == "test_drift" and test in route)
+                            return {"type": "file", "sha": "d" * 40 if drift and
+                                    route.endswith(self.BASE) else "e" * 40}
+                        if route.startswith("/pulls?state=all"):
+                            return [original] if scenario == "history" else []
+                        self.fail(f"Unexpected repair read: {route}")
+                    row = {**good, "technical_objection": scenario == "objection"}
+                    with patch.object(factory, "git", return_value=self.BASE), \
+                         patch.object(admission, "discover_candidates",
+                                      return_value={395: ("zorin", self.HEAD)}), \
+                         patch.object(admission, "inspect", return_value=row), \
+                         patch.object(admission, "candidate_append", return_value=(old, None)), \
+                         patch.object(admission, "api", side_effect=get), \
+                         patch.object(factory.subprocess, "run", return_value=subprocess.CompletedProcess(
+                             [], 0 if scenario == "ref_exists" else 1, "", "HTTP 404")):
+                        diagnostics = []
+                        plan = factory.repair_plan(root, self.BASE, diagnostics=diagnostics)
+                    if scenario == "history":
+                        self.assertEqual(diagnostics[0]["reason"], "SUCCESSOR_PR_HISTORY_EXISTS")
+                        self.assertEqual(diagnostics[0]["build_only_plan"]["repair_pr"], 395)
+                        self.assertIsNone(plan)
+                    if scenario == "valid":
+                        self.assertEqual(plan["repair_pr"], 395)
+                        self.assertEqual(plan["repair_head"], self.HEAD)
+                    else:
+                        self.assertIsNone(plan)
+
+    def test_create_only_ref_rejects_concurrent_creation_and_identical_ref(self):
+        # Real Git protocol on disposable local repositories, no GitHub writes.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "work"
+            remote = Path(tmp) / "remote.git"
+            root.mkdir()
+            def cmd(*args):
+                return subprocess.check_output(
+                    ["git", "-C", str(root), *args],
+                    text=True, stderr=subprocess.STDOUT, timeout=20).strip()
+            subprocess.run(["git", "init", "--bare", str(remote)], check=True,
+                           capture_output=True, timeout=20)
+            cmd("init")
+            cmd("config", "user.name", "Safety fixture")
+            cmd("config", "user.email", "fixture@example.invalid")
+            cmd("remote", "add", "origin", str(remote))
+            (root / "data").write_text("baseline\n")
+            cmd("add", "data")
+            cmd("commit", "-m", "baseline")
+            base = cmd("rev-parse", "HEAD")
+            ref = "refs/heads/" + factory.origin_branch("zorin", base)
+            self.assertEqual(cmd("ls-remote", "origin", ref), "")
+            (root / "data").write_text("candidate\n")
+            cmd("commit", "-am", "candidate")
+            candidate = cmd("rev-parse", "HEAD")
+            # The ref appears after the absence check, at an ancestor.
+            cmd("push", "origin", f"{base}:{ref}")
+            # RED: historical ordinary push is a permitted fast-forward.
+            cmd("push", "origin", f"HEAD:{ref}")
+            self.assertEqual(cmd("ls-remote", "origin", ref).split()[0], candidate)
+            # Use an independent second role for the actual GREEN race.
+            ref2 = "refs/heads/" + factory.origin_branch("bazzite", base)
+            self.assertEqual(cmd("ls-remote", "origin", ref2), "")
+            cmd("push", "origin", f"{base}:{ref2}")
+            with self.assertRaises(subprocess.CalledProcessError):
+                factory.create_successor_ref(root, "bazzite", base)
+            self.assertEqual(cmd("ls-remote", "origin", ref2).split()[0], base)
+            # Positive: create exclusively on an absent ref.
+            ref3 = "refs/heads/" + factory.origin_branch("q4os", base)
+            self.assertEqual(cmd("ls-remote", "origin", ref3), "")
+            factory.create_successor_ref(root, "q4os", base)
+            self.assertEqual(cmd("ls-remote", "origin", ref3).split()[0], candidate)
+            # Already identical is not an exclusive create.
+            with self.assertRaises((RuntimeError, subprocess.CalledProcessError)):
+                factory.create_successor_ref(root, "q4os", base)
+            self.assertEqual(cmd("ls-remote", "origin", ref3).split()[0], candidate)
+
+    def test_workflow_reuses_existing_isolated_jobs(self):
+        workflow = (SCRIPT.parents[2] /
+                    ".github/workflows/gaslux-agent-feature-factory.yml").read_text()
+        model = workflow.split("  model:\n", 1)[1].split("  safety:\n", 1)[0]
+        safety = workflow.split("  safety:\n", 1)[1].split("  publish_draft:\n", 1)[0]
+        publisher = workflow.split("  publish_draft:\n", 1)[1].split("  triage_missing_gates:\n", 1)[0]
+        self.assertIn("if: needs.select.outputs.worker == 'direct'", model)
+        self.assertIn("if: needs.select.outputs.worker == 'opencode'", model)
+        self.assertIn("if: needs.select.outputs.worker != 'opencode'", model)
+        for part in (model, safety, publisher):
+            self.assertIn('--repair-pr "$REPAIR_PR" --repair-head "$REPAIR_HEAD"', part)
+        self.assertNotIn("GASLUX_REPAIR_READ_TOKEN", model)
+        self.assertNotIn("GASLUX_REPAIR_READ_TOKEN", safety)
+        self.assertIn("needs.safety.result == 'success'", publisher)
+
+
+class SupervisedRegressionTests(unittest.TestCase):
+    BASE = "b" * 40
+
+    def fixture(self, root, role="mint"):
+        source, test, _ = factory.TASKS[role]
+        product = root / source
+        suite = root / "auto_tests/tests" / test
+        product.parent.mkdir(parents=True, exist_ok=True)
+        suite.parent.mkdir(parents=True, exist_ok=True)
+        product.write_text(valid(role))
+        suite.write_text("def load_helper():\n    pass\n")
+        return product, suite
+
+    def test_scope_from_actual_integrated_source_and_missing_regression(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            product, suite = self.fixture(root)
+            self.assertTrue(factory.supervised_gap(root, "mint"))
+            self.assertFalse(factory.supervised_gap(root, "zorin"))
+            original = suite.read_bytes()
+            evidence = root / "evidence"
+            with patch.object(factory, "git", return_value=self.BASE), \
+                 patch.object(factory, "call_model") as model:
+                factory.generate_supervised_test(root, evidence, "mint", self.BASE)
+                report = factory.verify(root, evidence, "mint", self.BASE,
+                                        execute=False, scope=factory.SUPERVISED_TEST_SCOPE)
+                model.assert_not_called()
+                self.assertEqual(report["target"], "auto_tests/tests/test_distribution_capabilities.py")
+                self.assertEqual(report["product_sha256"], factory.sha256(product.read_bytes()))
+                addition = (evidence / "addition.py").read_text()
+                before, after = factory.expected_source(
+                    root, "mint", addition, scope=factory.SUPERVISED_TEST_SCOPE)
+                self.assertEqual(before, original)
+                self.assertEqual(suite.read_bytes(), original)
+                self.assertIn(b"range(1 << len(gates))", after)
+                with self.assertRaises(ValueError):
+                    factory.verify(root, evidence, "mint", self.BASE, execute=False)
+                (evidence / "addition.py").write_text(addition.replace(" is False", " is True"))
+                with self.assertRaises(ValueError):
+                    factory.verify(root, evidence, "mint", self.BASE, execute=False,
+                                   scope=factory.SUPERVISED_TEST_SCOPE)
+                suite.write_bytes(after)
+                self.assertFalse(factory.supervised_gap(root, "mint"))
+                with self.assertRaises(ValueError):
+                    factory.supervised_test_report(root, "mint", self.BASE)
+
+    def test_dynamic_selection_and_historical_dedup(self):
+        import sys
+        sys.path.insert(0, str(SCRIPT.parent))
+        import gaslux_distro_admission as admission
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root)
+            for scenario in ("valid", "duplicate", "history", "ref", "drift"):
+                def api(method, route):
+                    self.assertEqual(method, "GET")
+                    if route == "/git/ref/heads/dev":
+                        return {"object": {"sha": "c" * 40 if scenario == "drift" else self.BASE}}
+                    if route == "/pulls?state=open&base=dev&per_page=100":
+                        return ([{"head": {"ref": "bot/gaslux-test-mint-123456789abc",
+                                          "repo": {"full_name": factory.REPO}}}]
+                                if scenario == "duplicate" else [])
+                    if route.startswith("/pulls?state=all"):
+                        return [{"number": 900, "state": "closed"}] if scenario == "history" else []
+                    self.fail(route)
+                with patch.object(factory, "git", return_value=self.BASE), \
+                     patch.object(admission, "api", side_effect=api), \
+                     patch.object(factory.subprocess, "run", return_value=subprocess.CompletedProcess(
+                         [], 0 if scenario == "ref" else 1, "", "HTTP 404")):
+                    result = factory.supervised_test_plan(root, self.BASE)
+                if scenario == "valid":
+                    self.assertEqual(result["role"], "mint")
+                    self.assertEqual(result["scope"], factory.SUPERVISED_TEST_SCOPE)
+                    self.assertIs(result["installation_authorized"], False)
+                    self.assertIs(result["release_eligible"], False)
+                else:
+                    self.assertIsNone(result)
+
+    def test_product_media_scope_uses_exact_pins_and_static_bytes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            product, suite = self.fixture(root, "zorin")
+            name, pins = factory.supervised_media_pins("zorin")
+            config = root / "release-config.json"
+            config.write_text(json.dumps({"distributions": [pins]}))
+            scope = factory.SUPERVISED_MEDIA_SCOPE
+            self.assertTrue(factory.supervised_media_gap(root, "zorin"))
+            self.assertFalse(factory.supervised_media_gap(root, "bazzite"))
+            evidence = root / "evidence"
+            with patch.object(factory, "git", return_value=self.BASE):
+                factory.generate_supervised_test(root, evidence, "zorin", self.BASE, scope=scope)
+                report = factory.verify(root, evidence, "zorin", self.BASE, execute=True, scope=scope)
+                self.assertEqual(report["target"], factory.TASKS["zorin"][0])
+                self.assertEqual(report["release_descriptor_sha256"], factory.sha256(config.read_bytes()))
+                self.assertEqual(report["regression_suite_sha256"], factory.sha256(suite.read_bytes()))
+                with patch.object(factory, "supervised_media_acceptance") as execute:
+                    factory.verify(root, evidence, "zorin", self.BASE, execute=False, scope=scope)
+                    execute.assert_not_called()
+                original = (evidence / "addition.py").read_text()
+                (evidence / "addition.py").write_text(original.replace('"installationAuthorized": False', '"installationAuthorized": True'))
+                with self.assertRaises(ValueError):
+                    factory.verify(root, evidence, "zorin", self.BASE, execute=False, scope=scope)
+                (evidence / "addition.py").write_text(original)
+                config.write_text(json.dumps({"distributions": [{**pins, "isoInstallerSizeBytes": float(pins["isoInstallerSizeBytes"])}]}))
+                self.assertFalse(factory.supervised_media_gap(root, "zorin"))
+                with self.assertRaises(ValueError):
+                    factory.verify(root, evidence, "zorin", self.BASE, execute=False, scope=scope)
+                config.write_text(json.dumps({"distributions": [pins]}))
+                product.write_text(product.read_text() + "\n" + original)
+                self.assertFalse(factory.supervised_media_gap(root, "zorin"))
+
+    def test_product_scope_detects_existing_function_on_other_open_branch(self):
+        import sys
+        sys.path.insert(0, str(SCRIPT.parent))
+        import gaslux_distro_admission as admission
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            self.fixture(root, "zorin")
+            name, pins = factory.supervised_media_pins("zorin")
+            (root / "release-config.json").write_text(json.dumps({"distributions": [pins]}))
+            path = factory.TASKS["zorin"][0]
+            rows = [{"number": 123, "head": {"ref": "other-proposal", "sha": "c" * 40,
+                                             "repo": {"full_name": factory.REPO}}}]
+            def api(method, route):
+                self.assertEqual(method, "GET")
+                if route == "/git/ref/heads/dev":
+                    return {"object": {"sha": self.BASE}}
+                if route == "/pulls?state=open&base=dev&per_page=100":
+                    return rows
+                if route == "/pulls/123/files?per_page=100":
+                    return [{"filename": path, "status": "modified"}]
+                self.fail(route)
+            with patch.object(factory, "git", return_value=self.BASE), \
+                 patch.object(admission, "api", side_effect=api), \
+                 patch.object(admission, "source_at", return_value=f"def {name}(".encode()):
+                self.assertIsNone(factory.supervised_scope_plan(
+                    root, self.BASE, factory.SUPERVISED_MEDIA_SCOPE))
+
+    def test_real_git_publication_for_both_scopes_is_draft_only(self):
+        import os
+        for role, scope in (("mint", factory.SUPERVISED_TEST_SCOPE),
+                            ("zorin", factory.SUPERVISED_MEDIA_SCOPE)):
+            for collision in (False, True):
+                with self.subTest(role=role, collision=collision), tempfile.TemporaryDirectory() as tmp:
+                    root = Path(tmp) / "work"
+                    remote = Path(tmp) / "remote.git"
+                    evidence = Path(tmp) / "evidence"
+                    root.mkdir()
+                    product, suite = self.fixture(root, role)
+                    if scope == factory.SUPERVISED_MEDIA_SCOPE:
+                        _, pins = factory.supervised_media_pins(role)
+                        (root / "release-config.json").write_text(json.dumps({"distributions": [pins]}))
+                    def cmd(*args):
+                        return subprocess.check_output(["git", "-C", str(root), *args],
+                                                       text=True, stderr=subprocess.STDOUT, timeout=20).strip()
+                    subprocess.run(["git", "init", "--bare", str(remote)], check=True,
+                                   capture_output=True, timeout=20)
+                    cmd("init", "-b", "dev")
+                    cmd("config", "user.name", "Fixture")
+                    cmd("config", "user.email", "fixture@example.invalid")
+                    cmd("remote", "add", "origin", str(remote))
+                    cmd("add", ".")
+                    cmd("commit", "-m", "fixture base")
+                    cmd("push", "origin", "HEAD:refs/heads/dev")
+                    base = cmd("rev-parse", "HEAD")
+                    factory.generate_supervised_test(root, evidence, role, base, scope=scope)
+                    report = factory.verify(root, evidence, role, base, execute=True, scope=scope)
+                    branch = factory.supervised_branch(role, base, scope)
+                    ref = "refs/heads/" + branch
+                    real_run = subprocess.run
+                    gh_calls = []
+                    def run(args, **kwargs):
+                        if args[:1] == ["gh"]:
+                            gh_calls.append(list(args))
+                            if args[:3] == ["gh", "auth", "setup-git"] and collision:
+                                # Simulate a concurrent creator AFTER publisher eligibility.
+                                cmd("push", "origin", f"{base}:{ref}")
+                            return subprocess.CompletedProcess(args, 0, "", "")
+                        return real_run(args, **kwargs)
+                    env = {"GITHUB_REPOSITORY": factory.REPO, "GITHUB_REF": "refs/heads/main",
+                           "GH_TOKEN": "fixture-publisher", "GASLUX_REPAIR_READ_TOKEN": "fixture-reader"}
+                    with patch.dict(os.environ, env, clear=False), \
+                         patch.object(factory, "supervised_scope_plan",
+                                      return_value={"role": role, "scope": scope, "base": base}), \
+                         patch.object(factory.subprocess, "run", side_effect=run):
+                        if collision:
+                            with self.assertRaises(subprocess.CalledProcessError):
+                                factory.publish(root, evidence, role, base, scope=scope)
+                        else:
+                            factory.publish(root, evidence, role, base, scope=scope)
+                        self.assertEqual(os.environ["GH_TOKEN"], "fixture-publisher")
+                    self.assertEqual(cmd("ls-remote", "origin", "refs/heads/dev").split()[0], base)
+                    pushed = cmd("ls-remote", "origin", ref).split()[0]
+                    creates = [args for args in gh_calls if args[:3] == ["gh", "pr", "create"]]
+                    if collision:
+                        self.assertEqual(pushed, base)
+                        self.assertEqual(creates, [])
+                    else:
+                        self.assertNotEqual(pushed, base)
+                        self.assertEqual(cmd("diff", "--name-only", base, pushed), report["target"])
+                        data = subprocess.check_output(["git", "-C", str(root), "show",
+                                                        pushed + ":" + report["target"]], timeout=20)
+                        self.assertEqual(factory.sha256(data), report["candidate_sha256"])
+                        self.assertEqual(len(creates), 1)
+                        self.assertIn("--draft", creates[0])
+                        self.assertEqual(creates[0][creates[0].index("--base") + 1], "dev")
+                        self.assertEqual(creates[0][creates[0].index("--head") + 1], branch)
+
+    def test_all_canonical_regression_templates_parse(self):
+        import ast
+        for role in factory.TASKS:
+            tree = ast.parse(factory.supervised_test_addition(role))
+            self.assertEqual(len(tree.body), 1)
+            self.assertEqual(tree.body[0].name, f"test_supervisor_{role}_lifecycle_truth_table")
+
+
 if __name__ == "__main__":
     unittest.main()
