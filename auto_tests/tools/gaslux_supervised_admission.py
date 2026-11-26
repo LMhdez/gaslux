@@ -969,7 +969,7 @@ def production_policy_observed(base):
                 continue
             conditions = detail.get("conditions")
             if (conditions == {"ref_name": {"include": ["~ALL"], "exclude": ["refs/heads/dev"]}}
-                    and "update" in by_type
+                    and by_type.get("update") == {"update_allows_fetch_and_merge": False}
                     and not any(row.get("ruleset_id") == rid for row in dev_rules)):
                 confined = True
                 matched.append((rid, detail))

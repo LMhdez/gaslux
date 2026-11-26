@@ -334,7 +334,7 @@ class ProductionConfinementTests(unittest.TestCase):
         for scenario in ("valid", "disabled", "paused", "no_main", "weak_main",
                          "missing_confinement", "wrong_pattern", "bypass", "missing_bypass",
                          "dev_covered", "missing_effective", "policy_drift", "main_drift",
-                         "stale_checkout", "unknown", "wrong_source", "missing_ci"):
+                         "stale_checkout", "unknown", "wrong_source", "missing_ci", "fetch_merge_exception"):
             main = "c" * 40
             main_rules = [
                 {"type": "deletion"}, {"type": "non_fast_forward"},
@@ -354,12 +354,14 @@ class ProductionConfinementTests(unittest.TestCase):
                      "rules": main_rules},
                 20: {**common, "id": 20,
                      "conditions": {"ref_name": {"include": ["~ALL"], "exclude": ["refs/heads/dev"]}},
-                     "rules": [{"type": "update"}]},
+                     "rules": [{"type": "update", "parameters": {"update_allows_fetch_and_merge": False}}]},
             }
             if scenario == "no_main":
                 details.pop(10)
             if scenario == "missing_confinement":
                 details.pop(20)
+            if scenario == "fetch_merge_exception":
+                details[20]["rules"][0]["parameters"]["update_allows_fetch_and_merge"] = True
             if scenario == "wrong_pattern":
                 details[20]["conditions"]["ref_name"]["include"] = ["refs/heads/main"]
             if scenario == "bypass":
