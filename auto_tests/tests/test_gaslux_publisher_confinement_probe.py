@@ -73,3 +73,24 @@ class ProbeTests(unittest.TestCase):
             self.assertTrue(out["closed_without_merge"])
             self.assertFalse(out["merge_authorized"])
             self.assertEqual(api.call_count, 2)
+
+    def test_workflow_write_probe_is_explicit_and_separate_from_review_credentials(self):
+        workflow = (Path(P.__file__).resolve().parents[2] /
+                    ".github/workflows/gaslux-agent-integrator.yml").read_text()
+        publisher = workflow.split("  paused_publisher_confinement:", 1)[1].split(
+            "  paused_integrator_confinement:", 1)[0]
+        integrator = workflow.split("  paused_integrator_confinement:", 1)[1].split(
+            "  paused_safety_credential_probe:", 1)[0]
+        for job in (publisher, integrator):
+            for required in ("github.ref == 'refs/heads/main'",
+                             "github.event_name == 'workflow_dispatch'",
+                             "inputs.paused_confinement_probe == true",
+                             "vars.GASLUX_AUTONOMY_PAUSED == 'true'",
+                             "vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false'",
+                             "vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'",
+                             "persist-credentials: false"):
+                self.assertIn(required, job)
+            self.assertNotIn("gh pr merge", job)
+        self.assertIn("environment: gaslux-main-publisher", publisher)
+        self.assertIn("needs: paused_publisher_confinement", integrator)
+        self.assertNotIn("private-key:", integrator)
