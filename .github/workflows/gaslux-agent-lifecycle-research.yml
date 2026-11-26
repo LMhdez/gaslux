@@ -7,6 +7,10 @@ on:
     - cron: '31 3 * * *' # daily official Mint live-guest attempt
   workflow_dispatch:
     inputs:
+      windows_media_preflight:
+        description: Verify privately provisioned Windows media without booting or retaining it
+        type: boolean
+        default: false
       mint_live_boot:
         description: Run the verified official Mint ISO inside a disposable QEMU guest
         type: boolean
@@ -14,10 +18,14 @@ on:
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-lifecycle-research.yml
+      - auto_tests/tools/gaslux_windows_media_preflight.py
+      - auto_tests/tests/test_gaslux_windows_media_preflight.py
   push:
     branches: [main]
     paths:
       - .github/workflows/gaslux-agent-lifecycle-research.yml
+      - auto_tests/tools/gaslux_windows_media_preflight.py
+      - auto_tests/tests/test_gaslux_windows_media_preflight.py
 
 permissions:
   contents: read
@@ -51,6 +59,8 @@ jobs:
           assert not any(line.startswith('secrets.') for line in lines)
           print('Six read-only backend roles have no GitHub write authority')
           PY
+      - name: Verify private media transport contracts (no credentials or network)
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_windows_media_preflight.py -v
       - name: Validate real current-dev research entrypoints before enabling scheduler
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -81,6 +91,46 @@ jobs:
           done
           test -f auto_tests/tools/gaslux_candidate_live_boot.sh
           bash -n auto_tests/tools/gaslux_candidate_live_boot.sh
+
+  private_windows_media:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      vars.GASLUX_WINDOWS_MEDIA_ENABLED == 'true' &&
+      ((github.event_name == 'schedule' && github.event.schedule == '31 3 * * *') ||
+       (github.event_name == 'workflow_dispatch' && inputs.windows_media_preflight == true))
+    runs-on: ubuntu-24.04
+    environment: gaslux-windows-media
+    timeout-minutes: 50
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Run offline transport contracts
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_windows_media_preflight.py -v
+      - name: Fetch and hash private Windows ISO, erase it before reporting
+        env:
+          GASLUX_WINDOWS_MEDIA_URL: ${{ secrets.GASLUX_WINDOWS_MEDIA_URL }}
+          GASLUX_WINDOWS_MEDIA_AUTHORIZATION_REF: ${{ secrets.GASLUX_WINDOWS_MEDIA_AUTHORIZATION_REF }}
+          GASLUX_WINDOWS_MEDIA_HOST: ${{ vars.GASLUX_WINDOWS_MEDIA_HOST }}
+          GASLUX_WINDOWS_MEDIA_SHA256: ${{ vars.GASLUX_WINDOWS_MEDIA_SHA256 }}
+          GASLUX_WINDOWS_MEDIA_SIZE_BYTES: ${{ vars.GASLUX_WINDOWS_MEDIA_SIZE_BYTES }}
+        run: |
+          set -euo pipefail
+          umask 077
+          mkdir -p evidence
+          python3 -B auto_tests/tools/gaslux_windows_media_preflight.py > evidence/windows-media-preflight.json
+          cat evidence/windows-media-preflight.json
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-private-windows-media-preflight
+          path: evidence/windows-media-preflight.json
+          retention-days: 14
+          if-no-files-found: error
 
   backend_research:
     if: vars.GASLUX_AUTONOMY_PAUSED != 'true' && github.repository == 'LMhdez/gaslux' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
