@@ -539,7 +539,87 @@ def ruleset_bypass_evidence(detail):
         return "unknown"
 
 
-def strict_ruleset_protected(base):
+def readonly_gh_json(endpoint):
+    """Fixed caller-selected GET endpoints only; never return credential material."""
+    raw = subprocess.run(["gh", "api", "--method", "GET", endpoint],
+                         check=True, timeout=30, capture_output=True).stdout
+    if len(raw) > 262144:
+        raise ValueError("Oversized GitHub response")
+    return json.loads(raw)
+
+
+def required_role_teams_verified(reviews, role_ids):
+    """Require separate server-enforced singleton teams, covering every path.
+
+    A generic approval count is not an atomic named-role gate. Missing team
+    support (including user-owned repositories), hidden membership, alternate
+    members or incomplete membership must deny autonomous merge. Membership
+    and policy administration must remain trusted throughout the merge.
+    """
+    if (len(role_ids) != 2 or any(type(x) is not int or x <= 0 for x in role_ids)
+            or len(set(role_ids)) != 2 or set(role_ids) & set(admission.BOTS.values())):
+        return False
+    required = reviews.get("required_reviewers")
+    if not isinstance(required, list) or not 2 <= len(required) <= 15:
+        return False
+    matched, seen = set(), set()
+    for row in required:
+        if (row.get("file_patterns") != ["**"] or row.get("minimum_approvals") != 1
+                or row.get("reviewer", {}).get("type") != "Team"):
+            continue
+        tid = row["reviewer"].get("id")
+        if type(tid) is not int or tid <= 0 or tid in seen:
+            return False
+        seen.add(tid)
+        members = admission.complete_page(readonly_gh_json(f"teams/{tid}/members?per_page=100"))
+        if len(members) == 1:
+            actor = members[0].get("id")
+            if type(actor) is int and actor in role_ids:
+                matched.add(actor)
+    return matched == set(role_ids)
+
+
+def role_review_protected(base, reviewer, owner):
+    """No classic count-only fallback for named-role authorization."""
+    return strict_ruleset_protected(base, role_ids=(reviewer, owner))
+
+
+def credential_probe(kind):
+    """During pause, check the actual independent token using GET only."""
+    report = {"kind": kind, "read_only": True, "merge_authorized": False,
+              "credential_verified": False, "roles": []}
+    if (kind not in ("safety", "owner")
+            or os.getenv("GITHUB_REPOSITORY") != admission.REPO
+            or os.getenv("GITHUB_REF") != "refs/heads/main"
+            or os.getenv("GITHUB_EVENT_NAME") not in ("push", "workflow_dispatch")
+            or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() != "true"):
+        raise ValueError("Trusted paused main probe required")
+    reviewer, owners = configured_reviewers()
+    if (type(reviewer) is not int or reviewer in admission.BOTS.values()
+            or reviewer in owners.values() or not os.getenv("GH_TOKEN")):
+        return {**report, "status": "identity_or_credential_missing"}
+    try:
+        actor = readonly_gh_json("user")
+        identity = actor.get("id")
+        if (type(identity) is not int or identity <= 0 or actor.get("type") != "User"
+                or identity in admission.BOTS.values()):
+            return {**report, "status": "unexpected_actor"}
+        roles = sorted(role for role, value in owners.items() if value == identity)
+        if ((kind == "safety" and identity != reviewer)
+                or (kind == "owner" and (identity == reviewer or not roles))):
+            return {**report, "status": "identity_mismatch"}
+        repo = readonly_gh_json("repos/" + admission.REPO)
+        perms = repo.get("permissions", {})
+        if (repo.get("full_name") != admission.REPO or perms.get("push") is not True
+                or perms.get("admin") is not False or perms.get("maintain") is not False):
+            return {**report, "status": "repository_permission_unverified"}
+        return {**report, "status": "identity_verified", "credential_verified": True,
+                "roles": roles if kind == "owner" else []}
+    except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
+        return {**report, "status": "probe_unavailable"}
+
+
+def strict_ruleset_protected(base, *, role_ids=None):
     """Accept only an active exact-dev repository ruleset with visible no-bypass policy.
 
     Effective rule listing alone does not expose bypass actors. Never infer
@@ -606,11 +686,13 @@ def strict_ruleset_protected(base):
                 continue
             if ruleset_bypass_evidence(detail) not in ("rest_empty", "graphql_empty"):
                 continue
+            if role_ids is not None and not required_role_teams_verified(reviews, role_ids):
+                continue
             # Recheck the exact base, not an inferred merge base. The GitHub
             # server enforces the strict rule at merge time.
             return admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] == base
         return False
-    except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
+    except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
         return False
 
 
@@ -687,6 +769,8 @@ def integrate_one(*, product=False):
         base = row["base"]
         if not strict_dev_protected(base):
             return {"status": "strict_base_protection_required", "pr": number, "head": head}
+        if not role_review_protected(base, reviewer, owners.get(role)):
+            return {"status": "server_role_review_protection_required", "pr": number, "head": head}
         pr = admission.api("GET", f"/pulls/{number}")
         if pr["head"]["sha"] != head or pr["base"]["sha"] != base:
             raise ValueError("Candidate drift before ready")
@@ -704,6 +788,8 @@ def integrate_one(*, product=False):
             return {"status": "waiting_for_github", "pr": number, "head": head}
         if not strict_dev_protected(base):
             return {"status": "strict_base_protection_required", "pr": number, "head": head}
+        if not role_review_protected(base, reviewer, owners.get(role)):
+            return {"status": "server_role_review_protection_required", "pr": number, "head": head}
         # Do not retry with an updated base or bypass protection. A concurrent
         # dev advance makes the exact single-parent head out of date; GitHub's
         # strict rule must reject this request at merge time.
@@ -1053,10 +1139,14 @@ if __name__ == "__main__":
     modes.add_argument("--independent-safety", action="store_true")
     modes.add_argument("--independent-owner", action="store_true")
     modes.add_argument("--audit-completed-integrations", action="store_true")
+    modes.add_argument("--probe-credential", choices=("safety", "owner"))
     args = parser.parse_args()
-    result = (audit_completed_integrations() if args.audit_completed_integrations else
+    result = (credential_probe(args.probe_credential) if args.probe_credential else
+              audit_completed_integrations() if args.audit_completed_integrations else
               independent_owner_review() if args.independent_owner else
               independent_safety_review() if args.independent_safety else
               integrate_one(product=True) if args.integrate_product else
               integrate_one() if args.integrate_test else inventory())
     print(json.dumps(result, indent=2, sort_keys=True))
+    if args.probe_credential and not result.get("credential_verified"):
+        sys.exit(1)

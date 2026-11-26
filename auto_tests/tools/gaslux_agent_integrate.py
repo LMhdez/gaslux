@@ -228,6 +228,12 @@ def strict_merge_policy(base: str) -> bool:
     return shared_admission().strict_dev_protected(base)
 
 
+def server_role_protection(checked: dict) -> bool:
+    gate = shared_admission()
+    reviewer, owners = gate.configured_reviewers()
+    return gate.role_review_protected(checked["base"], reviewer, owners.get(checked["role"]))
+
+
 def independent_merge_reviews(checked: dict) -> bool:
     """Require the actual Safety and owner identities, not just any two reviews."""
     gate = shared_admission()
@@ -283,7 +289,8 @@ def verify_before_ready(number: int, expected: str) -> dict:
     checked = inspect(number, expected)
     if checked["original_base"] != checked["base"]:
         raise StaleProposal("Exact base required before readiness")
-    if not strict_merge_policy(checked["base"]) or not independent_merge_reviews(checked):
+    if (not strict_merge_policy(checked["base"]) or not independent_merge_reviews(checked)
+            or not server_role_protection(checked)):
         raise RuntimeError("Strict protection and independent exact reviews required before readiness")
     if inspect(number, expected) != checked:
         raise StaleProposal("Candidate changed before readiness")
@@ -306,6 +313,8 @@ def merge(number: int, expected: str) -> dict:
         return {"status": "blocked", "reason": "strict_base_protection_required", "pr": number}
     if not independent_merge_reviews(checked):
         return {"status": "blocked", "reason": "independent_reviews_required", "pr": number}
+    if not server_role_protection(checked):
+        return {"status": "blocked", "reason": "server_role_review_protection_required", "pr": number}
     if api("GET", "/git/ref/heads/dev")["object"]["sha"] != checked["base"]:
         return {"status": "retry", "reason": "dev_updated", "pr": number}
     result = api("PUT", f"/pulls/{number}/merge", {

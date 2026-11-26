@@ -241,7 +241,7 @@ class SupervisedIntegrationTests(unittest.TestCase):
                "GITHUB_EVENT_NAME": "schedule", "GASLUX_AUTONOMY_PAUSED": ""}
         for scenario in ("valid", "already_ready", "denied", "drift", "blocked",
                          "base_drift", "media", "paused", "untrusted", "no_policy",
-                         "policy_drift", "server_base_race", "wrong_parent", "wrong_tree",
+                         "policy_drift", "role_policy_missing", "role_policy_drift", "server_base_race", "wrong_parent", "wrong_tree",
                          "unclosed", "missing_dev_ancestry", "advanced_dev"):
             row = self.receipt()
             second = dict(row)
@@ -296,6 +296,8 @@ class SupervisedIntegrationTests(unittest.TestCase):
                  patch.object(A, "api", side_effect=api), \
                  patch.object(gate, "strict_dev_protected",
                               side_effect=[scenario != "no_policy", scenario != "policy_drift"]), \
+                 patch.object(gate, "role_review_protected",
+                              side_effect=[scenario != "role_policy_missing", scenario != "role_policy_drift"]), \
                  patch.object(A, "single_parent",
                               return_value="c" * 40 if scenario == "wrong_parent" else BASE), \
                  patch.object(gate.subprocess, "run", side_effect=mark_ready) as mark:
@@ -316,7 +318,7 @@ class SupervisedIntegrationTests(unittest.TestCase):
                         self.assertEqual(writes, [("/pulls/500/merge", {"sha": HEAD, "merge_method": "squash"})])
                     else:
                         self.assertNotEqual(result["status"], "merged")
-                    if scenario in ("already_ready", "denied", "media", "no_policy"):
+                    if scenario in ("already_ready", "denied", "media", "no_policy", "role_policy_missing"):
                         mark.assert_not_called()
             if scenario not in ("valid", "already_ready", "advanced_dev", "server_base_race",
                                 "wrong_parent", "wrong_tree", "unclosed", "missing_dev_ancestry"):
@@ -709,6 +711,42 @@ class MultifileAdmissionTests(unittest.TestCase):
         self.assertFalse(gate.eligible_test(row))
         for name in ("safety_review_verified", "backend_owner_verified", "full_vm_acceptance_verified"):
             self.assertFalse(gate.eligible_product({**row, name: False}))
+
+
+class ActivationGateTests(unittest.TestCase):
+    def test_exact_server_role_teams_not_generic_count(self):
+        row = lambda tid: {"file_patterns": ["**"], "minimum_approvals": 1,
+                           "reviewer": {"type": "Team", "id": tid}}
+        policy = {"required_reviewers": [row(10), row(20)]}
+        for second in ([{"id": 202}], [{"id": 101}], [{"id": 202}, {"id": 303}], []):
+            with patch.object(gate, "readonly_gh_json", side_effect=[[{"id": 101}], second]):
+                self.assertEqual(gate.required_role_teams_verified(policy, (101, 202)),
+                                 second == [{"id": 202}])
+        self.assertFalse(gate.required_role_teams_verified({"required_approving_review_count": 2}, (101, 202)))
+        self.assertFalse(gate.required_role_teams_verified(policy, (101, 101)))
+        with patch.object(gate, "strict_ruleset_protected", return_value=False) as strict:
+            self.assertFalse(gate.role_review_protected(BASE, 101, 202))
+            strict.assert_called_once_with(BASE, role_ids=(101, 202))
+
+    def test_paused_probe_validates_actual_identity_without_writes(self):
+        env = {"GITHUB_REPOSITORY": A.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "workflow_dispatch", "GASLUX_AUTONOMY_PAUSED": "true",
+               "GH_TOKEN": "fixture-only"}
+        repo = {"full_name": A.REPO, "permissions": {"push": True, "admin": False, "maintain": False}}
+        for actor, kind, expected in ((101, "safety", True), (202, "owner", True),
+                                       (202, "safety", False), (101, "owner", False)):
+            with patch.dict(os.environ, env), patch.object(gate, "configured_reviewers",
+                    return_value=(101, {"mint": 202})), patch.object(gate, "readonly_gh_json",
+                    side_effect=[{"id": actor, "type": "User"}, repo]), patch.object(A, "api") as api:
+                out = gate.credential_probe(kind)
+                self.assertEqual(out["credential_verified"], expected)
+                self.assertFalse(out["merge_authorized"])
+                api.assert_not_called()
+        with patch.dict(os.environ, {**env, "GASLUX_AUTONOMY_PAUSED": "false"}), \
+                patch.object(gate, "readonly_gh_json") as read:
+            with self.assertRaises(ValueError):
+                gate.credential_probe("safety")
+            read.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -588,3 +588,55 @@ jobs:
             evidence/supervised-product-integration.json
           if-no-files-found: warn
           retention-days: 14
+
+  paused_safety_credential_probe:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'true' &&
+      vars.GASLUX_INDEPENDENT_SAFETY_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    environment: gaslux-independent-safety
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate credential with GET-only requests while paused
+        env:
+          GH_TOKEN: ${{ secrets.GASLUX_INDEPENDENT_SAFETY_TOKEN }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+        run: python3 -I auto_tests/tools/gaslux_supervised_admission.py --probe-credential safety
+
+  paused_owner_credential_probe:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'true' &&
+      vars.GASLUX_INDEPENDENT_OWNER_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 3
+    environment: gaslux-independent-owner
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Validate credential with GET-only requests while paused
+        env:
+          GH_TOKEN: ${{ secrets.GASLUX_INDEPENDENT_OWNER_TOKEN }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+        run: python3 -I auto_tests/tools/gaslux_supervised_admission.py --probe-credential owner
