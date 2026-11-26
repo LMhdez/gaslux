@@ -406,16 +406,23 @@ class ProductionConfinementTests(unittest.TestCase):
 
     def test_exact_source_pinned_required_statuses(self):
         baseline = [{"context": n, "integration_id": 15368} for n in sorted(A.COMMON_CHECKS)]
-        app = [{"context": n, "integration_id": i} for n, i in gate.APP_STATUS_SOURCES.items()]
-        self.assertTrue(gate.exact_required_checks(baseline))
-        self.assertFalse(gate.exact_required_checks(baseline, require_app_statuses=True))
-        self.assertTrue(gate.exact_required_checks(baseline + app, require_app_statuses=True))
-        for bad in (baseline + app[:1], baseline + app + app[:1],
-                    baseline + [{**app[0], "integration_id": 15368}, app[1]],
-                    baseline + [app[0], {**app[1], "integration_id": 361556198}],
-                    baseline + app + [{"context": "unrecognized", "integration_id": 5938492}],
-                    baseline[1:] + app):
-            self.assertFalse(gate.exact_required_checks(bad, require_app_statuses=True))
+        app = [{"context": gate.APP_STATUS_CONTEXTS[k], "integration_id": i}
+               for k, i in (("safety", 7000001), ("owner", 7000002))]
+        with patch.dict(os.environ, {"GASLUX_SAFETY_APP_ID": "7000001",
+                                    "GASLUX_OWNER_APP_ID": "7000002"}, clear=True):
+            self.assertTrue(gate.exact_required_checks(baseline))
+            self.assertFalse(gate.exact_required_checks(baseline, require_app_statuses=True))
+            self.assertTrue(gate.exact_required_checks(baseline + app, require_app_statuses=True))
+            for bad in (baseline + app[:1], baseline + app + app[:1],
+                        baseline + [{**app[0], "integration_id": 15368}, app[1]],
+                        baseline + [app[0], {**app[1], "integration_id": 361556198}],
+                        baseline + app + [{"context": "unrecognized", "integration_id": 5938492}],
+                        baseline[1:] + app):
+                self.assertFalse(gate.exact_required_checks(bad, require_app_statuses=True))
+        for ids in ({}, {"GASLUX_SAFETY_APP_ID": "5938492", "GASLUX_OWNER_APP_ID": "5938509"},
+                    {"GASLUX_SAFETY_APP_ID": "7000001", "GASLUX_OWNER_APP_ID": "7000001"}):
+            with patch.dict(os.environ, ids, clear=True):
+                self.assertFalse(gate.exact_required_checks(baseline + app, require_app_statuses=True))
 
 
 

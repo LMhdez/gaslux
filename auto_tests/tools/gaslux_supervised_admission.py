@@ -659,7 +659,7 @@ REVIEW_APP_PERMISSIONS = {"metadata": "read", "contents": "read",
                           "checks": "read", "issues": "read"}
 
 
-def review_app_actor(kind, *, status_permission=False):
+def review_app_actor(kind, *, status_permission=False, registration=False):
     """Resolve a bot from the trusted pinned token-mint step, not /user.
 
     The workflow binds the token, slug and installation ID to the same
@@ -701,6 +701,8 @@ def review_app_actor(kind, *, status_permission=False):
             or type(actor.get("id")) is not int or actor["id"] <= 0
             or actor["id"] in admission.BOTS.values()):
         raise ValueError("Independent App bot identity unverified")
+    if registration:
+        return {"actor": actor["id"], "app_id": app["id"], "slug": slug}
     return actor["id"]
 
 
@@ -731,29 +733,45 @@ def credential_probe(kind):
         return {**report, "status": "probe_unavailable"}
 
 
-# App registration IDs from the isolated repository's source-pinned ruleset.
-# Bot user IDs are distinct and must not be used as integration_id.
-APP_STATUS_SOURCES = {"gaslux-dev/safety-v1": 5938492, "gaslux-dev/owner-v1": 5938509}
+# Production registration IDs must come from the authenticated production
+# App pilot, not the different laboratory Apps or bot user IDs.
+APP_STATUS_CONTEXTS = {kind: "gaslux-dev/" + kind + "-v1" for kind in ("safety", "owner")}
 MAIN_REQUIRED_CHECK = "adversarial_contracts"
+
+
+def configured_status_sources():
+    ids = {}
+    for kind, context in APP_STATUS_CONTEXTS.items():
+        raw = os.getenv("GASLUX_" + kind.upper() + "_APP_ID", "")
+        if not re.fullmatch(r"[1-9][0-9]{0,15}", raw):
+            return {}
+        value = int(raw)
+        if value in (15368, 5938492, 5938509, 361554749, 361556198):
+            return {}
+        ids[context] = value
+    return ids if len(set(ids.values())) == 2 else {}
 
 
 def exact_required_checks(checks, *, require_app_statuses=False):
     if not isinstance(checks, list) or not 0 < len(checks) < 100:
         return False
     sources = {}
+    expected = configured_status_sources()
+    reserved = set(APP_STATUS_CONTEXTS.values())
     for item in checks:
         if not isinstance(item, dict):
             return False
         context, source = item.get("context"), item.get("integration_id")
         if (not isinstance(context, str) or not context.strip() or context in sources
                 or type(source) is not int
-                or source != APP_STATUS_SOURCES.get(context, 15368)):
+                or (context in reserved and (context not in expected or source != expected[context]))
+                or (context not in reserved and source != 15368)):
             return False
         sources[context] = source
-    pinned = set(sources) & set(APP_STATUS_SOURCES)
+    pinned = set(sources) & reserved
     return (admission.COMMON_CHECKS <= sources.keys()
-            and (pinned == set(APP_STATUS_SOURCES) if require_app_statuses
-                 else not pinned or pinned == set(APP_STATUS_SOURCES)))
+            and (pinned == reserved if require_app_statuses
+                 else not pinned or pinned == reserved))
 
 
 def strict_ruleset_protected(base, *, role_ids=None, candidate_head=None,

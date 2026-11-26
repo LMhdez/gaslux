@@ -146,8 +146,9 @@ def plan():
 
 def publish(kind):
     context(publish=True)
-    require(kind in ROLES and gate.review_app_actor(kind, status_permission=True) == ACTORS[kind],
-            "Wrong independent App credential")
+    registration = app_registration(kind)
+    require(gate.configured_status_sources().get(CONTEXTS[kind]) == registration["app_id"],
+            "Production App registration ID mismatch")
     safety, owners = identities()
     report = plan()
     receipts = []
@@ -213,11 +214,21 @@ def pilot_ok(row, kind):
         and row.get("state") == "success" and row.get("description") == PILOT_DESCRIPTION)
 
 
+def app_registration(kind):
+    require(kind in ROLES, "Invalid App role")
+    reg = gate.review_app_actor(kind, status_permission=True, registration=True)
+    require(isinstance(reg, dict) and reg.get("actor") == ACTORS[kind]
+            and reg.get("slug") == "gaslux-independent-" + kind
+            and type(reg.get("app_id")) is int and reg["app_id"] > 0
+            and reg["app_id"] not in (15368, 5938492, 5938509, *ACTORS.values()),
+            "Wrong independent production App registration")
+    return reg
+
+
 def pilot_publish(kind):
     require(kind in ROLES, "Invalid pilot role")
     pilot_context()
-    require(gate.review_app_actor(kind, status_permission=True) == ACTORS[kind],
-            "Wrong pilot App credential")
+    registration = app_registration(kind)
     old = status_receipts(lab.HEAD, contexts=PILOT_CONTEXTS).get(kind)
     if not pilot_ok(old, kind):
         pilot_context()
@@ -238,6 +249,7 @@ def pilot_publish(kind):
     pilot_context()
     return {"schema": "gaslux-inert-status-pilot-v1", "pr": lab.NUMBER,
             "head": lab.HEAD, "base": lab.BASE, "kind": kind, "status_id": expected,
+            "app_registration_id": registration["app_id"],
             "credential_verified": True, "merge_authorized": False,
             "production_gate_verified": False, "release_eligible": False}
 

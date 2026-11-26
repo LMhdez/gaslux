@@ -94,11 +94,12 @@ class AppStatusGateTests(unittest.TestCase):
               "state":"success","description":L.PILOT_DESCRIPTION,"id":17}
         result={"creator":{"id":L.ACTORS[kind]},"context":L.PILOT_CONTEXTS[kind],
                 "state":"success","description":L.PILOT_DESCRIPTION,"id":17}
-        with patch.object(L,"pilot_context"), patch.object(L.gate,"review_app_actor",return_value=L.ACTORS[kind]), patch.object(L,"status_receipts",side_effect=[{}, {kind:live}]), patch.object(L.a,"api",return_value=result) as api:
+        with patch.object(L,"pilot_context"), patch.object(L.gate,"review_app_actor",return_value={"actor": L.ACTORS[kind], "app_id": 7000001, "slug": "gaslux-independent-safety"}), patch.object(L,"status_receipts",side_effect=[{}, {kind:live}]), patch.object(L.a,"api",return_value=result) as api:
             report=L.pilot_publish(kind)
             api.assert_called_once_with("POST","/statuses/"+L.lab.HEAD,{"context":L.PILOT_CONTEXTS[kind],"state":"success","description":L.PILOT_DESCRIPTION})
             self.assertFalse(report["merge_authorized"])
             self.assertFalse(report["production_gate_verified"])
+            self.assertEqual(report["app_registration_id"], 7000001)
             self.assertNotIn(L.PILOT_CONTEXTS[kind],L.CONTEXTS.values())
 
     def test_pilot_audit_requires_both_real_issuers(self):
@@ -138,3 +139,10 @@ class AppStatusGateTests(unittest.TestCase):
             with patch.object(L, "frozen"), patch.object(L, "status_receipts", side_effect=[first, second]):
                 self.assertEqual(L.gate.independent_status_receipts_verified(
                     42, "mint", self.head, self.base), accepted)
+
+    def test_production_registration_not_lab_or_bot_id(self):
+        for app_id in (5938492, 5938509, L.ACTORS["safety"], 15368, 0):
+            with patch.object(L.gate, "review_app_actor", return_value={
+                "actor": L.ACTORS["safety"], "slug": "gaslux-independent-safety", "app_id": app_id}):
+                with self.assertRaises(ValueError):
+                    L.app_registration("safety")

@@ -34,8 +34,12 @@ The current production pause remains true. Lab PR #431 remains inert.
 The paused credential pilot run 45899011473 verified distinct exact inert
 receipts 60004875747 (Safety) and 60004894056 (Owner). These are not
 production authorization. The strict dev validator now recognizes the two
-source-pinned production contexts gaslux-dev/safety-v1 (App 5938492) and
-gaslux-dev/owner-v1 (App 5938509), rejects partial or wrong-source policies,
+source-pinned production contexts gaslux-dev/safety-v1 and gaslux-dev/owner-v1,
+rejects partial or wrong-source policies, and uses the real production App
+registration IDs in GASLUX_SAFETY_APP_ID and GASLUX_OWNER_APP_ID. The pilot
+reports these IDs from authenticated production App registrations; publication
+rechecks them. Laboratory IDs 5938492/5938509 and bot actor IDs are explicitly
+rejected. Missing or shared IDs fail closed. The verifier
 and still requires both native reviews and existing CI. Production supervised
 integration also checks both live exact receipts twice around readiness/merge.
 The legacy keyboard path has no matching production status publisher and
