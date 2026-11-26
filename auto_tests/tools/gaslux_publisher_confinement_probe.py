@@ -7,6 +7,8 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import urllib.error
+import urllib.request
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gaslux_lab_review_probe as lab
@@ -116,20 +118,37 @@ def publish(root):
     return {"pr": number, "publisher_creation_verified": True, "merge_authorized": False}
 
 
+def attempt_update(base):
+    """Require a rule-specific server rejection, not an arbitrary HTTP failure."""
+    need(base == names()[0] and lab.ref(base) == lab.BASE, "Wrong disposable ref")
+    request = urllib.request.Request(
+        "https://api.github.com/repos/" + A.REPO + "/git/refs/heads/" + base,
+        method="PATCH", data=json.dumps({"sha": lab.HEAD, "force": False}).encode(),
+        headers={"Authorization": "Bearer " + os.environ["GH_TOKEN"],
+                 "Accept": "application/vnd.github+json", "Content-Type": "application/json",
+                 "X-GitHub-Api-Version": "2022-11-28"})
+    try:
+        with urllib.request.urlopen(request, timeout=20):
+            raise RuntimeError("Confinement failed: disposable ref update was accepted")
+    except urllib.error.HTTPError as exc:
+        raw = exc.read(16385)
+        need(exc.code in (403, 422) and len(raw) <= 16384, "Unexpected denial response")
+        row = json.loads(raw)
+        # Fixed classification only; do not log arbitrary API response text.
+        message = row.get("message", "").lower()
+        need(("repository rule violations" in message or "gh013" in message)
+             and ("cannot update" in message or "restrict updates" in message),
+             "Denial not attributable to repository update restriction")
+        return exc.code
+
+
 def deny_and_close(number):
     before = context()
     exact_pr(number)
     base, head = names()
     # A conflict-free fast-forward on our own disposable ref must be rejected
     # under the actual merge token. No merge endpoint is used, even on failure.
-    try:
-        A.api("PATCH", "/git/refs/heads/" + base, {"sha": lab.HEAD, "force": False})
-    except RuntimeError as exc:
-        need(str(exc) in ("GitHub PATCH failed: HTTP 403", "GitHub PATCH failed: HTTP 422"),
-             "Unexpected denial response")
-        denial = int(str(exc).rsplit(" ", 1)[1])
-    else:
-        raise RuntimeError("Confinement failed: disposable ref update was accepted")
+    denial = attempt_update(base)
     exact_pr(number)
     need(context() == before, "Protected refs drifted")
     A.api("PATCH", f"/pulls/{number}", {"state": "closed"})

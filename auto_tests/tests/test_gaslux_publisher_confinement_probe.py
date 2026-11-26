@@ -1,5 +1,7 @@
 """Offline contracts for disposable confinement proof, no network."""
 import os
+import io
+import urllib.error
 from pathlib import Path
 import sys
 import unittest
@@ -33,31 +35,41 @@ class ProbeTests(unittest.TestCase):
                     P.push_new(Path("."), branch, sha)
             run.assert_not_called()
 
-    def test_update_success_fails_without_close(self):
-        with patch.object(P, "context", return_value=("a", "b")), \
-             patch.object(P, "exact_pr"), patch.object(P, "names", return_value=("lab/base", "lab/head")), \
-             patch.object(P.A, "api", return_value={}) as api:
+    def test_actual_update_success_fails(self):
+        with patch.dict(os.environ, {"GH_TOKEN": "test"}), \
+             patch.object(P, "names", return_value=("lab/base", "lab/head")), \
+             patch.object(P.lab, "ref", return_value=P.lab.BASE), \
+             patch.object(P.urllib.request, "urlopen") as opener:
             with self.assertRaisesRegex(RuntimeError, "accepted"):
-                P.deny_and_close(999)
-            api.assert_called_once_with("PATCH", "/git/refs/heads/lab/base",
-                                        {"sha": P.lab.HEAD, "force": False})
+                P.attempt_update("lab/base")
+            self.assertTrue(opener.call_args.args[0].full_url.endswith("/git/refs/heads/lab/base"))
 
-    def test_unexpected_denial_cannot_close(self):
-        with patch.object(P, "context", return_value=("a", "b")), \
-             patch.object(P, "exact_pr"), patch.object(P, "names", return_value=("lab/base", "lab/head")), \
-             patch.object(P.A, "api", side_effect=RuntimeError("GitHub PATCH failed: HTTP 404")) as api:
-            with self.assertRaises(ValueError):
-                P.deny_and_close(999)
-            api.assert_called_once()
+    def test_only_rule_specific_denial_is_accepted(self):
+        for message, accepted in (
+            ("Repository rule violations found. Cannot update this protected ref.", True),
+            ("Resource not accessible by integration", False),
+            ("Validation Failed", False),
+        ):
+            with self.subTest(message=message), patch.dict(os.environ, {"GH_TOKEN": "test"}), \
+                 patch.object(P, "names", return_value=("lab/base", "lab/head")), \
+                 patch.object(P.lab, "ref", return_value=P.lab.BASE), \
+                 patch.object(P.urllib.request, "urlopen", side_effect=urllib.error.HTTPError(
+                     "https://api.github.com", 422, "denied", None,
+                     io.BytesIO(P.json.dumps({"message": message}).encode()))):
+                if accepted:
+                    self.assertEqual(P.attempt_update("lab/base"), 422)
+                else:
+                    with self.assertRaises(ValueError):
+                        P.attempt_update("lab/base")
 
     def test_exact_denial_and_close(self):
-        responses = [RuntimeError("GitHub PATCH failed: HTTP 422"), {},
-                     {"state": "closed", "merged": False, "number": 999, "body": P.BODY}]
+        responses = [{}, {"state": "closed", "merged": False, "number": 999, "body": P.BODY}]
         with patch.object(P, "context", return_value=("a", "b")), \
              patch.object(P, "exact_pr"), patch.object(P, "names", return_value=("lab/base", "lab/head")), \
+             patch.object(P, "attempt_update", return_value=422), \
              patch.object(P.lab, "ref", side_effect=[P.lab.BASE, P.lab.HEAD]), \
              patch.object(P.A, "api", side_effect=responses) as api:
             out = P.deny_and_close(999)
             self.assertTrue(out["closed_without_merge"])
             self.assertFalse(out["merge_authorized"])
-            self.assertEqual(api.call_count, 3)
+            self.assertEqual(api.call_count, 2)

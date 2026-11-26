@@ -35,7 +35,7 @@ on:
   pull_request:
     # Always emit the required infrastructure CI check on main PRs,
     # including documentation-only changes. Never use pull_request_target.
-    branches: [main, dev]
+    branches: [main]
 
 permissions:
   contents: read
