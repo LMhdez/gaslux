@@ -21,6 +21,8 @@ on:
       - auto_tests/tests/test_gaslux_agent_reconcile.py
       - auto_tests/tools/gaslux_supervised_admission.py
       - auto_tests/tests/test_gaslux_supervised_admission.py
+      - auto_tests/tools/gaslux_lab_review_probe.py
+      - auto_tests/tests/test_gaslux_lab_review_probe.py
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-integrator.yml
@@ -32,6 +34,8 @@ on:
       - auto_tests/tests/test_gaslux_agent_reconcile.py
       - auto_tests/tools/gaslux_supervised_admission.py
       - auto_tests/tests/test_gaslux_supervised_admission.py
+      - auto_tests/tools/gaslux_lab_review_probe.py
+      - auto_tests/tests/test_gaslux_lab_review_probe.py
 
 permissions:
   contents: read
@@ -59,6 +63,8 @@ jobs:
 
       - name: Supervised scope negative cases
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_supervised_admission.py -v
+      - name: Isolated laboratory review adversarial cases
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_lab_review_probe.py -v
       - name: Probe effective dev protection with read-only workflow token
         env:
           GH_TOKEN: ${{ github.token }}
@@ -668,6 +674,19 @@ jobs:
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
         run: python3 -I auto_tests/tools/gaslux_supervised_admission.py --probe-credential safety
+      - name: Submit exact inert laboratory safety review
+        env:
+          GH_TOKEN: ${{ steps.review_identity.outputs.token }}
+          GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
+          GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
+          GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          GASLUX_OWNER_APP_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          GASLUX_PUBLISH_APP_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+        run: python3 -I auto_tests/tools/gaslux_lab_review_probe.py safety
 
   paused_owner_credential_probe:
     if: >-
@@ -712,3 +731,44 @@ jobs:
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
         run: python3 -I auto_tests/tools/gaslux_supervised_admission.py --probe-credential owner
+      - name: Submit exact inert laboratory owner review
+        env:
+          GH_TOKEN: ${{ steps.review_identity.outputs.token }}
+          GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
+          GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
+          GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          GASLUX_OWNER_APP_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          GASLUX_PUBLISH_APP_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+        run: python3 -I auto_tests/tools/gaslux_lab_review_probe.py owner
+
+  paused_lab_review_audit:
+    needs: [paused_safety_credential_probe, paused_owner_credential_probe]
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'true' &&
+      (github.event_name == 'workflow_dispatch' || github.event_name == 'push')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Read-only exact review and lab protection audit
+        id: audit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+        run: python3 -I auto_tests/tools/gaslux_lab_review_probe.py audit
+
