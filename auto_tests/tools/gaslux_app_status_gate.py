@@ -9,12 +9,15 @@ import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import gaslux_supervised_admission as gate
+import gaslux_lab_review_probe as lab
 
 a = gate.admission
 ROLES = ("safety", "owner")
 CONTEXTS = {k: "gaslux-dev/" + k + "-v1" for k in ROLES}
 ACTORS = {"safety": 361554749, "owner": 361556198}
 MAX_CANDIDATES = 10
+PILOT_CONTEXTS = {k: "gaslux-inert-probe/" + k + "-v1" for k in ROLES}
+PILOT_DESCRIPTION = "INERT credential proof; no approval"
 
 def require(value, message):
     if not value:
@@ -37,9 +40,10 @@ def marker(number, role, base):
             and role in gate.factory.TASKS and a.valid_sha(base), "Invalid tuple")
     return f"GASLUX dev PR={number} role={role} base={base}"
 
-def status_receipts(head):
+def status_receipts(head, *, contexts=None):
     """Resolve effective status IDs against the detailed endpoint, fail closed on drift."""
     require(a.valid_sha(head), "Invalid status head")
+    contexts = CONTEXTS if contexts is None else contexts
     route = "/commits/" + head
     summary = a.api("GET", route + "/status?per_page=100")
     history = a.api("GET", route + "/statuses?per_page=100")
@@ -59,7 +63,7 @@ def status_receipts(head):
         by_id[item["id"]] = item
     found = {}
     for row in rows:
-        kind = next((k for k, v in CONTEXTS.items() if v == row["context"]), None)
+        kind = next((k for k, v in contexts.items() if v == row["context"]), None)
         if kind is None:
             continue
         detail = by_id.get(row.get("id"))
@@ -176,9 +180,74 @@ def publish(kind):
     return {"schema": "gaslux-app-status-publication-v1", "kind": kind, "receipts": receipts,
             "merge_authorized": False, "release_eligible": False}
 
+def pilot_context():
+    lab.context()
+    require(os.getenv("GASLUX_STATUS_PILOT_ENABLED") == "true"
+            and os.getenv("GASLUX_APP_STATUS_GATES_ENABLED") != "true",
+            "Explicit isolated pilot opt-in; production status migration disabled")
+    require(lab.actors() == ACTORS, "Unexpected pilot actor configuration")
+    require(lab.candidate()["state"] == "open", "Frozen inert fixture not open")
+    require(set(lab.verified_reviews(ACTORS)) == set(ROLES), "Exact independent fixture reviews absent")
+
+
+def pilot_ok(row, kind):
+    return isinstance(row, dict) and row.get("actor") == ACTORS[kind] and (
+        row.get("type") == "Bot" and row.get("login") == "gaslux-independent-" + kind + "[bot]"
+        and row.get("state") == "success" and row.get("description") == PILOT_DESCRIPTION)
+
+
+def pilot_publish(kind):
+    require(kind in ROLES, "Invalid pilot role")
+    pilot_context()
+    require(gate.review_app_actor(kind, status_permission=True) == ACTORS[kind],
+            "Wrong pilot App credential")
+    old = status_receipts(lab.HEAD, contexts=PILOT_CONTEXTS).get(kind)
+    if not pilot_ok(old, kind):
+        pilot_context()
+        # Sole permitted pilot write: exclusive context, exact inert HEAD.
+        result = a.api("POST", "/statuses/" + lab.HEAD,
+                       {"context": PILOT_CONTEXTS[kind], "state": "success",
+                        "description": PILOT_DESCRIPTION})
+        require(result.get("creator", {}).get("id") == ACTORS[kind]
+                and result.get("context") == PILOT_CONTEXTS[kind]
+                and result.get("state") == "success"
+                and result.get("description") == PILOT_DESCRIPTION,
+                "Pilot publication receipt mismatch")
+        expected = result["id"]
+    else:
+        expected = old["id"]
+    live = status_receipts(lab.HEAD, contexts=PILOT_CONTEXTS).get(kind)
+    require(pilot_ok(live, kind) and live["id"] == expected, "Pilot receipt changed")
+    pilot_context()
+    return {"schema": "gaslux-inert-status-pilot-v1", "pr": lab.NUMBER,
+            "head": lab.HEAD, "base": lab.BASE, "kind": kind, "status_id": expected,
+            "credential_verified": True, "merge_authorized": False,
+            "production_gate_verified": False, "release_eligible": False}
+
+
+def pilot_audit():
+    pilot_context()
+    rows = status_receipts(lab.HEAD, contexts=PILOT_CONTEXTS)
+    require(all(pilot_ok(rows.get(k), k) for k in ROLES), "Both genuine pilot receipts required")
+    pilot_context()
+    return {"schema": "gaslux-inert-status-pilot-audit-v1", "pr": lab.NUMBER,
+            "head": lab.HEAD, "base": lab.BASE, "receipts": rows,
+            "credential_verified": True, "merge_authorized": False,
+            "production_gate_verified": False, "release_eligible": False}
+
+
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("--publish", choices=ROLES)
+    modes = p.add_mutually_exclusive_group()
+    modes.add_argument("--publish", choices=ROLES)
+    modes.add_argument("--pilot-publish", choices=ROLES)
+    modes.add_argument("--pilot-audit", action="store_true")
     args = p.parse_args()
-    context(publish=bool(args.publish))
-    print(json.dumps(publish(args.publish) if args.publish else plan(), sort_keys=True))
+    if args.pilot_publish:
+        report = pilot_publish(args.pilot_publish)
+    elif args.pilot_audit:
+        report = pilot_audit()
+    else:
+        context(publish=bool(args.publish))
+        report = publish(args.publish) if args.publish else plan()
+    print(json.dumps(report, sort_keys=True))

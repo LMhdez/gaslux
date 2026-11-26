@@ -74,3 +74,40 @@ class AppStatusGateTests(unittest.TestCase):
             with self.assertRaises(ValueError):
                 L.publish("owner")
             api.assert_not_called()
+
+    def test_pilot_requires_explicit_flag_and_production_disabled(self):
+        for env in ({}, {"GASLUX_STATUS_PILOT_ENABLED":"true","GASLUX_APP_STATUS_GATES_ENABLED":"true"}):
+            with patch.dict(L.os.environ, env, clear=True), patch.object(L.lab,"context"), patch.object(L.a,"api") as api:
+                with self.assertRaises(ValueError):
+                    L.pilot_publish("safety")
+                api.assert_not_called()
+
+    def test_pilot_refuses_wrong_app(self):
+        with patch.object(L,"pilot_context"), patch.object(L.gate,"review_app_actor",return_value=L.ACTORS["owner"]), patch.object(L.a,"api") as api:
+            with self.assertRaises(ValueError):
+                L.pilot_publish("safety")
+            api.assert_not_called()
+
+    def test_pilot_exact_write_and_receipt(self):
+        kind="safety"
+        live={"actor":L.ACTORS[kind],"type":"Bot","login":"gaslux-independent-safety[bot]",
+              "state":"success","description":L.PILOT_DESCRIPTION,"id":17}
+        result={"creator":{"id":L.ACTORS[kind]},"context":L.PILOT_CONTEXTS[kind],
+                "state":"success","description":L.PILOT_DESCRIPTION,"id":17}
+        with patch.object(L,"pilot_context"), patch.object(L.gate,"review_app_actor",return_value=L.ACTORS[kind]), patch.object(L,"status_receipts",side_effect=[{}, {kind:live}]), patch.object(L.a,"api",return_value=result) as api:
+            report=L.pilot_publish(kind)
+            api.assert_called_once_with("POST","/statuses/"+L.lab.HEAD,{"context":L.PILOT_CONTEXTS[kind],"state":"success","description":L.PILOT_DESCRIPTION})
+            self.assertFalse(report["merge_authorized"])
+            self.assertFalse(report["production_gate_verified"])
+            self.assertNotIn(L.PILOT_CONTEXTS[kind],L.CONTEXTS.values())
+
+    def test_pilot_audit_requires_both_real_issuers(self):
+        with patch.object(L,"pilot_context"), patch.object(L,"status_receipts",return_value={"safety":{}}):
+            with self.assertRaises(ValueError):
+                L.pilot_audit()
+
+    def test_pilot_retarget_or_closed_refused_before_write(self):
+        with patch.dict(L.os.environ,{"GASLUX_STATUS_PILOT_ENABLED":"true"},clear=True), patch.object(L.lab,"context"), patch.object(L.lab,"actors",return_value=L.ACTORS), patch.object(L.lab,"candidate",return_value={"state":"closed"}), patch.object(L.a,"api") as api:
+            with self.assertRaises(ValueError):
+                L.pilot_publish("owner")
+            api.assert_not_called()

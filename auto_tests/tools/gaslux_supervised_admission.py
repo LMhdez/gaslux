@@ -686,7 +686,9 @@ def review_app_actor(kind, *, status_permission=False):
             or app.get("permissions") not in (
                 ({**REVIEW_APP_PERMISSIONS, "statuses": "write"},) if status_permission else
                 (REVIEW_APP_PERMISSIONS, {**REVIEW_APP_PERMISSIONS, "statuses": "write"})
-                if os.getenv("GASLUX_APP_STATUS_GATES_ENABLED") == "true"
+                if (os.getenv("GASLUX_APP_STATUS_GATES_ENABLED") == "true"
+                    or (os.getenv("GASLUX_STATUS_PILOT_ENABLED") == "true"
+                        and os.getenv("GASLUX_AUTONOMY_PAUSED") == "true"))
                 else (REVIEW_APP_PERMISSIONS,))):
         raise ValueError("App registration or least-privilege permissions unverified")
     repositories = readonly_gh_json("installation/repositories?per_page=100")
