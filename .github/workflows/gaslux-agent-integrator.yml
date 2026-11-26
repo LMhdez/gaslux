@@ -417,9 +417,36 @@ jobs:
           persist-credentials: false
       - name: Validate owner review contracts without credential
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_supervised_admission.py -v
+      - name: Verify separate GitHub App configuration
+        env:
+          SAFETY_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          OWNER_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          PUBLISH_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$SAFETY_CLIENT_ID" && test -n "$OWNER_CLIENT_ID" && test -n "$PUBLISH_CLIENT_ID"
+          test "$SAFETY_CLIENT_ID" != "$OWNER_CLIENT_ID"
+          test "$SAFETY_CLIENT_ID" != "$PUBLISH_CLIENT_ID"
+          test "$OWNER_CLIENT_ID" != "$PUBLISH_CLIENT_ID"
+      - name: Mint repository-scoped independent App token
+        id: review_identity
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_OWNER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: read
+          permission-pull-requests: write
+          permission-actions: read
+          permission-checks: read
+          permission-issues: read
       - name: Independent backend owner exact-HEAD review
         env:
-          GH_TOKEN: ${{ secrets.GASLUX_INDEPENDENT_OWNER_TOKEN }}
+          GH_TOKEN: ${{ steps.review_identity.outputs.token }}
+          GASLUX_REVIEW_AUTH_MODE: app
+          GASLUX_REVIEW_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
+          GASLUX_REVIEW_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
@@ -462,9 +489,36 @@ jobs:
           persist-credentials: false
       - name: Validate independent review contracts without credential
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_supervised_admission.py -v
+      - name: Verify separate GitHub App configuration
+        env:
+          SAFETY_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          OWNER_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          PUBLISH_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$SAFETY_CLIENT_ID" && test -n "$OWNER_CLIENT_ID" && test -n "$PUBLISH_CLIENT_ID"
+          test "$SAFETY_CLIENT_ID" != "$OWNER_CLIENT_ID"
+          test "$SAFETY_CLIENT_ID" != "$PUBLISH_CLIENT_ID"
+          test "$OWNER_CLIENT_ID" != "$PUBLISH_CLIENT_ID"
+      - name: Mint repository-scoped independent App token
+        id: review_identity
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_SAFETY_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: read
+          permission-pull-requests: write
+          permission-actions: read
+          permission-checks: read
+          permission-issues: read
       - name: Independent canonical regression review with separate service identity
         env:
-          GH_TOKEN: ${{ secrets.GASLUX_INDEPENDENT_SAFETY_TOKEN }}
+          GH_TOKEN: ${{ steps.review_identity.outputs.token }}
+          GASLUX_REVIEW_AUTH_MODE: app
+          GASLUX_REVIEW_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
+          GASLUX_REVIEW_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
@@ -606,9 +660,36 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Verify separate GitHub App configuration
+        env:
+          SAFETY_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          OWNER_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          PUBLISH_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$SAFETY_CLIENT_ID" && test -n "$OWNER_CLIENT_ID" && test -n "$PUBLISH_CLIENT_ID"
+          test "$SAFETY_CLIENT_ID" != "$OWNER_CLIENT_ID"
+          test "$SAFETY_CLIENT_ID" != "$PUBLISH_CLIENT_ID"
+          test "$OWNER_CLIENT_ID" != "$PUBLISH_CLIENT_ID"
+      - name: Mint repository-scoped independent App token
+        id: review_identity
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_SAFETY_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: read
+          permission-pull-requests: write
+          permission-actions: read
+          permission-checks: read
+          permission-issues: read
       - name: Validate credential with GET-only requests while paused
         env:
-          GH_TOKEN: ${{ secrets.GASLUX_INDEPENDENT_SAFETY_TOKEN }}
+          GH_TOKEN: ${{ steps.review_identity.outputs.token }}
+          GASLUX_REVIEW_AUTH_MODE: app
+          GASLUX_REVIEW_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
+          GASLUX_REVIEW_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
@@ -632,9 +713,36 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
+      - name: Verify separate GitHub App configuration
+        env:
+          SAFETY_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          OWNER_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          PUBLISH_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$SAFETY_CLIENT_ID" && test -n "$OWNER_CLIENT_ID" && test -n "$PUBLISH_CLIENT_ID"
+          test "$SAFETY_CLIENT_ID" != "$OWNER_CLIENT_ID"
+          test "$SAFETY_CLIENT_ID" != "$PUBLISH_CLIENT_ID"
+          test "$OWNER_CLIENT_ID" != "$PUBLISH_CLIENT_ID"
+      - name: Mint repository-scoped independent App token
+        id: review_identity
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc # v3.4.0
+        with:
+          client-id: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_OWNER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: read
+          permission-pull-requests: write
+          permission-actions: read
+          permission-checks: read
+          permission-issues: read
       - name: Validate credential with GET-only requests while paused
         env:
-          GH_TOKEN: ${{ secrets.GASLUX_INDEPENDENT_OWNER_TOKEN }}
+          GH_TOKEN: ${{ steps.review_identity.outputs.token }}
+          GASLUX_REVIEW_AUTH_MODE: app
+          GASLUX_REVIEW_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
+          GASLUX_REVIEW_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}

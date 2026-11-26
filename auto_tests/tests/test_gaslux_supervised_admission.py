@@ -763,6 +763,42 @@ class ActivationGateTests(unittest.TestCase):
                     BASE, HEAD, {"require_code_owner_review": scenario != "no_codeowner_rule"}, (101, 202))
                 self.assertEqual(result, scenario == "valid", scenario)
 
+    def test_installation_actor_is_bound_to_single_repository_and_bot(self):
+        env = {"GASLUX_REVIEW_AUTH_MODE": "app", "GASLUX_REVIEW_APP_SLUG": "gaslux-safety",
+               "GASLUX_REVIEW_INSTALLATION_ID": "123"}
+        for scenario in ("valid", "publisher", "extra_repo", "wrong_bot", "wrong_id"):
+            current = dict(env)
+            if scenario == "publisher":
+                current["GASLUX_REVIEW_APP_SLUG"] = "gaslux-autonomous-publisher"
+            repositories = [{"full_name": A.REPO}]
+            if scenario == "extra_repo":
+                repositories.append({"full_name": "LMhdez/other"})
+            bot = {"login": "other[bot]" if scenario == "wrong_bot" else "gaslux-safety[bot]",
+                   "type": "Bot", "id": A.BOTS["github-actions[bot]"] if scenario == "wrong_id" else 101}
+            with patch.dict(os.environ, current), patch.object(gate, "readonly_gh_json",
+                    side_effect=[{"total_count": len(repositories), "repositories": repositories}, bot]), \
+                    patch.object(gate.subprocess, "run") as fallback:
+                if scenario == "valid":
+                    self.assertEqual(gate.authenticated_review_actor(), bot)
+                else:
+                    with self.assertRaises(ValueError):
+                        gate.authenticated_review_actor()
+                fallback.assert_not_called()
+
+    def test_app_probe_does_not_claim_review_or_merge_authority(self):
+        env = {"GITHUB_REPOSITORY": A.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "push", "GASLUX_AUTONOMY_PAUSED": "true",
+               "GH_TOKEN": "fixture-only", "GASLUX_REVIEW_AUTH_MODE": "app"}
+        with patch.dict(os.environ, env), patch.object(gate, "configured_reviewers",
+                return_value=(101, {"mint": 202})), patch.object(gate, "authenticated_review_actor",
+                return_value={"id": 101, "type": "Bot"}), patch.object(gate, "readonly_gh_json",
+                side_effect=[{"full_name": A.REPO}, []]):
+            out = gate.credential_probe("safety")
+            self.assertTrue(out["credential_verified"])
+            self.assertFalse(out["approval_capability_verified"])
+            self.assertFalse(out["server_role_enforcement_verified"])
+            self.assertFalse(out["merge_authorized"])
+
     def test_paused_probe_validates_actual_identity_without_writes(self):
         env = {"GITHUB_REPOSITORY": A.REPO, "GITHUB_REF": "refs/heads/main",
                "GITHUB_EVENT_NAME": "workflow_dispatch", "GASLUX_AUTONOMY_PAUSED": "true",

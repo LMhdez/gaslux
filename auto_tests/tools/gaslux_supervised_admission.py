@@ -654,6 +654,41 @@ def role_review_protected(base, reviewer, owner, *, head=None):
     return strict_ruleset_protected(base, role_ids=(reviewer, owner), candidate_head=head)
 
 
+def authenticated_review_actor():
+    """Resolve the actor from a pinned token-minting step, never PR text.
+
+    Installation tokens do not authenticate to /user. Bind the trusted
+    action's app slug to its public bot identity and independently check
+    that the minted token is scoped to exactly this repository. No PAT
+    fallback when app mode is selected. Review responses must still match
+    the configured actor ID; server role enforcement is a separate gate.
+    """
+    mode = os.getenv("GASLUX_REVIEW_AUTH_MODE", "")
+    if not mode:
+        # Retain the existing user credential contract for direct callers.
+        return json.loads(subprocess.run(
+            ["gh", "api", "user"], check=True, timeout=30, capture_output=True).stdout)
+    if mode != "app":
+        raise ValueError("Unknown review authentication mode")
+    slug = os.getenv("GASLUX_REVIEW_APP_SLUG", "")
+    installation = os.getenv("GASLUX_REVIEW_INSTALLATION_ID", "")
+    if (not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,98}", slug)
+            or not re.fullmatch(r"[1-9][0-9]{0,18}", installation)
+            or slug + "[bot]" in admission.BOTS):
+        raise ValueError("Invalid or publisher app identity")
+    scoped = readonly_gh_json("installation/repositories?per_page=100")
+    repos = scoped.get("repositories")
+    if (scoped.get("total_count") != 1 or not isinstance(repos, list)
+            or len(repos) != 1 or repos[0].get("full_name") != admission.REPO):
+        raise ValueError("Review installation scope mismatch")
+    bot = readonly_gh_json("users/" + slug + "%5Bbot%5D")
+    if (bot.get("login") != slug + "[bot]" or bot.get("type") != "Bot"
+            or type(bot.get("id")) is not int or bot["id"] <= 0
+            or bot["id"] in admission.BOTS.values()):
+        raise ValueError("Review bot identity mismatch")
+    return bot
+
+
 def credential_probe(kind):
     """During pause, check the actual independent token using GET only."""
     report = {"kind": kind, "read_only": True, "merge_authorized": False,
@@ -669,9 +704,10 @@ def credential_probe(kind):
             or reviewer in owners.values() or not os.getenv("GH_TOKEN")):
         return {**report, "status": "identity_or_credential_missing"}
     try:
-        actor = readonly_gh_json("user")
+        app_mode = os.getenv("GASLUX_REVIEW_AUTH_MODE") == "app"
+        actor = authenticated_review_actor() if app_mode else readonly_gh_json("user")
         identity = actor.get("id")
-        if (type(identity) is not int or identity <= 0 or actor.get("type") != "User"
+        if (type(identity) is not int or identity <= 0 or actor.get("type") != ("Bot" if app_mode else "User")
                 or identity in admission.BOTS.values()):
             return {**report, "status": "unexpected_actor"}
         roles = sorted(role for role, value in owners.items() if value == identity)
@@ -679,12 +715,23 @@ def credential_probe(kind):
                 or (kind == "owner" and (identity == reviewer or not roles))):
             return {**report, "status": "identity_mismatch"}
         repo = readonly_gh_json("repos/" + admission.REPO)
-        perms = repo.get("permissions", {})
-        if (repo.get("full_name") != admission.REPO or perms.get("push") is not True
-                or perms.get("admin") is not False or perms.get("maintain") is not False):
+        if repo.get("full_name") != admission.REPO:
             return {**report, "status": "repository_permission_unverified"}
+        if not app_mode:
+            perms = repo.get("permissions", {})
+            if (perms.get("push") is not True or perms.get("admin") is not False
+                    or perms.get("maintain") is not False):
+                return {**report, "status": "repository_permission_unverified"}
+        else:
+            # Check live read endpoints with the actual installation token.
+            # The pinned workflow requests only read permissions plus PR write.
+            # GETs cannot prove POST approval capability or required-review credit.
+            prs = readonly_gh_json("repos/" + admission.REPO + "/pulls?state=open&per_page=1")
+            if not isinstance(prs, list):
+                return {**report, "status": "repository_permission_unverified"}
         return {**report, "status": "identity_verified", "credential_verified": True,
-                "roles": roles if kind == "owner" else []}
+                "roles": roles if kind == "owner" else [],
+                "approval_capability_verified": False, "server_role_enforcement_verified": False}
     except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
         return {**report, "status": "probe_unavailable"}
 
@@ -1007,8 +1054,7 @@ def independent_safety_review():
         return {"status": "independent_credential_required"}
     # The token must authenticate as the configured independent service account.
     # Never fall back to github.token or to the publisher credential.
-    actor = json.loads(subprocess.run(
-        ["gh", "api", "user"], check=True, timeout=30, capture_output=True).stdout)
+    actor = authenticated_review_actor()
     if type(actor.get("id")) is not int or actor["id"] != reviewer:
         raise ValueError("Safety credential identity mismatch")
     for number, (role, scope, head) in sorted(discover().items()):
@@ -1066,8 +1112,7 @@ def independent_owner_review():
     safety, owners = configured_reviewers()
     if safety is None or not os.getenv("GH_TOKEN"):
         return {"status": "owner_identity_or_credential_required"}
-    actor = json.loads(subprocess.run(
-        ["gh", "api", "user"], check=True, timeout=30, capture_output=True).stdout)
+    actor = authenticated_review_actor()
     owner = actor.get("id")
     if (type(owner) is not int or owner <= 0 or owner == safety
             or owner in admission.BOTS.values() or owner not in owners.values()):
