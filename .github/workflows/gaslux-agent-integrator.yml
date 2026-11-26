@@ -5,6 +5,11 @@ on:
   schedule:
     - cron: '10,25,40,55 * * * *' # staggered 15-minute refresh, plus success-triggered executions
   workflow_dispatch:
+    inputs:
+      paused_confinement_probe:
+        description: 'Explicit inert Publisher creation / Integrator ref-update denial probe; no merge'
+        type: boolean
+        default: false
   workflow_run:
     workflows: ["Gaslux autonomous GitHub agents", "Gaslux Goal Supervisor - read-only progress"]
     types: [completed]
@@ -25,6 +30,8 @@ on:
       - auto_tests/tests/test_gaslux_lab_review_probe.py
       - auto_tests/tools/gaslux_app_status_gate.py
       - auto_tests/tests/test_gaslux_app_status_gate.py
+      - auto_tests/tools/gaslux_publisher_confinement_probe.py
+      - auto_tests/tests/test_gaslux_publisher_confinement_probe.py
   pull_request:
     # Always emit the required infrastructure CI check on main PRs,
     # including documentation-only changes. Never use pull_request_target.
@@ -60,9 +67,13 @@ jobs:
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_lab_review_probe.py -v
       - name: App status migration adversarial cases
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_app_status_gate.py -v
+      - name: Paused inert confinement probe contracts
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_publisher_confinement_probe.py -v
       - name: Probe effective dev protection with read-only workflow token
         env:
           GH_TOKEN: ${{ github.token }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
         run: |
           python3 -I - <<'PY'
           import json
@@ -982,6 +993,92 @@ jobs:
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
         run: python3 -I auto_tests/tools/gaslux_app_status_gate.py --pilot-audit
+
+  paused_publisher_confinement:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.paused_confinement_probe == true &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'true' &&
+      vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
+      vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: gaslux-main-publisher
+    permissions:
+      contents: read
+    outputs:
+      pr: ${{ steps.probe.outputs.pr }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          path: trusted
+          persist-credentials: false
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: afdf58873cd862c6a8bf359824d6b6fb11b168f0
+          path: fixture
+          fetch-depth: 2
+          persist-credentials: false
+      - uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        id: identity
+        with:
+          client-id: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_PUBLISH_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: write
+          permission-pull-requests: write
+      - name: Real Publisher creation-only Git push and inert Draft
+        id: probe
+        env:
+          GH_TOKEN: ${{ steps.identity.outputs.token }}
+          GASLUX_MINTED_APP_SLUG: ${{ steps.identity.outputs.app-slug }}
+          GASLUX_CONFINEMENT_PROBE: ${{ inputs.paused_confinement_probe }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_PRODUCTION_MERGE_ENABLED: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
+          GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+        run: |
+          set -euo pipefail
+          python3 -I trusted/auto_tests/tools/gaslux_publisher_confinement_probe.py publish --repo fixture > /tmp/gaslux-probe.json
+          cat /tmp/gaslux-probe.json
+          echo "pr=$(jq -er '.pr' /tmp/gaslux-probe.json)" >> "$GITHUB_OUTPUT"
+
+  paused_integrator_confinement:
+    needs: paused_publisher_confinement
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.paused_confinement_probe == true &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'true' &&
+      vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
+      vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false' &&
+      needs.paused_publisher_confinement.result == 'success'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Actual merge-token confinement and inert PR closure
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PROBE_PR: ${{ needs.paused_publisher_confinement.outputs.pr }}
+          GASLUX_CONFINEMENT_PROBE: ${{ inputs.paused_confinement_probe }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_PRODUCTION_MERGE_ENABLED: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
+          GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+        run: |
+          set -euo pipefail
+          python3 -I auto_tests/tools/gaslux_publisher_confinement_probe.py deny --pr "$PROBE_PR"
+
 
   paused_safety_credential_probe:
     if: >-
