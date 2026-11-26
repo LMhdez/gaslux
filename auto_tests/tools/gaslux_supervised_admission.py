@@ -659,7 +659,7 @@ REVIEW_APP_PERMISSIONS = {"metadata": "read", "contents": "read",
                           "checks": "read", "issues": "read"}
 
 
-def review_app_actor(kind):
+def review_app_actor(kind, *, status_permission=False):
     """Resolve a bot from the trusted pinned token-mint step, not /user.
 
     The workflow binds the token, slug and installation ID to the same
@@ -683,7 +683,11 @@ def review_app_actor(kind):
     app = readonly_gh_json("apps/" + slug)
     if (app.get("slug") != slug or app.get("client_id") != clients[kind]
             or type(app.get("id")) is not int or app["id"] <= 0
-            or app.get("permissions") != REVIEW_APP_PERMISSIONS):
+            or app.get("permissions") not in (
+                ({**REVIEW_APP_PERMISSIONS, "statuses": "write"},) if status_permission else
+                (REVIEW_APP_PERMISSIONS, {**REVIEW_APP_PERMISSIONS, "statuses": "write"})
+                if os.getenv("GASLUX_APP_STATUS_GATES_ENABLED") == "true"
+                else (REVIEW_APP_PERMISSIONS,))):
         raise ValueError("App registration or least-privilege permissions unverified")
     repositories = readonly_gh_json("installation/repositories?per_page=100")
     rows = repositories.get("repositories")
