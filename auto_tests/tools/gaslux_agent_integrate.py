@@ -8,6 +8,7 @@ import os
 from pathlib import Path
 import posixpath
 import re
+import sys
 import urllib.error
 import urllib.request
 
@@ -214,7 +215,47 @@ def select() -> dict:
     return {"status": "idle"}
 
 
-def merge(number: int, expected: str) -> dict:
+def shared_admission():
+    """Import only trusted siblings even when invoked with python -I."""
+    directory = str(Path(__file__).resolve().parent)
+    if not sys.path or sys.path[0] != directory:
+        sys.path.insert(0, directory)
+    import gaslux_supervised_admission as gate
+    return gate
+
+
+def strict_merge_policy(base: str) -> bool:
+    return shared_admission().strict_dev_protected(base)
+
+
+def server_role_protection(checked: dict) -> bool:
+    gate = shared_admission()
+    reviewer, owners = gate.configured_reviewers()
+    return gate.role_review_protected(checked["base"], reviewer, owners.get(checked["role"]),
+                                      head=checked["head"])
+
+
+def independent_merge_reviews(checked: dict) -> bool:
+    """Require the actual Safety and owner identities, not just any two reviews."""
+    gate = shared_admission()
+    admission = gate.admission
+    reviewer, owners = gate.configured_reviewers()
+    role, head, base = checked["role"], checked["head"], checked["base"]
+    owner = owners.get(role)
+    pr = api("GET", f"/pulls/{checked['number']}")
+    author = pr.get("user") or {}
+    if (not admission.publisher_ok(author) or pr.get("state") != "open"
+            or pr.get("head", {}).get("sha") != head
+            or pr.get("base", {}).get("ref") != "dev"
+            or reviewer in admission.BOTS.values() or owner in admission.BOTS.values()):
+        return False
+    reviews = admission.complete_page(api("GET", f"/pulls/{checked['number']}/reviews?per_page=100"))
+    return (admission.review_ok(reviews, reviewer, author["id"], head, base)
+            and admission.owner_review_ok(reviews, owner, reviewer, author["id"],
+                                          None, role, head, base, supervised=True))
+
+
+def require_merge_context():
     if os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true":
         raise RuntimeError("GASLUX_AUTONOMY_PAUSED: dev merge blocked")
     if os.getenv("GITHUB_REPOSITORY") != REPO or os.getenv("GITHUB_REF") != "refs/heads/main":
@@ -242,12 +283,39 @@ def merge(number: int, expected: str) -> dict:
             raise RuntimeError("Untrusted workflow completion provenance")
     if os.getenv("GASLUX_WINDOWS_ACCEPTANCE") != "success":
         raise RuntimeError("No exact-HEAD Windows build and tests in this run")
+    
+
+def verify_before_ready(number: int, expected: str) -> dict:
+    require_merge_context()
+    checked = inspect(number, expected)
+    if checked["original_base"] != checked["base"]:
+        raise StaleProposal("Exact base required before readiness")
+    if (not strict_merge_policy(checked["base"]) or not independent_merge_reviews(checked)
+            or not server_role_protection(checked)):
+        raise RuntimeError("Strict protection and independent exact reviews required before readiness")
+    if inspect(number, expected) != checked:
+        raise StaleProposal("Candidate changed before readiness")
+    return checked
+
+
+def merge(number: int, expected: str) -> dict:
+    require_merge_context()
     try:
         checked = inspect(number, expected)
         if inspect(number, expected) != checked:
             raise StaleProposal("dev changed while confirming candidate")
     except StaleProposal:
         return {"status": "retry", "reason": "dev_updated", "pr": number}
+    # A harmless historical advance is useful for inventory, not for merging
+    # an out-of-date candidate under an exact-base Windows acceptance receipt.
+    if checked["original_base"] != checked["base"]:
+        return {"status": "retry", "reason": "exact_base_required", "pr": number}
+    if not strict_merge_policy(checked["base"]):
+        return {"status": "blocked", "reason": "strict_base_protection_required", "pr": number}
+    if not independent_merge_reviews(checked):
+        return {"status": "blocked", "reason": "independent_reviews_required", "pr": number}
+    if not server_role_protection(checked):
+        return {"status": "blocked", "reason": "server_role_review_protection_required", "pr": number}
     if api("GET", "/git/ref/heads/dev")["object"]["sha"] != checked["base"]:
         return {"status": "retry", "reason": "dev_updated", "pr": number}
     result = api("PUT", f"/pulls/{number}/merge", {
@@ -263,7 +331,33 @@ def merge(number: int, expected: str) -> dict:
     })
     if result.get("merged") is not True or not SHA.fullmatch(str(result.get("sha", ""))):
         raise RuntimeError("GitHub did not confirm dev merge")
-    return {"status": "merged", "pr": number, "sha": result["sha"], "task": checked["task"]}
+    merged = result["sha"]
+    actual = api("GET", f"/git/commits/{merged}")
+    reviewed = api("GET", f"/git/commits/{expected}")
+    tree = actual.get("tree", {}).get("sha")
+    if ([p.get("sha") for p in actual.get("parents", [])] != [checked["base"]]
+            or not isinstance(tree, str) or not SHA.fullmatch(tree)
+            or tree != reviewed.get("tree", {}).get("sha")):
+        raise RuntimeError("Merged tree or parent differs from reviewed candidate; investigate")
+    closed = api("GET", f"/pulls/{number}")
+    if (closed.get("state") != "closed" or closed.get("merged") is not True
+            or closed.get("merge_commit_sha") != merged
+            or closed.get("head", {}).get("sha") != expected
+            or closed.get("base", {}).get("ref") != "dev"):
+        raise RuntimeError("Post-merge PR closure not verified; investigate")
+    live = api("GET", "/git/ref/heads/dev")["object"]["sha"]
+    if not isinstance(live, str) or not SHA.fullmatch(live):
+        raise RuntimeError("Invalid post-merge dev")
+    if live != merged:
+        relation = api("GET", f"/compare/{merged}...{live}")
+        if (relation.get("status") != "ahead" or relation.get("behind_by") != 0
+                or relation.get("merge_base_commit", {}).get("sha") != merged):
+            raise RuntimeError("Merge not proven in live dev")
+    return {"status": "merged", "pr": number, "sha": merged, "task": checked["task"],
+            "reviewed_base": checked["base"], "reviewed_tree_verified": True,
+            "independent_reviews_verified": True,
+            "strict_base_protection_verified": True, "pr_closure_verified": True,
+            "dev_ancestry_verified": True, "release_eligible": False}
 
 
 def main():
@@ -277,7 +371,7 @@ def main():
     elif args.pr is None or args.head is None:
         parser.error("PR and immutable HEAD required")
     else:
-        out = inspect(args.pr, args.head) if args.operation == "verify" else merge(args.pr, args.head)
+        out = verify_before_ready(args.pr, args.head) if args.operation == "verify" else merge(args.pr, args.head)
     print(json.dumps(out, sort_keys=True))
 
 

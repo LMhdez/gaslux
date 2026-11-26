@@ -1,0 +1,648 @@
+{
+  "schema_version": 1,
+  "kind": "historical_backend_reuse_discovery_only",
+  "repository": "LMhdez/gaslux",
+  "observed_date": "2026-11-24",
+  "baseline": {
+    "main": "d408ffa603272007d9cb0c2c896ed1789f775a80",
+    "dev": "d89f1547c50787e4640164e34bfd1863134e2908",
+    "formal_evidence_records": 0
+  },
+  "counts": {
+    "source_prs": 6,
+    "path_references": 59,
+    "distinct_paths": 58,
+    "absent_path_references": 59,
+    "workflow_paths": 13,
+    "run_records": 9,
+    "current_pr_records": 7
+  },
+  "source_prs": [
+    {
+      "role": "mint",
+      "pr": 260,
+      "source_sha": "7ab2a431767d212566ab57b834f299f8308dbda6",
+      "pr_state_at_audit": "closed_unmerged",
+      "capability": "Windows→Mint→Windows COW; direct kernel, not native GRUB",
+      "next_review": "Reconcile #260/#271/#274/#276/#278 with #383/#388 compact lab; recover existing Windows harness and independent validator. Resolve Safety findings and confirm native boot only after lab admission.",
+      "paths": [
+        {
+          "path": ".github/workflows/mint-cow-proof-contracts.yml",
+          "source_blob": "bc8a58955ca2cda4eb9b961c6b0a3a274dc05d17",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": ".github/workflows/windows-cachyos-post-ext4-fourth-boot.yml",
+          "source_blob": "587488a44700a3fce41c92f87c0be83298184835",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/test_windows_mint_cow_boot_evidence.py",
+          "source_blob": "d977e84950d1f10a0e3c4b8beac8a20ad54e4368",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/test_windows_mint_overlay_root.py",
+          "source_blob": "a9f39c5f76e981e1020b8fd26a30cad6061c38df",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/validate_mint_cow_boot_evidence.py",
+          "source_blob": "7df55346178923a1625542cc2605e424ce59a53d",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/windows_mint_overlay_root.py",
+          "source_blob": "6f0a2cf8fe35e80955c987120aca2495ade1b678",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/windows_x64_tcg_firstboot.py",
+          "source_blob": "705de8571d8ff814f9f59995ff00e71c39cfd783",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        }
+      ]
+    },
+    {
+      "role": "zorin",
+      "pr": 224,
+      "source_sha": "3a10dac2d85dd19849a0736d8f57558827277794",
+      "pr_state_at_audit": "historical",
+      "capability": "Installed Zorin on disposable GPT and initramfs regeneration reboot",
+      "next_review": "Reuse #224 harness; reconcile #264/#277/#281 with #328/#332/#333. Keep direct-kernel and source/FD checks separate from native boot and production installation.",
+      "paths": [
+        {
+          "path": ".github/workflows/zorin-installed-initramfs-reboot.yml",
+          "source_blob": "4c75e6c8e3e4ae7adac56ab1b0ce19904aa112e4",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": ".github/workflows/zorin-synthetic-cow-root.yml",
+          "source_blob": "1f06f245cfcd2ba341e12e6d91ee1b50fadce9c3",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/test_windows_zorin_synthetic_cow_root.py",
+          "source_blob": "a83fdf587e4b1921d7bc4099ff55dd9f3609a499",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/gaslux_legacy_installed_target_lab.sh",
+          "source_blob": "2f3c9a62390f84ea0972a7947ccd5f6b3a182a57",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/gaslux_zorin_installed_target_lab.sh",
+          "source_blob": "e915fe0928477f75d3a07b63aed4303345004c89",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/windows_zorin_synthetic_cow_root.py",
+          "source_blob": "d65891f7d16ba3c08ac3f4d8b9265f092b3c186b",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        }
+      ]
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "source_sha": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "pr_state_at_audit": "open_unmerged",
+      "capability": "Signed shared-root pacstrap and Windows witness harness",
+      "next_review": "Recover #248 positive witness; #263 final real job skipped. Reconcile #314/#335 BCD attribution before claiming Windows integrity or in-place recovery.",
+      "paths": [
+        {
+          "path": ".github/workflows/cachyos-windows10-shared-root-pacstrap.yml",
+          "source_blob": "4d0ae7afd0a589132c6b9d9a7d235095c3c7b96e",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/test_cachyos_shared_root_pacstrap_host_contract.py",
+          "source_blob": "f2a20bf9156595afb298c7ddf20b6ffcf72886e6",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/test_windows_cachyos_bcd_ab_control.py",
+          "source_blob": "4b4daa8e2d4ea96e85b5e10f5387ed68fa829aa6",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/test_windows_cachyos_checkpoint_readiness.py",
+          "source_blob": "f17851719c7a9258d68d66a154ab46469ea3840a",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/test_windows_cachyos_postext4_windows.py",
+          "source_blob": "5f5d97d13b881c3b11704be8d9c92b6f921ffdc8",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/test_windows_cachyos_postpacstrap_windows.py",
+          "source_blob": "a0b3bcbc0ba0a78de9ca52487d97c72608136583",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/cachyos_windows_shared_root_pacstrap_host.py",
+          "source_blob": "d05622012cd771d901e91081bb79f66c501803b7",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/windows_cachyos_bcd_ab_control.py",
+          "source_blob": "080950022354b68db95e6d11ee35b6e185d262fd",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/windows_cachyos_checkpoint_readiness.py",
+          "source_blob": "242dd87ae526c1e42d35be5926ba447fda3d4886",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/windows_cachyos_postext4_windows.py",
+          "source_blob": "341200b803bd22f0d7e4d58013851712b3711456",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/windows_cachyos_postpacstrap_windows.py",
+          "source_blob": "6ff053ffa07b187d1c7a777002881f2133ff9b76",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/windows_x64_tcg_firstboot.py",
+          "source_blob": "2e1a8127119028c1bf50d48e6b318620784a5232",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "docs/distro-backends/evidence/CACHY_WIN10_CHECKPOINT_READINESS_20261122.md",
+          "source_blob": "b6bcc12e96dfc5b72c2be27e68b2c25f36b0f04c",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        }
+      ]
+    },
+    {
+      "role": "popos",
+      "pr": 298,
+      "source_sha": "fa2ffe35ae0398e2df83f6ee5aa948e0577686cb",
+      "pr_state_at_audit": "open_unmerged",
+      "capability": "Synthetic six-GPT ownership, fsck and trace remediation",
+      "next_review": "Review #291 F-01–F-04 and #298/#324/#329/#353 exact composition; distinguish absent filesystem before install from identity mismatch. No distinst or real writer admission from synthetic evidence.",
+      "paths": [
+        {
+          "path": ".github/workflows/popos-six-gpt-preflight-only.yml",
+          "source_blob": "33a693096c0536a9e511253c332fd2012a490cac",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/test_popos_six_gpt_contract.py",
+          "source_blob": "7a6181768776468e9a9b4147342412689a75f6ea",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/gaslux_popos_six_gpt_contract.py",
+          "source_blob": "c06b1ed6348172eadf74afc62e4e5ed0a7890077",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/gaslux_popos_six_gpt_fsck.py",
+          "source_blob": "952703a501df3aa6ffcb277d50297858edc6f963",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/gaslux_popos_six_gpt_lab.py",
+          "source_blob": "e74749e3a1a573ced382178c740e686263287567",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/gaslux_popos_six_gpt_ownership.py",
+          "source_blob": "5f22534ea8666eef15bcef3a44826bac3835418f",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "docs/POP_OS_SIX_GPT_SYNTHETIC_LAB.md",
+          "source_blob": "164a918977966730030493a92f4075671d6ef495",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        }
+      ]
+    },
+    {
+      "role": "q4os",
+      "pr": 318,
+      "source_sha": "f6a446b2c3e4ec05cefdc2d084a3024464ca912e",
+      "pr_state_at_audit": "open_unmerged",
+      "capability": "QMP/FD process boundary and fail-closed CLI",
+      "next_review": "Reconcile #299/#318/#338/#345/#351; preserve existing Calamares visual states, resolve Summary identity and QMP/FD boundary before native install.",
+      "paths": [
+        {
+          "path": ".github/workflows/gaslux-q4os-qemu-fd-compatibility.yml",
+          "source_blob": "a2a0d8019b030eb92a0fab275618f3809ae1817f",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": ".github/workflows/gaslux-q4os-qmp-offline.yml",
+          "source_blob": "58384e68f004f83cb6752c71a1cb882b5cf00e36",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": ".github/workflows/gaslux-q4os-windows-boundary.yml",
+          "source_blob": "df2af623c21eeedd41b046b83978adf74d813dc5",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tests/test_q4os_qmp_process_observability.py",
+          "source_blob": "2e396bc1c3a194f04c586e5756104c019cdbd21a",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tests/test_q4os_win10_qmp_boot.py",
+          "source_blob": "da3452f0dd1663eab99e2a08db5f538196a36b18",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/q4os_qemu_fd_compat_lab.py",
+          "source_blob": "3875852e030a5ac71821c9463279e0197a92e4a9",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/q4os_win10_qmp_boot.py",
+          "source_blob": "31c3ede2e49513374391812adeaaaf207c3be1f1",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tools/q4os_win10_qmp_supervisor.py",
+          "source_blob": "946c2ade5c421517997ef921808b587749a01b10",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "docs/Q4OS_QEMU_FD_COMPATIBILITY.md",
+          "source_blob": "bebc0a8292a21441b795d5b5914988ee413f5dbb",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        }
+      ]
+    },
+    {
+      "role": "bazzite",
+      "pr": 320,
+      "source_sha": "b6796fe3e920ca02b57041d32a2dff7d37e9c480",
+      "pr_state_at_audit": "open_unmerged",
+      "capability": "Pinned upstream native route/OCI/bootc readback, deny-only",
+      "next_review": "Reconcile #250/#262/#280/#320/#357; reuse native route research; resolve independently authenticated ISO/OCI, exact write-set and Observer provenance before any installer execution.",
+      "paths": [
+        {
+          "path": ".github/workflows/bazzite-bootc-prewrite-source.yml",
+          "source_blob": "f7f8dd9b67c2a2214727e7fb74e518180b3fa272",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": ".github/workflows/bazzite-deployment-provenance-readonly.yml",
+          "source_blob": "812c65c703a6b5ede2f2935c30c3abcbb3796af8",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": ".github/workflows/bazzite-native-route-readback.yml",
+          "source_blob": "2ca988f440cd30dc87413ffb9a7bd8aa93fdcf99",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": ".github/workflows/bazzite-oci-bootc-readback.yml",
+          "source_blob": "c114be9a9f7bcab9c1e49bf5918ee63d9a319778",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/bazzite_bootc_prewrite_source.py",
+          "source_blob": "31f5944e56bbb9dc2b8198d3559615e779cc9111",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/bazzite_deployment_provenance_boundary.py",
+          "source_blob": "a0c6d4e9cda397b37702fc63b8d95ec03d46314f",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/bazzite_native_route_readback.py",
+          "source_blob": "caa219382bb2454898d651d2be39d2e83fb2de32",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/bazzite_oci_bootc_readback.py",
+          "source_blob": "4029bae8ef8d2a71f7745e8d805b737c3e2faaf7",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/bazzite_oci_rpm_binding.py",
+          "source_blob": "ee52cec1309464dd045ca6109d7871024d653c4f",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/bazzite_qcow2_deployment_readback.py",
+          "source_blob": "0148d943b0f2eda9779c995427a1f1d2d65ad21e",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tests/test_bazzite_bootc_prewrite_source.py",
+          "source_blob": "db14c4885828b2ed76cb2a35a871ea8c3b958c4c",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tests/test_bazzite_deployment_provenance_boundary.py",
+          "source_blob": "e61d3b8a2d6ec9a84f4e87ed401f5bab135f0345",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tests/test_bazzite_native_route_readback.py",
+          "source_blob": "df90662a876521e8d7036da84e4842d37d9c9a32",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tests/test_bazzite_oci_bootc_readback.py",
+          "source_blob": "0edc375eed9060c99d8ae1b6b87ccc3d5ad1a528",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tests/test_bazzite_oci_rpm_binding.py",
+          "source_blob": "e6dadac3b5e2b811e3939792da8591acce8eea17",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "auto_tests/tests/test_bazzite_qcow2_deployment_readback.py",
+          "source_blob": "bd3337e5089fa31e895d8379bbfe0eb03446a9ec",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        },
+        {
+          "path": "docs/BAZZITE_NATIVE_ROUTE_READBACK.md",
+          "source_blob": "3e67f3f4f9172e21209ab914d13c09712f468ba1",
+          "dev_blob": null,
+          "comparison": "absent_in_dev"
+        }
+      ]
+    }
+  ],
+  "observed_runs": [
+    {
+      "role": "mint",
+      "pr": 260,
+      "run": 44704787925,
+      "run_head_sha": "98d7b450a275d6150406e3feb9f4947cc2d2c388",
+      "job": 136182418950,
+      "run_conclusion": "success",
+      "job_conclusion": "success",
+      "verification": "prior_log_audit",
+      "observation": "Windows→Mint→Windows in disposable same COW; direct kernel; native GRUB/update/rollback not proved.",
+      "artifact_bytes_reverified": false,
+      "formal_gate_verified": false
+    },
+    {
+      "role": "zorin",
+      "pr": 224,
+      "run": 44582546627,
+      "run_head_sha": "3a10dac2d85dd19849a0736d8f57558827277794",
+      "job": 135766869236,
+      "run_conclusion": "success",
+      "job_conclusion": "success",
+      "verification": "job_log",
+      "observation": "Genuine installed Zorin reboots from owned GPT after initramfs regeneration. Explicit NOT TESTED: Windows dual boot/recovery, Gaslux bootloader, kernel update, uninstall.",
+      "artifact_bytes_reverified": false,
+      "formal_gate_verified": false
+    },
+    {
+      "role": "cachyos",
+      "pr": 248,
+      "run": 44653217724,
+      "run_head_sha": "a3078779f809cc30b67899419d28fbbc05fe2398",
+      "job": 136013396583,
+      "run_conclusion": "success",
+      "job_conclusion": "success",
+      "verification": "job_log_and_successful_assertion_stage",
+      "observation": "Real Windows/Archiso/pacstrap/discard job success; assertion stage requires native kernel, pacman, protected hashes and Windows return after discard; sameDiskDualBootVerified, windowsInPlaceRecoveryVerified and rollbackProven false.",
+      "artifact_bytes_reverified": false,
+      "formal_gate_verified": false
+    },
+    {
+      "role": "cachyos",
+      "pr": 263,
+      "run": 45156385941,
+      "run_head_sha": "8b82ecdf5c5ef3e7d9d712c5d60b679bb1615f9f",
+      "job": 137631711342,
+      "run_conclusion": "success",
+      "job_conclusion": "skipped",
+      "verification": "job_metadata",
+      "observation": "Exact final HEAD real Windows/Archiso/pacstrap job skipped; static/synthetic job passed. Do not inherit positive guest status from #248.",
+      "artifact_bytes_reverified": false,
+      "formal_gate_verified": false
+    },
+    {
+      "role": "popos",
+      "pr": 232,
+      "run": 44561473570,
+      "run_head_sha": "85c9ea30b75c763314e775d4daddf10d5357109e",
+      "job": 135692392513,
+      "run_conclusion": "failure",
+      "job_conclusion": "failure",
+      "verification": "job_log",
+      "observation": "Live guest refused GPT identity: fifth partition signature probe returned empty type. No installed guest or dual boot.",
+      "artifact_bytes_reverified": false,
+      "formal_gate_verified": false
+    },
+    {
+      "role": "q4os",
+      "pr": null,
+      "run": 44641233701,
+      "run_head_sha": "91ed606c56a680619847fc6758fcf405731255b2",
+      "job": 135972508547,
+      "run_conclusion": "success",
+      "job_conclusion": "success",
+      "verification": "job_log",
+      "observation": "Calamares UI transitions=8; second replica also success (job 135972509168). Installation false, Windows disk not attached, Summary not visited. ISO 1851392000 bytes.",
+      "artifact_bytes_reverified": false,
+      "formal_gate_verified": false
+    },
+    {
+      "role": "q4os",
+      "pr": null,
+      "run": 44646209124,
+      "run_head_sha": "d35be9643059c552a261e2b481b9b7ef7bfbfd93",
+      "job": 135989332346,
+      "run_conclusion": "failure",
+      "job_conclusion": "failure",
+      "verification": "job_metadata_and_dossier",
+      "observation": "Both replicas failed (other job 135989332883); dossier attributes failure to Summary visual validation. Root cause requires renewed log/fixture review; no installation.",
+      "artifact_bytes_reverified": false,
+      "formal_gate_verified": false
+    },
+    {
+      "role": "bazzite",
+      "pr": 214,
+      "run": 44443420174,
+      "run_head_sha": "c7c808f6da61fca02f2dadb37f74d3bfa0de1166",
+      "job": 135289898262,
+      "run_conclusion": "success",
+      "job_conclusion": "success",
+      "verification": "job_metadata_and_dossier",
+      "observation": "Diskless locale stage successful; dossier records installer selection options visible but disabled. No installation or Blivet editor proof.",
+      "artifact_bytes_reverified": false,
+      "formal_gate_verified": false
+    },
+    {
+      "role": "bazzite",
+      "pr": 250,
+      "run": 44576081171,
+      "run_head_sha": "ad26cb10ee2c72277605e28085e410c47a538490",
+      "job": 135745407366,
+      "run_conclusion": "failure",
+      "job_conclusion": "failure",
+      "verification": "job_log",
+      "observation": "GUEST_PROBE=FAIL; missing mandatory Custom selection evidence. No editor, install or write authorization. Run metadata SHA overrides different HEAD cited in historical dossier.",
+      "artifact_bytes_reverified": false,
+      "formal_gate_verified": false
+    }
+  ],
+  "current_prs": [
+    {
+      "role": "mint",
+      "pr": 393,
+      "head_sha": "935527ac696a086e8c7d1eaac3fcfec484a3ab2c",
+      "path": "assets/live/gaslux_distribution_capabilities.py",
+      "source_blob": "f1cde8f9e2d609f076ff559e41c13d77323a853f",
+      "dev_blob": "2f0396f0f82cf7be46c5ee573d7660c5bd1c3ba2",
+      "state": "merged_dev",
+      "scope": "assess_mint_lifecycle present in dev; later #407 modifies same file.",
+      "blob_comparison": "different",
+      "formal_gate_verified": false
+    },
+    {
+      "role": "mint",
+      "pr": 407,
+      "head_sha": "223281bc4254b8180b2317905a42f544b6e13806",
+      "path": "assets/live/gaslux_distribution_capabilities.py",
+      "source_blob": "2f0396f0f82cf7be46c5ee573d7660c5bd1c3ba2",
+      "dev_blob": "2f0396f0f82cf7be46c5ee573d7660c5bd1c3ba2",
+      "state": "merged_dev",
+      "scope": "match_mint_223_iso_descriptor present; matching descriptor is not authenticated ISO.",
+      "blob_comparison": "identical",
+      "formal_gate_verified": false
+    },
+    {
+      "role": "zorin",
+      "pr": 395,
+      "head_sha": "d563c70278d00f7342672af7ec6d9edc77c4d098",
+      "path": "assets/live/gaslux_candidate_handoff.py",
+      "source_blob": "25339209aeed975fde73b3f99f7a0d3ca9f24952",
+      "dev_blob": "12b93e4eefacd19e73a92500896503880a13d27e",
+      "state": "draft",
+      "scope": "Read-only helper.",
+      "blob_comparison": "different",
+      "formal_gate_verified": false
+    },
+    {
+      "role": "bazzite",
+      "pr": 400,
+      "head_sha": "d68d2c42dbd38ade09a42b8cbebc46c7c4b3d897",
+      "path": "assets/live/gaslux_bazzite_preflight.py",
+      "source_blob": "bf204485451d97599626e6dd5bdd9fa1fdf839a3",
+      "dev_blob": "9af04a55017528e9e42cea4fca118323fead18a4",
+      "state": "draft",
+      "scope": "Read-only helper.",
+      "blob_comparison": "different",
+      "formal_gate_verified": false
+    },
+    {
+      "role": "cachyos",
+      "pr": 411,
+      "head_sha": "3ecf8be8595d6b3b1dfcecd1889a5e2c9d6119eb",
+      "path": "assets/live/gaslux_distribution_capabilities.py",
+      "source_blob": "bd446b38c773dedede24a5d3263b7dce2a7384c6",
+      "dev_blob": "2f0396f0f82cf7be46c5ee573d7660c5bd1c3ba2",
+      "state": "draft",
+      "scope": "Read-only helper; preserve Mint functions in shared file.",
+      "blob_comparison": "different",
+      "formal_gate_verified": false
+    },
+    {
+      "role": "popos",
+      "pr": 412,
+      "head_sha": "660684b923c0c1bb8a9767464d1f23929ceb2715",
+      "path": "assets/live/gaslux_popos_preflight.py",
+      "source_blob": "b6b3a072a0c733cda3dc7a19b549a9ccf95314ae",
+      "dev_blob": "a372bb201cc1402e8c09531a0f0ab4075a84212d",
+      "state": "draft",
+      "scope": "Read-only helper.",
+      "blob_comparison": "different",
+      "formal_gate_verified": false
+    },
+    {
+      "role": "q4os",
+      "pr": 413,
+      "head_sha": "da29e55120ab7317d4eea5b1def9642e118f1861",
+      "path": "assets/live/gaslux_q4os_preflight.py",
+      "source_blob": "59c4e1d17bad98c4b9dbb5fb21a6d9c58533c7d7",
+      "dev_blob": "5df15b228d576ce9f385f6e4768a5d0dee8c56ac",
+      "state": "draft",
+      "scope": "Read-only helper.",
+      "blob_comparison": "different",
+      "formal_gate_verified": false
+    }
+  ],
+  "limitations": [
+    "Selected six source PRs, not all 414 PRs or all files.",
+    "Path absence is exact-path absence, not proof no equivalent code exists elsewhere.",
+    "Run head SHA differs from final PR HEAD in several cases; no inherited acceptance.",
+    "Job metadata, observed logs and dossier claims separated; no artifact archives reverified in this pass.",
+    "No installation, merge, writer, release or formal gate authorized. Recheck live state and independent Safety."
+  ]
+}

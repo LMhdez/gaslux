@@ -6,6 +6,8 @@ import json
 import os
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 import unittest
 from unittest.mock import patch
 
@@ -14,6 +16,7 @@ SPEC = importlib.util.spec_from_file_location("gaslux_agent_integrate", SCRIPT)
 assert SPEC and SPEC.loader
 integ = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(integ)
+REAL_REVIEWS = integ.independent_merge_reviews
 
 
 class IntegratorContractTests(unittest.TestCase):
@@ -47,6 +50,19 @@ class IntegratorContractTests(unittest.TestCase):
         self.calls = []
         self.live = self.dev
         self.changed = []
+        self.merged = "d" * 40
+        self.tree = "e" * 40
+        self.merge_parent = self.dev
+        self.merge_tree = self.tree
+        policy = patch.object(integ, "strict_merge_policy", return_value=True)
+        self.policy = policy.start()
+        self.addCleanup(policy.stop)
+        reviews = patch.object(integ, "independent_merge_reviews", return_value=True)
+        self.review_gate = reviews.start()
+        self.addCleanup(reviews.stop)
+        server = patch.object(integ, "server_role_protection", return_value=True)
+        self.server_gate = server.start()
+        self.addCleanup(server.stop)
 
     def api(self, method, path, body=None):
         self.calls.append((method, path, body))
@@ -57,7 +73,9 @@ class IntegratorContractTests(unittest.TestCase):
         if path == "/git/ref/heads/dev":
             return {"object": {"sha": self.live}}
         if path == "/git/commits/" + self.head:
-            return {"parents": [{"sha": self.dev}]}
+            return {"parents": [{"sha": self.dev}], "tree": {"sha": self.tree}}
+        if path == "/git/commits/" + self.merged:
+            return {"parents": [{"sha": self.merge_parent}], "tree": {"sha": self.merge_tree}}
         if path == f"/compare/{self.dev}...{self.live}":
             return {"status": "ahead", "merge_base_commit": {"sha": self.dev},
                     "ahead_by": 2, "total_commits": 2, "files": self.changed}
@@ -73,7 +91,9 @@ class IntegratorContractTests(unittest.TestCase):
         if path == "/commits/" + self.head + "/check-runs?per_page=100":
             return {"check_runs": []}
         if method == "PUT" and path == "/pulls/123/merge":
-            return {"merged": True, "sha": "c" * 40}
+            self.live = self.merged
+            self.pr.update(state="closed", merged=True, merge_commit_sha=self.merged)
+            return {"merged": True, "sha": self.merged}
         raise AssertionError((method, path))
 
     def test_live_compare_api_path_is_allowed_but_traversal_is_not(self):
@@ -294,6 +314,92 @@ class IntegratorContractTests(unittest.TestCase):
         self.assertEqual(writes[0][2]["sha"], self.head)
         self.assertEqual(writes[0][2]["merge_method"], "squash")
 
+    def test_legacy_merge_rejects_unknown_protection_and_stale_base(self):
+        env = {"GITHUB_REPOSITORY": integ.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule", "GASLUX_WINDOWS_ACCEPTANCE": "success",
+               "GASLUX_AUTONOMY_PAUSED": "false"}
+        with patch.dict(os.environ, env), patch.object(integ, "api", side_effect=self.api):
+            self.policy.return_value = False
+            result = integ.merge(123, self.head)
+            self.assertEqual(result["reason"], "strict_base_protection_required")
+            self.policy.return_value = True
+            self.live = "c" * 40
+            self.changed = [{"filename": "docs/CI_VM_EVIDENCE_INDEX.md", "status": "modified"}]
+            result = integ.merge(123, self.head)
+            self.assertEqual(result["reason"], "exact_base_required")
+            self.assertFalse(any(m != "GET" for m, _, _ in self.calls))
+
+    def test_legacy_merge_refuses_to_report_wrong_parent_or_tree(self):
+        env = {"GITHUB_REPOSITORY": integ.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule", "GASLUX_WINDOWS_ACCEPTANCE": "success",
+               "GASLUX_AUTONOMY_PAUSED": "false"}
+        for field in ("merge_parent", "merge_tree"):
+            with self.subTest(field=field), patch.dict(os.environ, env), \
+                    patch.object(integ, "api", side_effect=self.api):
+                self.live = self.dev
+                self.pr.update(state="open", draft=True, merged=False)
+                self.calls.clear()
+                old = getattr(self, field)
+                setattr(self, field, "f" * 40)
+                try:
+                    with self.assertRaisesRegex(RuntimeError, "Merged tree or parent"):
+                        integ.merge(123, self.head)
+                    self.assertEqual(sum(m == "PUT" for m, _, _ in self.calls), 1)
+                finally:
+                    setattr(self, field, old)
+
+    def test_isolated_python_loads_trusted_policy_without_network(self):
+        code = ("import runpy; m = runpy.run_path(" + repr(str(SCRIPT)) +
+                "); assert m['strict_merge_policy']('invalid') is False")
+        subprocess.run([sys.executable, "-I", "-c", code], check=True, timeout=30)
+
+    def test_readiness_and_merge_require_independent_reviews(self):
+        env = {"GITHUB_REPOSITORY": integ.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule", "GASLUX_WINDOWS_ACCEPTANCE": "success",
+               "GASLUX_AUTONOMY_PAUSED": "false"}
+        with patch.dict(os.environ, env), patch.object(integ, "api", side_effect=self.api):
+            self.review_gate.return_value = False
+            with self.assertRaisesRegex(RuntimeError, "independent exact reviews"):
+                integ.verify_before_ready(123, self.head)
+            self.assertEqual(integ.merge(123, self.head)["reason"], "independent_reviews_required")
+            self.assertFalse(any(m != "GET" for m, _, _ in self.calls))
+
+    def test_actual_legacy_role_reviews_reject_unrelated_and_stale_approvals(self):
+        self.pr["user"]["id"] = 41898282
+        env = {"GASLUX_SAFETY_REVIEWER_ID": "101",
+               "GASLUX_SUPERVISED_OWNER_IDS": '{"mint":102}'}
+        reviews = [
+            {"user": {"id": 101}, "state": "APPROVED", "commit_id": self.head,
+             "body": f"GASLUX-SAFETY-V1 head={self.head} base={self.dev}"},
+            {"user": {"id": 102}, "state": "APPROVED", "commit_id": self.head,
+             "body": f"GASLUX-BACKEND-OWNER-V1 role=mint head={self.head} base={self.dev}"},
+        ]
+
+        def response(method, route, body=None):
+            if route == "/pulls/123/reviews?per_page=100":
+                return reviews
+            return self.api(method, route, body)
+
+        with patch.dict(os.environ, env), patch.object(integ, "api", side_effect=response):
+            checked = integ.inspect(123, self.head)
+            self.assertTrue(REAL_REVIEWS(checked))
+            reviews[1]["user"]["id"] = 103
+            self.assertFalse(REAL_REVIEWS(checked))
+            reviews[1]["user"]["id"] = 102
+            reviews[0]["commit_id"] = "f" * 40
+            self.assertFalse(REAL_REVIEWS(checked))
+
+    def test_server_role_gate_blocks_before_ready_and_merge(self):
+        env = {"GITHUB_REPOSITORY": integ.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule", "GASLUX_WINDOWS_ACCEPTANCE": "success",
+               "GASLUX_AUTONOMY_PAUSED": "false"}
+        with patch.dict(os.environ, env), patch.object(integ, "api", side_effect=self.api):
+            self.server_gate.return_value = False
+            with self.assertRaises(RuntimeError):
+                integ.verify_before_ready(123, self.head)
+            self.assertEqual(integ.merge(123, self.head)["reason"], "server_role_review_protection_required")
+            self.assertFalse(any(m != "GET" for m, _, _ in self.calls))
+
     def test_windows_acceptance_uses_exact_head_and_prebuilt_tests(self):
         yaml = (
             SCRIPT.parents[2] / ".github/workflows/gaslux-agent-integrator.yml"
@@ -326,7 +432,9 @@ class IntegratorContractTests(unittest.TestCase):
         for title in ("GASLUX-CLOCK/auto", "GASLUX-CLOCK/mint",
                       "GASLUX-CLOCK/zorin"):
             with self.subTest(title=title), tempfile.TemporaryDirectory() as tmp:
-                self.calls.clear()
+                # Each event exercises a distinct unmerged candidate; the previous
+                # simulated squash merge closed its PR and advanced dev.
+                self.setUp()
                 event_path = Path(tmp) / "event.json"
                 event_path.write_text(json.dumps({"workflow_run": {
                     "name": title,

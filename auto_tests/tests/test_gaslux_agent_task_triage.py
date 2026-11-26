@@ -353,8 +353,15 @@ class TaskTriageTests(unittest.TestCase):
         workflow = (SCRIPT.parents[2] /
                     ".github/workflows/gaslux-agent-feature-factory.yml").read_text()
         _, triage_job = workflow.split("  triage_missing_gates:\n", 1)
-        self.assertIn("GASLUX_PUBLISH_APP_BOT_LOGIN: ${{ vars.GASLUX_PUBLISH_APP_BOT_LOGIN }}",
-                      triage_job)
+        # The fallback is the exact GitHub App actor observed on PR #407,
+        # never a wildcard Bot or a value copied from untrusted dev.
+        expected_actor_setting = (
+            "GASLUX_PUBLISH_APP_BOT_LOGIN: "
+            "${{ vars.GASLUX_PUBLISH_APP_BOT_LOGIN || "
+            "'gaslux-autonomous-publisher[bot]' }}"
+        )
+        self.assertIn(expected_actor_setting, triage_job)
+        self.assertEqual(triage_job.count(expected_actor_setting), 1)
         self.assertNotIn("GASLUX_PUBLISH_APP_PRIVATE_KEY", triage_job)
 
     def test_workflow_temporary_write_token_only_in_trusted_triage_job(self):
@@ -377,6 +384,249 @@ class TaskTriageTests(unittest.TestCase):
         ):
             self.assertIn("      - " + filename, push_paths)
             self.assertIn("      - " + filename, pr_paths)
+
+
+class AdmissionRepairTests(unittest.TestCase):
+    HEAD, BASE = "a" * 40, "b" * 40
+    ENV = {"GITHUB_REPOSITORY": triage.REPO, "GITHUB_REF": "refs/heads/main",
+           "GITHUB_EVENT_NAME": "schedule"}
+
+    def row(self, **changes):
+        return {
+            "pr": 395, "role": "zorin", "head": self.HEAD, "base": self.BASE,
+            "exact_scope_verified": True, "current_base_verified": False,
+            "ci_verified": True, "ci_workflow_provenance_verified": True,
+            "technical_objection": False, "merge_authorized": False,
+            "release_eligible": False, "next_action": "REFRESH_CANDIDATE_BASE",
+            **changes,
+        }
+
+    def issue(self, **changes):
+        return {
+            **triage.repair_issue_payload(395, self.HEAD, self.BASE, "zorin"),
+            "repository_url": triage.API, "state": "closed",
+            "user": {"login": "github-actions[bot]", "id": 41898282},
+            **changes,
+        }
+
+    def test_repair_requires_exact_stale_non_objection_verified_candidate(self):
+        self.assertTrue(triage.repair_eligible(self.row(), 395, "zorin", self.HEAD))
+        for changes in (
+            {"head": self.BASE}, {"role": "bazzite"}, {"base": "bad"},
+            {"pr": 396}, {"exact_scope_verified": False},
+            {"current_base_verified": True}, {"ci_verified": False},
+            {"ci_workflow_provenance_verified": False},
+            {"technical_objection": True}, {"technical_objection": None},
+            {"merge_authorized": True}, {"release_eligible": True},
+            {"next_action": "VERIFY_IDENTITY_AND_SCOPE"},
+        ):
+            self.assertFalse(triage.repair_eligible(self.row(**changes), 395, "zorin", self.HEAD))
+
+    def test_stable_issue_identity_ignores_base_and_closed_state(self):
+        key = {(395, self.HEAD)}
+        self.assertEqual(triage.repair_keys([self.issue()]), key)
+        other = triage.repair_issue_payload(395, self.HEAD, "c" * 40, "zorin")
+        self.assertEqual(triage.repair_keys([self.issue(**other)]), key)
+        for changes in (
+            {"user": {"login": "github-actions[bot]", "id": 1}},
+            {"repository_url": "https://api.github.com/repos/fork/gaslux"},
+            {"title": "unrelated"}, {"pull_request": {}},
+            {"body": "copied marker\n" + self.issue()["body"]},
+        ):
+            self.assertEqual(triage.repair_keys([self.issue(**changes)]), set())
+
+    def test_repair_creation_rechecks_live_scope_and_never_duplicates(self):
+        import gaslux_distro_admission as admission
+        inventory = {395: ("zorin", self.HEAD)}
+        for scenario in ("created", "dry", "tracked", "objection", "drift", "race", "head"):
+            with self.subTest(scenario=scenario):
+                rows = [self.row(), self.row()]
+                if scenario == "objection":
+                    rows[1] = self.row(technical_objection=True)
+                elif scenario == "drift":
+                    rows[1] = self.row(base="c" * 40)
+                history = [[self.issue()] if scenario == "tracked" else [],
+                           [self.issue()] if scenario == "race" else []]
+                inventories = [inventory, {} if scenario == "head" else inventory]
+                with patch.dict("os.environ", self.ENV, clear=True), \
+                     patch.object(admission, "discover_candidates", side_effect=inventories), \
+                     patch.object(admission, "inspect", side_effect=rows), \
+                     patch.object(triage, "all_issues", side_effect=history), \
+                     patch.object(triage, "api", side_effect=[
+                         {"object": {"sha": self.BASE}}, {"number": 800}
+                     ]) as api:
+                    result = triage.sync_admission_repair(dry_run=scenario == "dry")
+                expected = {
+                    "created": "repair_issue_created", "dry": "repair_dry_run",
+                    "tracked": "no_repair_action", "objection": "repair_retry",
+                    "drift": "repair_retry", "race": "repair_already_queued",
+                    "head": "repair_retry",
+                }
+                self.assertEqual(result["status"], expected[scenario])
+                posts = [call for call in api.call_args_list if call.args[0] == "POST"]
+                self.assertEqual(len(posts), int(scenario == "created"))
+                if posts:
+                    self.assertEqual(posts[0].args[1], "/issues")
+                    self.assertIn("NEEDS_SCOPE_REVIEW", posts[0].args[2]["body"])
+
+    def test_repair_is_blocked_before_api_on_untrusted_event(self):
+        for key, value in (("GITHUB_REF", "refs/heads/dev"),
+                           ("GITHUB_REPOSITORY", "fork/gaslux"),
+                           ("GITHUB_EVENT_NAME", "pull_request"),
+                           ("GASLUX_AUTONOMY_PAUSED", "true")):
+            with patch.dict("os.environ", dict(self.ENV, **{key: value}), clear=True), \
+                 patch.object(triage, "api") as api:
+                with self.assertRaises(RuntimeError):
+                    triage.sync_admission_repair()
+                api.assert_not_called()
+
+
+class ImplementationDiscoveryTests(unittest.TestCase):
+    def test_detects_explicit_stub_not_pass_or_conditional_or_private(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / triage.TASKS["zorin"][0]
+            path.parent.mkdir(parents=True)
+            path.write_text(
+                'def new_capability():\n    """Pending native implementation."""\n'
+                '    raise NotImplementedError("missing")\n'
+                'def conditional(x):\n    if x:\n        raise NotImplementedError\n'
+                'def noop():\n    pass\n'
+                'def _private():\n    raise NotImplementedError\n'
+                'raise RuntimeError("must never execute source")\n')
+            rows = triage.discover_missing_implementations(root)
+            self.assertEqual([(r["role"], r["symbol"]) for r in rows],
+                             [("zorin", "new_capability")])
+            self.assertFalse(rows[0]["code_authorized"])
+            self.assertFalse(rows[0]["release_eligible"])
+            key = rows[0]["key"]
+            path.write_text("# unrelated revision\n" + path.read_text())
+            self.assertEqual(triage.discover_missing_implementations(root)[0]["key"], key)
+
+    def test_rejects_symlink_source(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            path = root / triage.TASKS["zorin"][0]
+            path.parent.mkdir(parents=True)
+            outside = root / "untrusted.py"
+            outside.write_text("def missing():\n    raise NotImplementedError\n")
+            path.symlink_to(outside)
+            with self.assertRaises(ValueError):
+                triage.discover_missing_implementations(root)
+
+
+    def test_missing_api_has_existing_test_witness_and_no_execution(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            source, test, _ = triage.TASKS["zorin"]
+            path = root / source
+            path.parent.mkdir(parents=True)
+            path.write_text("def available():\n    return 1\n")
+            suite = root / "auto_tests/tests" / test
+            suite.parent.mkdir(parents=True)
+            module = path.stem
+            suite.write_text(
+                f"from {module} import missing_api, available, unused_api\n"
+                "def test_requested():\n    assert missing_api() == available()\n"
+            )
+            rows = triage.discover_missing_implementations(root)
+            self.assertEqual(len(rows), 1)
+            self.assertEqual(rows[0]["symbol"], "missing_api")
+            self.assertEqual(rows[0]["reason"], "TEST_REQUIRES_MISSING_API")
+            self.assertEqual(rows[0]["witness"], "auto_tests/tests/" + test)
+            self.assertFalse(rows[0]["code_authorized"])
+            path.write_text("def __getattr__(name):\n    return None\n")
+            self.assertEqual(triage.discover_missing_implementations(root), [])
+
+
+class HistoricalRoutingTests(unittest.TestCase):
+    def test_unique_history_routed_once_and_no_mutation_of_pr(self):
+        import gaslux_agent_reconcile as rec
+        import gaslux_distro_admission as admission
+        env = {"GITHUB_REPOSITORY": triage.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule", "GASLUX_AUTONOMY_PAUSED": "false"}
+        head, base = "a" * 40, "b" * 40
+        row = {"status": "UNIQUE_COMMITS_REQUIRE_RECONCILIATION", "pr": 42,
+               "head": head, "base": base, "target": "dev", "unique_head_commits": 3}
+        repo = {"full_name": triage.REPO}
+        pr = {"state": "open", "head": {"sha": head, "repo": repo},
+              "base": {"ref": "dev", "sha": base, "repo": repo}}
+        title = "[GASLUX-RECONCILE] #42: preserve unique changes"
+        issue = {"user": {"id": 41898282, "login": "github-actions[bot]"},
+                 "repository_url": triage.API, "title": title,
+                 "body": f"<!-- GASLUX-HISTORICAL-RECONCILE-V1:42:{head} -->"}
+        for scenario in ("valid", "dry", "duplicate", "drift", "integrated"):
+            writes = []
+            def read(method, route):
+                self.assertEqual(method, "GET")
+                if route == "/pulls/42":
+                    return pr
+                if route.startswith("/compare/"):
+                    return {"behind_by": 3}
+                if route == "/git/ref/heads/dev":
+                    return {"object": {"sha": "c" * 40 if scenario == "drift" else base}}
+                self.fail(route)
+            def write(method, route, payload):
+                self.assertEqual((method, route), ("POST", "/issues"))
+                writes.append(payload)
+                return {"number": 501}
+            item = dict(row, status="ANCESTRY_PRESENT_REVIEW_CLOSURE") if scenario == "integrated" else row
+            with patch.dict("os.environ", env, clear=True), \
+                 patch.object(rec, "historical_inventory", return_value={"findings": [item]}), \
+                 patch.object(triage, "all_issues", return_value=[issue] if scenario == "duplicate" else []), \
+                 patch.object(admission, "api", side_effect=read), patch.object(triage, "api", side_effect=write):
+                result = triage.sync_historical_reconciliation(dry_run=scenario == "dry")
+            self.assertEqual(result["status"] == "historical_reconciliation_routed", scenario == "valid")
+            self.assertEqual(len(writes), int(scenario == "valid"))
+
+
+class SupervisedFeedbackTests(unittest.TestCase):
+    def test_authenticated_negative_review_is_routed_without_granting_authority(self):
+        import gaslux_supervised_admission as gate
+        import gaslux_distro_admission as admission
+        from unittest.mock import patch
+        head, base = "a" * 40, "b" * 40
+        env = {"GITHUB_REPOSITORY": triage.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule"}
+        repo = {"full_name": triage.REPO}
+        pr = {"state": "open", "head": {"sha": head, "repo": repo},
+              "base": {"sha": base, "ref": "dev", "repo": repo},
+              "user": {"id": 41898282, "login": "github-actions[bot]"}}
+        for scenario in ("valid", "wrong_actor", "old_head", "comment", "paused", "changed_review"):
+            review = {"id": 101, "user": {"id": 999 if scenario == "wrong_actor" else 123},
+                      "commit_id": base if scenario == "old_head" else head,
+                      "state": "COMMENTED" if scenario == "comment" else "CHANGES_REQUESTED"}
+            calls, writes = [], []
+            def get(method, route):
+                self.assertEqual(method, "GET")
+                if route == "/pulls/500":
+                    return pr
+                if route == "/git/ref/heads/dev":
+                    return {"object": {"sha": base}}
+                if route.endswith("/reviews?per_page=100"):
+                    calls.append(route)
+                    return [] if scenario == "changed_review" and len(calls) > 1 else [review]
+                self.fail(route)
+            def post(method, route, body):
+                self.assertEqual((method, route), ("POST", "/issues"))
+                writes.append(body)
+                return {"number": 501}
+            with patch.dict("os.environ", dict(env, GASLUX_AUTONOMY_PAUSED="true" if scenario == "paused" else ""), clear=True), \
+                 patch.object(gate, "configured_reviewers", return_value=(123, {"zorin": 456})), \
+                 patch.object(gate, "discover", return_value={500: ("zorin", gate.DYNAMIC_SCOPE, head)}), \
+                 patch.object(admission, "api", side_effect=get), \
+                 patch.object(triage, "all_issues", return_value=[]), \
+                 patch.object(triage, "api", side_effect=post):
+                if scenario == "paused":
+                    with self.assertRaises(RuntimeError):
+                        triage.sync_supervised_feedback()
+                else:
+                    result = triage.sync_supervised_feedback()
+                    self.assertEqual(result["status"] == "supervised_feedback_routed", scenario == "valid")
+            self.assertEqual(len(writes), int(scenario == "valid"))
+            if writes:
+                self.assertIn("never inherit approvals", writes[0]["body"])
+                self.assertIn("pullrequestreview-101", writes[0]["body"])
 
 
 if __name__ == "__main__":
