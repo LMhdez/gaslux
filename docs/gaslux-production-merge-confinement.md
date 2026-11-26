@@ -63,3 +63,16 @@ shape only after confirming the exact non-fork repository, and rejects
 unknown parameters or a true exception. This proof is limited to the private
 lab's own Actions token; production policy, actor-specific bypass boundaries,
 functional acceptance and native independent role enforcement remain pending.
+
+## Revocation reconciliation and workflow ordering
+Both independent status jobs must now complete successfully after both review
+jobs before supervised integration can start. Each publisher first scans
+current open same-repository publisher PRs for its own exact production
+success receipts and invalidates stale base, retargeted, dismissed or otherwise
+ineligible authorization. With migration configured, a paused cycle only
+invalidates; it never publishes success. Failed/incomplete scans fail the
+same-cycle merge dependency. No inert pilot status or arbitrary foreign PR
+is changed. This bounded scan does not discover receipts on old unreachable
+heads and cannot make a native review dismissal and status failure atomic.
+Native named-role enforcement is still mandatory. No claim of production
+readiness or substitute for server-side role revocation is made.
