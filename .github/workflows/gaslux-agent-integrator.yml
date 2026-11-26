@@ -220,6 +220,8 @@ jobs:
     needs: [select, windows_acceptance]
     if: >-
       github.repository == 'LMhdez/gaslux' &&
+      vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'true' &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'false' &&
       needs.select.outputs.selected == 'true' &&
       needs.windows_acceptance.result == 'success' &&
       github.ref == 'refs/heads/main'
@@ -238,6 +240,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_PRODUCTION_MERGE_ENABLED: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
           GASLUX_WINDOWS_ACCEPTANCE: success
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
@@ -541,6 +544,8 @@ jobs:
     if: >-
       always() && !cancelled() &&
       github.repository == 'LMhdez/gaslux' &&
+      vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'true' &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'false' &&
       github.ref == 'refs/heads/main' &&
       vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
       (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' ||
@@ -619,6 +624,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_PRODUCTION_MERGE_ENABLED: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
           GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}

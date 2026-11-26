@@ -225,7 +225,8 @@ def shared_admission():
 
 
 def strict_merge_policy(base: str) -> bool:
-    return shared_admission().strict_dev_protected(base)
+    gate = shared_admission()
+    return gate.strict_dev_protected(base) and gate.production_merge_policy(base)
 
 
 def server_role_protection(checked: dict) -> bool:

@@ -864,6 +864,91 @@ def strict_dev_protected(base):
         return False
 
 
+def production_merge_policy(base):
+    """Fail closed unless the actual merge credential is confined to dev.
+
+    A SHA-pinned PR merge does not atomically pin its target ref. Require
+    an active server-side all-branches update restriction excluding only dev.
+    Policy administrators are trusted not to edit rules during the operation.
+    This is a policy observation, not proof of a successful live pilot.
+    """
+    if (os.getenv("GASLUX_PRODUCTION_MERGE_ENABLED") != "true"
+            or os.getenv("GASLUX_AUTONOMY_PAUSED") != "false"
+            or not admission.valid_sha(base)):
+        return False
+    api = admission.api
+    try:
+        if api("GET", "/git/ref/heads/dev")["object"]["sha"] != base:
+            return False
+        main = api("GET", "/git/ref/heads/main")["object"]["sha"]
+        if not admission.valid_sha(main) or main != os.getenv("GITHUB_SHA"):
+            return False
+        # Require repository-local exact main protection for trusted workflow
+        # changes, and a separate wildcard restriction against PR retargeting.
+        inventory = admission.complete_page(api("GET", "/rulesets?includes_parents=false&per_page=100"))
+        if len(inventory) > 16:
+            return False
+        main_rules = admission.complete_page(api("GET", "/rules/branches/main?per_page=100"))
+        dev_rules = admission.complete_page(api("GET", "/rules/branches/dev?per_page=100"))
+        seen = set()
+        trusted_main = confined = False
+        matched = []
+        for item in inventory:
+            rid = item.get("id")
+            if type(rid) is not int or rid <= 0 or rid in seen:
+                return False
+            seen.add(rid)
+            if (item.get("source_type") != "Repository" or item.get("source") != admission.REPO
+                    or item.get("target") != "branch" or item.get("enforcement") != "active"):
+                continue
+            detail = api("GET", f"/rulesets/{rid}?includes_parents=false")
+            if (detail.get("id") != rid or detail.get("source") != admission.REPO
+                    or detail.get("source_type") != "Repository" or detail.get("target") != "branch"
+                    or detail.get("enforcement") != "active"
+                    or detail.get("current_user_can_bypass") != "never"):
+                continue
+            rules = admission.complete_page(detail["rules"])
+            by_type = {row["type"]: row.get("parameters", {}) for row in rules}
+            effective_rows = [row for row in main_rules if row.get("ruleset_id") == rid]
+            effective = {row["type"]: row.get("parameters", {}) for row in effective_rows}
+            if (len(by_type) != len(rules) or len(effective) != len(effective_rows)
+                    or by_type != effective
+                    or any(row.get("ruleset_source") != admission.REPO
+                           or row.get("ruleset_source_type") != "Repository" for row in effective_rows)):
+                continue
+            conditions = detail.get("conditions")
+            if (conditions == {"ref_name": {"include": ["~ALL"], "exclude": ["refs/heads/dev"]}}
+                    and "update" in by_type
+                    and not any(row.get("ruleset_id") == rid for row in dev_rules)):
+                confined = True
+                matched.append((rid, detail))
+            if (conditions == {"ref_name": {"include": ["refs/heads/main"], "exclude": []}}
+                    and {"deletion", "non_fast_forward", "pull_request", "required_status_checks"} <= set(by_type)
+                    and ruleset_bypass_evidence(detail) in ("rest_empty", "graphql_empty")):
+                reviews = by_type["pull_request"]
+                checks = by_type["required_status_checks"]
+                required = checks.get("required_status_checks")
+                if (type(reviews.get("required_approving_review_count")) is int
+                        and reviews["required_approving_review_count"] >= 1
+                        and all(reviews.get(key) is True for key in (
+                            "dismiss_stale_reviews_on_push", "require_last_push_approval",
+                            "required_review_thread_resolution"))
+                        and checks.get("strict_required_status_checks_policy") is True
+                        and checks.get("do_not_enforce_on_create") is False
+                        and isinstance(required, list) and 0 < len(required) < 100
+                        and all(isinstance(row.get("context"), str) and row["context"].strip()
+                                and row.get("integration_id") == 15368 for row in required)):
+                    trusted_main = True
+                    matched.append((rid, detail))
+        return (trusted_main and confined
+                and all(api("GET", f"/rulesets/{rid}?includes_parents=false") == detail
+                        for rid, detail in matched)
+                and api("GET", "/git/ref/heads/main")["object"]["sha"] == main
+                and api("GET", "/git/ref/heads/dev")["object"]["sha"] == base)
+    except (OSError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
+        return False
+
+
 def integrate_one(*, product=False):
     """Trusted-main-only bounded integration, never executes candidate code."""
     if (os.getenv("GITHUB_REPOSITORY") != admission.REPO
@@ -881,6 +966,8 @@ def integrate_one(*, product=False):
         if not eligible(row):
             continue
         base = row["base"]
+        if not production_merge_policy(base):
+            return {"status": "production_merge_policy_required", "pr": number, "head": head}
         if not strict_dev_protected(base):
             return {"status": "strict_base_protection_required", "pr": number, "head": head}
         if not role_review_protected(base, reviewer, owners.get(role), head=head):
@@ -904,6 +991,8 @@ def integrate_one(*, product=False):
             return {"status": "strict_base_protection_required", "pr": number, "head": head}
         if not role_review_protected(base, reviewer, owners.get(role), head=head):
             return {"status": "server_role_review_protection_required", "pr": number, "head": head}
+        if not production_merge_policy(base):
+            return {"status": "production_merge_policy_required", "pr": number, "head": head}
         # Do not retry with an updated base or bypass protection. A concurrent
         # dev advance makes the exact single-parent head out of date; GitHub's
         # strict rule must reject this request at merge time.
