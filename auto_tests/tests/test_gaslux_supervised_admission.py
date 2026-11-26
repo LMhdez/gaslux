@@ -611,6 +611,54 @@ class CompletedIntegrationAuditTests(unittest.TestCase):
             self.assertFalse(result["release_eligible"])
 
 
+class RulesetVisibilityTests(unittest.TestCase):
+    def test_hidden_rest_actors_require_explicit_graphql_connection(self):
+        detail = {"id": 28107915, "node_id": "RRS_example",
+                  "updated_at": "2026-11-25T21:35:57.851+00:00"}
+        for scenario in ("empty", "nonempty", "null", "wrong_id", "wrong_repo",
+                         "inactive", "errors", "denied", "drift", "partial", "bad_count"):
+            node = {"__typename": "RepositoryRuleset", "id": detail["node_id"],
+                    "databaseId": detail["id"], "enforcement": "ACTIVE",
+                    "source": {"nameWithOwner": A.REPO},
+                    "bypassActors": {"totalCount": 0, "nodes": [],
+                                     "pageInfo": {"hasNextPage": False, "hasPreviousPage": False}}}
+            actors = node["bypassActors"]
+            if scenario == "nonempty":
+                actors.update(totalCount=1, nodes=[{"id": "actor"}])
+            elif scenario == "null":
+                node["bypassActors"] = None
+            elif scenario == "wrong_id":
+                node["databaseId"] += 1
+            elif scenario == "wrong_repo":
+                node["source"]["nameWithOwner"] = "other/repo"
+            elif scenario == "inactive":
+                node["enforcement"] = "DISABLED"
+            elif scenario == "partial":
+                actors["pageInfo"]["hasNextPage"] = True
+            elif scenario == "bad_count":
+                actors["totalCount"] = False
+            response = {"data": {"node": node}}
+            if scenario == "errors":
+                response["errors"] = [{"message": "permission denied"}]
+            fresh = dict(detail, updated_at="later") if scenario == "drift" else detail
+            with patch.object(gate.subprocess, "run",
+                              return_value=gate.subprocess.CompletedProcess([], 0, json.dumps(response).encode()),
+                              side_effect=OSError("denied") if scenario == "denied" else None), \
+                 patch.object(A, "api", return_value=fresh):
+                expected = {"empty": "graphql_empty", "nonempty": "nonempty"}.get(scenario, "unknown")
+                self.assertEqual(gate.ruleset_bypass_evidence(detail), expected, scenario)
+
+    def test_visible_actor_list_and_current_identity(self):
+        with patch.object(gate.subprocess, "run") as query:
+            self.assertEqual(gate.ruleset_bypass_evidence({"bypass_actors": []}), "rest_empty")
+            self.assertEqual(gate.ruleset_bypass_evidence({"bypass_actors": [{"actor_id": 1}]}), "nonempty")
+            self.assertEqual(gate.ruleset_bypass_evidence(
+                {"bypass_actors": [], "current_user_can_bypass": "always"}), "nonempty")
+            self.assertEqual(gate.ruleset_bypass_evidence(
+                {"current_user_can_bypass": "never"}), "unknown")
+            query.assert_not_called()
+
+
 class MultifileAdmissionTests(unittest.TestCase):
     def test_reconstruct_multiple_files_and_original_test_witness(self):
         import tempfile
