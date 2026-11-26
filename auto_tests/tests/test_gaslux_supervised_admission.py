@@ -659,5 +659,57 @@ class RulesetVisibilityTests(unittest.TestCase):
             query.assert_not_called()
 
 
+class MultifileAdmissionTests(unittest.TestCase):
+    def test_reconstruct_multiple_files_and_original_test_witness(self):
+        import tempfile
+        role = "zorin"
+        suite = "auto_tests/tests/" + F.TASKS[role][1]
+        paths = [gate.multi.module_path(x) for x in ("gaslux_alpha", "gaslux_beta")]
+        test = b"from gaslux_alpha import one\nfrom gaslux_beta import two\n\ndef test_contract():\n    assert one(1) == two(2)\n"
+        original = b"def present(x):\n    return x\n"
+        changes = {name: gate.dynamic.candidate_bytes(original, symbol, f"def {symbol}(x):\n    return x\n")
+                   for name, symbol in zip(paths, ("one", "two"))}
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            for name, raw in [(suite, test)] + [(name, original) for name in paths]:
+                p = root / name
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_bytes(raw)
+            key = gate.multi.discover(root)[0]["key"]
+        branch = f"bot/gaslux-multi-{role}-{key[6:18]}-{BASE[:12]}"
+        for scenario in ("valid", "off_scope", "changed_test", "bad_source", "wrong_branch"):
+            files = [{"filename": name, "status": "modified"} for name in paths]
+            if scenario == "off_scope":
+                files.append({"filename": ".github/workflows/evil.yml", "status": "modified"})
+            if scenario == "changed_test":
+                files.append({"filename": suite, "status": "modified"})
+            comparison = {"status": "ahead", "ahead_by": 1, "behind_by": 0,
+                          "total_commits": 1, "merge_base_commit": {"sha": BASE}, "files": files}
+            def source_at(name, ref):
+                if name == suite:
+                    return test
+                if ref == BASE:
+                    return original
+                return changes[name] + (b"\nimport os\n" if scenario == "bad_source" else b"")
+            pr = {"commits": 1, "head": {"ref": branch if scenario != "wrong_branch" else branch + "x"}}
+            with patch.object(A, "single_parent", return_value=BASE), \
+                 patch.object(A, "api", return_value=comparison), \
+                 patch.object(A, "source_at", side_effect=source_at):
+                if scenario == "valid":
+                    self.assertEqual(gate.multifile_scope(pr, role, HEAD), BASE)
+                else:
+                    with self.assertRaises(ValueError):
+                        gate.multifile_scope(pr, role, HEAD)
+
+    def test_multifile_requires_same_product_gates(self):
+        row = SupervisedIntegrationTests().receipt()
+        row.update(scope=gate.MULTIFILE_SCOPE, next_action="PRODUCT_INTEGRATION_ELIGIBLE",
+                   full_vm_acceptance_verified=True)
+        self.assertTrue(gate.eligible_product(row))
+        self.assertFalse(gate.eligible_test(row))
+        for name in ("safety_review_verified", "backend_owner_verified", "full_vm_acceptance_verified"):
+            self.assertFalse(gate.eligible_product({**row, name: False}))
+
+
 if __name__ == "__main__":
     unittest.main()

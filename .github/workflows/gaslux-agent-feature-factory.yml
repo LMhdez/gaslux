@@ -48,6 +48,10 @@ on:
       - auto_tests/tests/test_gaslux_opencode_workspace.py
       - auto_tests/tools/gaslux_dynamic_development.py
       - auto_tests/tests/test_gaslux_dynamic_development.py
+      - auto_tests/tools/gaslux_multifile_development.py
+      - auto_tests/tests/test_gaslux_multifile_development.py
+      - auto_tests/tools/gaslux_candidate_repair.py
+      - auto_tests/tests/test_gaslux_candidate_repair.py
   pull_request:
     paths:
       - .github/workflows/gaslux-agent-feature-factory.yml
@@ -80,6 +84,10 @@ on:
       - auto_tests/tests/test_gaslux_opencode_workspace.py
       - auto_tests/tools/gaslux_dynamic_development.py
       - auto_tests/tests/test_gaslux_dynamic_development.py
+      - auto_tests/tools/gaslux_multifile_development.py
+      - auto_tests/tests/test_gaslux_multifile_development.py
+      - auto_tests/tools/gaslux_candidate_repair.py
+      - auto_tests/tests/test_gaslux_candidate_repair.py
 
 permissions:
   contents: read
@@ -114,6 +122,8 @@ jobs:
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_trial.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_opencode_workspace.py -v
           python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_dynamic_development.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_multifile_development.py -v
+          python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_candidate_repair.py -v
 
       - name: Verify historical Python AST and reviewed witness differential
         if: github.event_name == 'pull_request' && (github.event.pull_request.number == 419 || github.event.pull_request.number == 426) && github.event.pull_request.head.repo.full_name == github.repository
@@ -578,6 +588,7 @@ jobs:
       repair_head: ${{ steps.plan.outputs.repair_head }}
       worker: ${{ steps.plan.outputs.worker }}
       dynamic_key: ${{ steps.plan.outputs.dynamic_key }}
+      dynamic_repair: ${{ steps.plan.outputs.dynamic_repair }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
@@ -617,6 +628,9 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
         run: |
           set -euo pipefail
           python3 -B trusted/auto_tests/tools/gaslux_agent_feature_factory.py plan --repo source --enable-stale-repair --enable-supervised-tests > /tmp/gaslux-feature-plan.json
@@ -640,8 +654,16 @@ jobs:
           if row['status'] == 'blocked':
               from pathlib import Path
               from gaslux_agent_task_triage import sync_implementation_gap
-              gap = sync_implementation_gap(Path('source'), dry_run=True,
-                                            eligible_reason='TEST_REQUIRES_MISSING_API')
+              from gaslux_multifile_development import pick
+              from gaslux_candidate_repair import pick as pick_repair
+              repair = pick_repair(Path('source'), row['base'])
+              bundle = repair or pick(Path('source'), row['base'])
+              gap = ({'status': 'implementation_gap_dry_run', 'base': row['base'], 'key': bundle['key']}
+                     if bundle else sync_implementation_gap(Path('source'), dry_run=True,
+                                            eligible_reason='TEST_REQUIRES_MISSING_API'))
+              if repair:
+                  with open(os.environ['GITHUB_OUTPUT'], 'a') as out:
+                      out.write('dynamic_repair=' + json.dumps(repair, ensure_ascii=True, separators=(',', ':')) + '\n')
               if gap.get('status') == 'implementation_gap_dry_run':
                   if gap['base'] != row['base']:
                       raise SystemExit('Dynamic task base drift')
@@ -1008,12 +1030,13 @@ jobs:
       needs.select.outputs.blocked == 'true' &&
       needs.select.outputs.dynamic_key != ''
     runs-on: ubuntu-24.04
-    timeout-minutes: 40
+    timeout-minutes: 65
     permissions:
       contents: read
     env:
       BASE: ${{ needs.select.outputs.base }}
       DYNAMIC_KEY: ${{ needs.select.outputs.dynamic_key }}
+      GASLUX_DYNAMIC_REPAIR: ${{ needs.select.outputs.dynamic_repair }}
       GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
       OLLAMA_HOST: 127.0.0.1:11434
       OLLAMA_NUM_PARALLEL: '1'
@@ -1137,6 +1160,7 @@ jobs:
     env:
       BASE: ${{ needs.select.outputs.base }}
       DYNAMIC_KEY: ${{ needs.select.outputs.dynamic_key }}
+      GASLUX_DYNAMIC_REPAIR: ${{ needs.select.outputs.dynamic_repair }}
       GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -1245,6 +1269,10 @@ jobs:
           GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           BASE: ${{ needs.select.outputs.base }}
           DYNAMIC_KEY: ${{ needs.select.outputs.dynamic_key }}
+          GASLUX_DYNAMIC_REPAIR: ${{ needs.select.outputs.dynamic_repair }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
         run: |
           set -euo pipefail
           python3 -I trusted/auto_tests/tools/gaslux_dynamic_development.py --mode publish \
@@ -1292,6 +1320,16 @@ jobs:
           set -euo pipefail
           python3 -B trusted/auto_tests/tools/gaslux_agent_task_triage.py --repo source --with-admission-repair --with-implementation-discovery
 
+      - name: Route independently rejected candidates to backend repair
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+        run: |
+          set -euo pipefail
+          python3 -B trusted/auto_tests/tools/gaslux_agent_task_triage.py --repo source --supervised-feedback
       - name: Route one unique historical PR without modifying its branch or review
         env:
           GH_TOKEN: ${{ github.token }}

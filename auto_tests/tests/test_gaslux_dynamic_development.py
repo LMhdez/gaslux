@@ -150,5 +150,19 @@ class DynamicDevelopmentTests(unittest.TestCase):
                 write.assert_not_called()
 
 
+    def test_rejects_nested_function_and_module_shadowing(self):
+        for code in (
+            "def missing(x):\n    def inner():\n        return 1\n    return 2\n",
+            "def missing(x):\n    def inner(y=abs(x)):\n        return y\n    return x\n",
+        ):
+            with self.assertRaisesRegex(ValueError, "DYNAMIC_NESTED_FUNCTION"):
+                dynamic.validate_function("missing", code)
+        generated = "def missing(x):\n    return len(x)\n"
+        for before in (b"len = dangerous\n", b"from other import dangerous as len\n",
+                       b"from other import *\n", b"def len(x):\n    return x\n"):
+            with self.assertRaisesRegex(ValueError, "DYNAMIC_SHADOWED_BUILTIN"):
+                dynamic.candidate_bytes(before, "missing", generated)
+
+
 if __name__ == "__main__":
     unittest.main()
