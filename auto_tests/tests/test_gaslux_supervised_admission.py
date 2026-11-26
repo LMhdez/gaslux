@@ -334,7 +334,8 @@ class ProductionConfinementTests(unittest.TestCase):
         for scenario in ("valid", "disabled", "paused", "no_main", "weak_main",
                          "missing_confinement", "wrong_pattern", "bypass", "missing_bypass",
                          "dev_covered", "missing_effective", "policy_drift", "main_drift",
-                         "stale_checkout", "unknown", "wrong_source", "missing_ci", "fetch_merge_exception"):
+                         "stale_checkout", "unknown", "wrong_source", "missing_ci", "fetch_merge_exception",
+                         "parameterless", "fork", "unknown_fork", "foreign_repo", "unknown_update_parameters"):
             main = "c" * 40
             main_rules = [
                 {"type": "deletion"}, {"type": "non_fast_forward"},
@@ -360,8 +361,12 @@ class ProductionConfinementTests(unittest.TestCase):
                 details.pop(10)
             if scenario == "missing_confinement":
                 details.pop(20)
+            if scenario == "parameterless":
+                details[20]["rules"][0].pop("parameters")
             if scenario == "fetch_merge_exception":
                 details[20]["rules"][0]["parameters"]["update_allows_fetch_and_merge"] = True
+            if scenario == "unknown_update_parameters":
+                details[20]["rules"][0]["parameters"]["other_exception"] = True
             if scenario == "wrong_pattern":
                 details[20]["conditions"]["ref_name"]["include"] = ["refs/heads/main"]
             if scenario == "bypass":
@@ -377,6 +382,12 @@ class ProductionConfinementTests(unittest.TestCase):
             def api(method, route):
                 self.assertEqual(method, "GET")
                 reads[route] = reads.get(route, 0) + 1
+                if route == "":
+                    repo = {"id": A.REPOSITORY_ID if scenario != "foreign_repo" else 1,
+                            "full_name": A.REPO, "fork": scenario == "fork", "default_branch": "main"}
+                    if scenario == "unknown_fork":
+                        repo.pop("fork")
+                    return repo
                 if route == "/git/ref/heads/dev":
                     return {"object": {"sha": BASE}}
                 if route == "/git/ref/heads/main":
@@ -400,7 +411,7 @@ class ProductionConfinementTests(unittest.TestCase):
             with patch.dict(os.environ, env, clear=True), patch.object(A, "api", side_effect=api), \
                  patch.object(gate, "strict_ruleset_protected", return_value=True):
                 os.environ["GASLUX_APP_STATUS_GATES_ENABLED"] = "true"
-                self.assertEqual(gate.production_merge_policy(BASE), scenario == "valid", scenario)
+                self.assertEqual(gate.production_merge_policy(BASE), scenario in ("valid", "parameterless"), scenario)
                 if scenario == "valid":
                     os.environ["GASLUX_APP_STATUS_GATES_ENABLED"] = "false"
                     self.assertFalse(gate.production_merge_policy(BASE))

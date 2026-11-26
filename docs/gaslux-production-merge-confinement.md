@@ -50,3 +50,16 @@ native named-role enforcement. The activation audit is GET-only, works while
 paused, and never grants merge authority. Main PRs always trigger the
 adversarial_contracts CI check, avoiding path-filter deadlocks. No server
 configuration has been changed by this proposal.
+
+## Real retarget denial — 2026-11-26
+Private standalone gaslux-merge-lab run 45901329724, runner HEAD
+4d33640e8a7bc52d6c2d2811523834f5cc0b1e75, job 140187551249, proved
+that a conflict-free inert PR #3 retargeted to lab-confinement-deny was
+rejected with HTTP 405 by active wildcard update ruleset 28195442. The
+candidate remained open and both target refs unchanged. The ruleset API
+returned a parameterless update rule despite submission of an explicit
+false fetch/merge exception. The production reader now accepts that observed
+shape only after confirming the exact non-fork repository, and rejects
+unknown parameters or a true exception. This proof is limited to the private
+lab's own Actions token; production policy, actor-specific bypass boundaries,
+functional acceptance and native independent role enforcement remain pending.

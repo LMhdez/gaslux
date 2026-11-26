@@ -929,6 +929,15 @@ def production_policy_observed(base):
         return False
     api = admission.api
     try:
+        # Parameterless update is the observed REST representation. Only
+        # admit it on the exact standalone repository, never on a fork
+        # where fetch-and-merge exceptions could have different semantics.
+        repo = api("GET", "")
+        if (repo.get("id") != admission.REPOSITORY_ID
+                or repo.get("full_name") != admission.REPO
+                or repo.get("fork") is not False
+                or repo.get("default_branch") != "main"):
+            return False
         if api("GET", "/git/ref/heads/dev")["object"]["sha"] != base:
             return False
         main = api("GET", "/git/ref/heads/main")["object"]["sha"]
@@ -969,7 +978,8 @@ def production_policy_observed(base):
                 continue
             conditions = detail.get("conditions")
             if (conditions == {"ref_name": {"include": ["~ALL"], "exclude": ["refs/heads/dev"]}}
-                    and by_type.get("update") == {"update_allows_fetch_and_merge": False}
+                    and "update" in by_type
+                    and by_type["update"] in ({}, {"update_allows_fetch_and_merge": False})
                     and not any(row.get("ruleset_id") == rid for row in dev_rules)):
                 confined = True
                 matched.append((rid, detail))
