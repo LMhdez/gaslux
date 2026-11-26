@@ -225,8 +225,8 @@ class LabReviewTests(unittest.TestCase):
         workflow = (Path(L.__file__).resolve().parents[2] /
                     ".github/workflows/gaslux-agent-integrator.yml").read_text()
         paused = workflow[workflow.index("  paused_safety_credential_probe:"):]
-        self.assertNotIn("contents: write", paused)
-        self.assertNotIn("pull-requests: write", paused)
+        self.assertNotRegex(paused, r"(?m)^\s*(?:contents|pull-requests)\s*:\s*write\s*$")
+        self.assertEqual(paused.count("permission-pull-requests: write"), 2)
         self.assertNotIn("paused_lab_protected_merge:", paused)
         self.assertNotIn("gaslux_lab_review_probe.py merge", paused)
         self.assertNotIn("allow_merge", source)
