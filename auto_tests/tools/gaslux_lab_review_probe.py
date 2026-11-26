@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""One frozen inert laboratory PR; never approves or merges main/dev/stable."""
+"""One frozen inert laboratory PR; approval-only credential tests, no merge."""
 import argparse
 import json
 import os
@@ -23,6 +23,18 @@ AUTHOR = 156089838
 ROUTE = f"/pulls/{NUMBER}"
 
 
+def api(method, route, body=None):
+    """No ref, PR-target, merge, dismissal or other write operation is exposed."""
+    if method == "GET" and body is None:
+        return A.api(method, route)
+    if (method == "POST" and route == ROUTE + "/reviews"
+            and isinstance(body, dict) and set(body) == {"commit_id", "event", "body"}
+            and body["commit_id"] == HEAD and body["event"] == "APPROVE"
+            and body["body"] in (marker("safety"), marker("owner"))):
+        return A.api(method, route, body)
+    raise ValueError("Laboratory write prohibited")
+
+
 def context():
     sha = os.getenv("GITHUB_SHA")
     if (os.getenv("GITHUB_REPOSITORY") != A.REPO
@@ -31,7 +43,7 @@ def context():
             or os.getenv("GASLUX_AUTONOMY_PAUSED") != "true"
             or not A.valid_sha(sha)
             or not os.getenv("GH_TOKEN")
-            or A.api("GET", "/git/ref/heads/main")["object"]["sha"] != sha):
+            or api("GET", "/git/ref/heads/main")["object"]["sha"] != sha):
         raise ValueError("Current trusted paused main required")
 
 
@@ -49,11 +61,11 @@ def actors():
 
 
 def ref(name):
-    return A.api("GET", "/git/ref/heads/" + name)["object"]["sha"]
+    return api("GET", "/git/ref/heads/" + name)["object"]["sha"]
 
 
 def candidate():
-    pr = A.api("GET", ROUTE)
+    pr = api("GET", ROUTE)
     if (pr.get("number") != NUMBER or pr.get("user", {}).get("id") != AUTHOR
             or pr.get("head", {}).get("ref") != HEAD_REF
             or pr.get("head", {}).get("sha") != HEAD
@@ -69,11 +81,11 @@ def candidate():
             or pr.get("additions") != 2 or pr.get("deletions") != 0
             or ref(BASE_REF) != BASE or ref(HEAD_REF) != HEAD):
         raise ValueError("Lab PR state or ref drift")
-    commit = A.api("GET", f"/git/commits/{HEAD}")
+    commit = api("GET", f"/git/commits/{HEAD}")
     if (commit.get("sha") != HEAD or commit.get("tree", {}).get("sha") != TREE
             or [p.get("sha") for p in commit.get("parents", [])] != [BASE]):
         raise ValueError("Lab commit ancestry or tree drift")
-    files = A.complete_page(A.api("GET", ROUTE + "/files?per_page=100"))
+    files = A.complete_page(api("GET", ROUTE + "/files?per_page=100"))
     if (len(files) != 1 or any(files[0].get(k) != v for k, v in {
             "filename": FILE, "sha": BLOB, "status": "added",
             "additions": 2, "deletions": 0, "changes": 2}.items())):
@@ -87,7 +99,7 @@ def marker(kind):
 
 
 def verified_reviews(ids):
-    rows = A.complete_page(A.api("GET", ROUTE + "/reviews?per_page=100"))
+    rows = A.complete_page(api("GET", ROUTE + "/reviews?per_page=100"))
     found = {}
     for row in rows:
         if row.get("state") == "COMMENTED":
@@ -117,7 +129,9 @@ def approve(kind):
         if candidate()["state"] != "open":
             raise ValueError("Lab closed before review")
         context()
-        result = A.api("POST", ROUTE + "/reviews", {
+        if candidate()["state"] != "open" or kind in verified_reviews(ids):
+            raise ValueError("Lab changed before review")
+        result = api("POST", ROUTE + "/reviews", {
             "commit_id": HEAD, "event": "APPROVE", "body": marker(kind)})
         if (result.get("user", {}).get("id") != ids[kind]
                 or result.get("state") != "APPROVED" or result.get("commit_id") != HEAD
@@ -136,7 +150,7 @@ def approve(kind):
 
 def protected():
     """Require an actual isolated exact-ref ruleset; never infer protection."""
-    active = A.complete_page(A.api("GET", f"/rules/branches/lab%2Fgaslux-review-probe-v1-base?per_page=100"))
+    active = A.complete_page(api("GET", f"/rules/branches/lab%2Fgaslux-review-probe-v1-base?per_page=100"))
     for rid in {r.get("ruleset_id") for r in active}:
         if type(rid) is not int or rid <= 0:
             continue
@@ -144,7 +158,7 @@ def protected():
         if any(r.get("ruleset_source") != A.REPO or r.get("ruleset_source_type") != "Repository"
                for r in rows):
             continue
-        detail = A.api("GET", f"/rulesets/{rid}?includes_parents=false")
+        detail = api("GET", f"/rulesets/{rid}?includes_parents=false")
         if (detail.get("id") != rid or detail.get("source") != A.REPO
                 or detail.get("source_type") != "Repository" or detail.get("target") != "branch"
                 or detail.get("enforcement") != "active" or detail.get("conditions") !=
@@ -154,8 +168,13 @@ def protected():
         by_type = {r["type"]: r.get("parameters", {}) for r in declared}
         effective = {r["type"]: r.get("parameters", {}) for r in rows}
         if (len(by_type) != len(declared) or len(effective) != len(rows)
-                or by_type != effective or not {"deletion", "non_fast_forward", "pull_request"} <= set(by_type)
+                or by_type != effective or not {"deletion", "non_fast_forward", "pull_request", "required_status_checks"} <= set(by_type)
                 or "update" in by_type):
+            continue
+        checks = by_type["required_status_checks"]
+        if (checks.get("strict_required_status_checks_policy") is not True
+                or checks.get("do_not_enforce_on_create") is True
+                or not checks.get("required_status_checks")):
             continue
         review = by_type["pull_request"]
         if (type(review.get("required_approving_review_count")) is not int
@@ -171,10 +190,11 @@ def protected():
 
 def decision():
     raw = subprocess.run(["gh", "pr", "view", str(NUMBER), "--repo", A.REPO,
-                          "--json", "headRefOid,baseRefOid,reviewDecision,mergeStateStatus,mergeable"],
+                          "--json", "headRefName,baseRefName,headRefOid,baseRefOid,reviewDecision,mergeStateStatus,mergeable"],
                          capture_output=True, check=True, timeout=30).stdout
     data = json.loads(raw)
-    if data.get("headRefOid") != HEAD or data.get("baseRefOid") != BASE:
+    if (data.get("headRefOid") != HEAD or data.get("baseRefOid") != BASE
+            or data.get("headRefName") != HEAD_REF or data.get("baseRefName") != BASE_REF):
         raise ValueError("GitHub review decision refers to different commits")
     return data
 
@@ -184,14 +204,14 @@ def merged_receipt(pr):
     if (pr.get("state") != "closed" or pr.get("merged") is not True
             or not A.valid_sha(sha) or ref(BASE_REF) != sha):
         raise ValueError("No exact closed lab merge")
-    obj = A.api("GET", f"/git/commits/{sha}")
+    obj = api("GET", f"/git/commits/{sha}")
     if ([p.get("sha") for p in obj.get("parents", [])] != [BASE, HEAD]
             or obj.get("tree", {}).get("sha") != TREE):
         raise ValueError("Lab merge parent or tree mismatch")
     return sha
 
 
-def audit(*, allow_merge=False):
+def audit():
     context()
     ids = actors()
     pr = candidate()
@@ -202,7 +222,10 @@ def audit(*, allow_merge=False):
               "independent_reviews_verified": True,
               "production_merge_authorized": False,
               "server_named_role_enforcement_verified": False,
-              "lab_merge_verified": False}
+              "lab_merge_verified": False,
+              "lab_merge_authorized": False,
+              "write_isolation_verified": False,
+              "merge_blocker": "ATOMIC_TARGET_AND_BASE_CONFINEMENT_UNAVAILABLE"}
     if pr["state"] == "closed":
         # A closed PR and exact tree alone cannot attribute a past merge to this job.
         return {**report, "status": "lab_merge_observed", "merge_sha": merged_receipt(pr)}
@@ -215,36 +238,18 @@ def audit(*, allow_merge=False):
         return {**report, "status": "server_merge_not_ready", "lab_ruleset": rid,
                 "review_decision": state.get("reviewDecision"),
                 "merge_state": state.get("mergeStateStatus")}
-    if not allow_merge:
-        return {**report, "status": "lab_merge_ready", "lab_ruleset": rid}
-    # Only the inert lab target can be changed; the existing dev gate is untouched.
-    # Count-based lab success does not establish named-role server enforcement.
-    context()
+    # Even a CLEAN server decision and exact-ref ruleset do not bind the
+    # merge API to the target ref or base SHA. Never enable a write here.
+    # The production repository cannot be a disposable merge laboratory.
     if (candidate()["state"] != "open" or protected() != rid
             or verified_reviews(ids) != reviews or decision() != state):
-        raise ValueError("Lab authorization drift before merge")
-    result = A.api("PUT", ROUTE + "/merge", {
-        "sha": HEAD, "merge_method": "merge",
-        "commit_title": "LAB ONLY: independent reviewer capability fixture"})
-    if result.get("merged") is not True:
-        raise ValueError("Server refused lab merge")
-    fresh = candidate()
-    sha = merged_receipt(fresh)
-    if result.get("sha") != sha:
-        raise ValueError("Lab merge receipt identity mismatch")
-    return {**report, "status": "lab_merge_verified", "lab_ruleset": rid,
-            "merge_sha": sha, "lab_merge_verified": True}
+        raise ValueError("Lab observation changed during audit")
+    return {**report, "status": "server_approved_merge_disabled", "lab_ruleset": rid}
 
 
 if __name__ == "__main__":
     p = argparse.ArgumentParser()
-    p.add_argument("mode", choices=("safety", "owner", "audit", "merge"))
+    p.add_argument("mode", choices=("safety", "owner", "audit"))
     args = p.parse_args()
-    report = (audit(allow_merge=args.mode == "merge") if args.mode in ("audit", "merge")
-              else approve(args.mode))
+    report = audit() if args.mode == "audit" else approve(args.mode)
     print("GASLUX_LAB_REVIEW_PROBE " + json.dumps(report, sort_keys=True))
-    if args.mode == "audit" and os.getenv("GITHUB_OUTPUT"):
-        with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as output:
-            output.write("ready=" + ("true" if report["status"] == "lab_merge_ready" else "false") + "\n")
-    if args.mode == "merge" and not report.get("lab_merge_verified"):
-        raise SystemExit("Exact laboratory merge not executed and verified")

@@ -133,7 +133,7 @@ class LabReviewTests(unittest.TestCase):
             L.approve("safety")
         self.assertEqual(self.writes, [])
 
-    def test_read_only_ready_does_not_write(self):
+    def test_server_approved_still_cannot_merge(self):
         self.reviews = [self.row("safety"), self.row("owner")]
         state = {"reviewDecision": "APPROVED", "mergeable": "MERGEABLE",
                  "mergeStateStatus": "CLEAN"}
@@ -141,48 +141,104 @@ class LabReviewTests(unittest.TestCase):
                 patch.object(L, "protected", return_value=33), \
                 patch.object(L, "decision", return_value=state), \
                 patch.object(L.A, "api", side_effect=self.api):
-            self.assertEqual(L.audit()["status"], "lab_merge_ready")
+            report = L.audit()
+        self.assertEqual(report["status"], "server_approved_merge_disabled")
+        self.assertFalse(report["lab_merge_authorized"])
+        self.assertFalse(report["write_isolation_verified"])
+        self.assertFalse(report["lab_merge_verified"])
         self.assertEqual(self.writes, [])
 
-    def test_exact_merge_and_observation_distinct(self):
-        self.reviews = [self.row("safety"), self.row("owner")]
-        sha = "d"*40
+    def test_drift_during_last_observation_cannot_write(self):
+        from copy import deepcopy
+        original = deepcopy(self.pr)
         state = {"reviewDecision": "APPROVED", "mergeable": "MERGEABLE",
                  "mergeStateStatus": "CLEAN"}
-        def api(method, route, body=None):
-            if method == "PUT":
-                self.assertEqual(route, L.ROUTE + "/merge")
-                self.assertEqual(body["sha"], L.HEAD)
-                self.assertEqual(body["merge_method"], "merge")
-                self.writes.append((method, route, body))
-                self.pr.update(state="closed", merged=True, merge_commit_sha=sha)
-                self.pr["base"]["sha"] = sha
-                return {"merged": True, "sha": sha}
-            if route == "/git/ref/heads/" + L.BASE_REF and self.pr["state"] == "closed":
-                return {"object": {"sha": sha}}
-            if route == "/git/commits/" + sha:
-                return {"sha": sha, "tree": {"sha": L.TREE},
-                        "parents": [{"sha": L.BASE}, {"sha": L.HEAD}]}
-            return self.api(method, route, body)
+        for change in ("retarget", "advance_base", "dismiss_review", "replace_review"):
+            self.pr = deepcopy(original)
+            self.reviews = [self.row("safety"), self.row("owner")]
+            def decision():
+                if change == "retarget":
+                    self.pr["base"]["ref"] = "main"
+                elif change == "advance_base":
+                    self.pr["base"]["sha"] = "a"*40
+                elif change == "dismiss_review":
+                    self.reviews[0]["state"] = "DISMISSED"
+                else:
+                    self.reviews[0]["user"]["id"] = 303
+                return state
+            with self.subTest(change=change), patch.object(L, "context"), \
+                    patch.object(L, "actors", return_value=self.ids), \
+                    patch.object(L, "protected", return_value=33), \
+                    patch.object(L, "decision", side_effect=decision), \
+                    patch.object(L.A, "api", side_effect=self.api), self.assertRaises(ValueError):
+                L.audit()
+        self.assertEqual(self.writes, [])
+
+    def test_drift_after_final_read_never_enables_merge(self):
+        self.reviews = [self.row("safety"), self.row("owner")]
+        state = {"reviewDecision": "APPROVED", "mergeable": "MERGEABLE",
+                 "mergeStateStatus": "CLEAN"}
+        calls = []
+        def decision():
+            calls.append(1)
+            if len(calls) == 2:
+                self.pr["base"]["ref"] = "main"
+                self.pr["base"]["sha"] = "a"*40
+                self.reviews[0]["state"] = "DISMISSED"
+            return state
         with patch.object(L, "context"), patch.object(L, "actors", return_value=self.ids), \
                 patch.object(L, "protected", return_value=33), \
-                patch.object(L, "decision", return_value=state), \
-                patch.object(L.A, "api", side_effect=api):
-            result = L.audit(allow_merge=True)
-            self.assertTrue(result["lab_merge_verified"])
-            self.assertEqual(result["merge_sha"], sha)
-            observed = L.audit()
-            self.assertEqual(observed["status"], "lab_merge_observed")
-            self.assertFalse(observed["lab_merge_verified"])
-        self.assertEqual(len(self.writes), 1)
+                patch.object(L, "decision", side_effect=decision), \
+                patch.object(L.A, "api", side_effect=self.api):
+            report = L.audit()
+        self.assertFalse(report["lab_merge_authorized"])
+        self.assertFalse(report["lab_merge_verified"])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(self.writes, [])
 
-    def test_changed_protection_before_merge_denies(self):
+    def test_no_merge_or_ref_write_api_surface(self):
+        for method, route in (("PUT", L.ROUTE + "/merge"),
+                              ("PATCH", L.ROUTE),
+                              ("PATCH", "/git/refs/heads/main"),
+                              ("POST", "/git/refs"),
+                              ("POST", "/pulls/430/reviews"),
+                              ("DELETE", L.ROUTE + "/reviews/1")):
+            with self.subTest(method=method, route=route), \
+                    patch.object(L.A, "api") as network, self.assertRaises(ValueError):
+                L.api(method, route, {})
+            network.assert_not_called()
+        with patch.object(L.A, "api") as network, self.assertRaises(ValueError):
+            L.api("POST", L.ROUTE + "/reviews", {
+                "commit_id": "a"*40, "event": "APPROVE", "body": L.marker("owner")})
+        network.assert_not_called()
+
+    def test_no_content_write_permission_or_merge_cli(self):
+        import ast
+        source = Path(L.__file__).read_text()
+        tree = ast.parse(source)
+        wrapper = next(n for n in tree.body if isinstance(n, ast.FunctionDef) and n.name == "api")
+        allowed = {id(n) for n in ast.walk(wrapper)}
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Attribute):
+                if node.func.attr == "api":
+                    self.assertIn(id(node), allowed)
+        workflow = (Path(L.__file__).resolve().parents[2] /
+                    ".github/workflows/gaslux-agent-integrator.yml").read_text()
+        paused = workflow[workflow.index("  paused_safety_credential_probe:"):]
+        self.assertNotIn("contents: write", paused)
+        self.assertNotIn("pull-requests: write", paused)
+        self.assertNotIn("paused_lab_protected_merge:", paused)
+        self.assertNotIn("gaslux_lab_review_probe.py merge", paused)
+        self.assertNotIn("allow_merge", source)
+
+    def test_observed_manual_merge_is_not_automated_merge(self):
         self.reviews = [self.row("safety"), self.row("owner")]
-        state = {"reviewDecision": "APPROVED", "mergeable": "MERGEABLE",
-                 "mergeStateStatus": "CLEAN"}
+        self.pr.update(state="closed", merged=True, merge_commit_sha="d"*40)
         with patch.object(L, "context"), patch.object(L, "actors", return_value=self.ids), \
-                patch.object(L, "protected", side_effect=[33, None]), \
-                patch.object(L, "decision", return_value=state), \
-                patch.object(L.A, "api", side_effect=self.api), self.assertRaises(ValueError):
-            L.audit(allow_merge=True)
+                patch.object(L, "merged_receipt", return_value="d"*40), \
+                patch.object(L.A, "api", side_effect=self.api):
+            report = L.audit()
+        self.assertEqual(report["status"], "lab_merge_observed")
+        self.assertFalse(report["lab_merge_verified"])
+        self.assertFalse(report["lab_merge_authorized"])
         self.assertEqual(self.writes, [])
