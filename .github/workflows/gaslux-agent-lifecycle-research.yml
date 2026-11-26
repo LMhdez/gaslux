@@ -241,6 +241,107 @@ jobs:
           retention-days: 14
           if-no-files-found: warn
 
+
+  windows_vm_and_safety_readiness:
+    if: >-
+      vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
+      github.repository == 'LMhdez/gaslux' &&
+      (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - name: Checkout pinned trusted main only, no credential persistence
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Report physical lab capacity, Windows-media blocker and five gated PRs
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+          import re
+          import shutil
+          import subprocess
+
+          root = Path(os.environ['RUNNER_TEMP'])
+          if not root.is_absolute() or root.is_symlink() or not root.is_dir():
+              raise SystemExit('Unsafe VM preflight workspace')
+          free = shutil.disk_usage(root).free
+          required = 80 * 1024**3
+          guarded = [(395, 'zorin'), (400, 'bazzite'), (411, 'cachyos'),
+                     (412, 'popos'), (413, 'q4os')]
+          queue = []
+          for number, role in guarded:
+              reply = subprocess.run(
+                  ['gh', 'api', f'repos/LMhdez/gaslux/pulls/{number}'],
+                  text=True, capture_output=True, timeout=25, check=False,
+              )
+              if reply.returncode:
+                  raise RuntimeError('Cannot verify protected PR inventory')
+              pr = json.loads(reply.stdout)
+              head = pr.get('head', {})
+              base = pr.get('base', {})
+              sha = head.get('sha', '')
+              if (pr.get('number') != number or base.get('ref') != 'dev'
+                  or head.get('repo', {}).get('full_name') != 'LMhdez/gaslux'
+                  or not isinstance(sha, str)
+                  or re.fullmatch(r'[0-9a-f]{40}', sha) is None):
+                  raise RuntimeError('Untrusted lifecycle PR metadata')
+              queue.append({'number': number, 'role': role, 'head': sha,
+                            'draft': pr.get('draft') is True,
+                            'state': pr.get('state'),
+                            'safety_attestation_verified': False,
+                            'merge_authorized': False})
+          data = {
+              'schema_version': 1, 'kind': 'READ_ONLY_LAB_AND_SAFETY_QUEUE',
+              'runner_available_bytes': free,
+              'planned_peak_bytes': required,
+              'storage_capacity_pass': free >= required,
+              'kvm_accessible': os.access('/dev/kvm', os.R_OK | os.W_OK),
+              'qemu_available': shutil.which('qemu-system-x86_64') is not None,
+              'windows_media_authorized': False,
+              'windows_media_sha256_verified': False,
+              'windows_guest_installed': False,
+              'virtual_disk_writer_authorized': False,
+              'dual_boot_verified': False,
+              'release_eligible': False,
+              'status': ('BLOCKED_STORAGE' if free < required
+                         else 'BLOCKED_WINDOWS_MEDIA_AUTHENTICITY'),
+              'review_queue': queue,
+          }
+          report = Path('evidence/windows-vm-and-safety-readiness.json')
+          report.parent.mkdir(parents=True, exist_ok=True)
+          report.write_text(json.dumps(data, indent=2, sort_keys=True) + '\n')
+          with open(os.environ['GITHUB_STEP_SUMMARY'], 'a') as summary:
+              summary.write('## Windows VM and independent Safety readiness\n\n')
+              summary.write('Storage: ' + str(round(free / 1024**3, 2))
+                            + ' GiB free; 80 GiB planned.\n\n')
+              summary.write('Status: ' + data['status']
+                            + '; no ISO, guest write or PR merge.\n\n')
+              summary.write('Protected lifecycle PRs: 395, 400, 411, 412, 413.\n')
+          print(json.dumps({'status': data['status'],
+                            'capacity_pass': data['storage_capacity_pass'],
+                            'media_verified': False, 'merge_authorized': False,
+                            'prs_monitored': len(queue)}))
+          PY
+      - name: Retain only non-sensitive JSON; never upload Windows media or guest disks
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: gaslux-windows-vm-and-safety-readiness
+          path: evidence/windows-vm-and-safety-readiness.json
+          if-no-files-found: warn
+          retention-days: 14
+
   official_mint_live_guest:
     if: >-
       vars.GASLUX_AUTONOMY_PAUSED != 'true' &&
