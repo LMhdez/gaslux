@@ -654,10 +654,55 @@ def role_review_protected(base, reviewer, owner, *, head=None):
     return strict_ruleset_protected(base, role_ids=(reviewer, owner), candidate_head=head)
 
 
+REVIEW_APP_PERMISSIONS = {"metadata": "read", "contents": "read",
+                          "pull_requests": "write", "actions": "read",
+                          "checks": "read", "issues": "read"}
+
+
+def review_app_actor(kind):
+    """Resolve a bot from the trusted pinned token-mint step, not /user.
+
+    The workflow binds the token, slug and installation ID to the same
+    action invocation. Public bot lookup alone is not authentication.
+    The live installation token must be scoped to this exact repository.
+    No token or private key is printed or returned.
+    """
+    if kind not in ("safety", "owner") or not os.getenv("GH_TOKEN"):
+        raise ValueError("Independent App credential required")
+    clients = {role: os.getenv(f"GASLUX_{role.upper()}_APP_CLIENT_ID", "")
+               for role in ("safety", "owner", "publish")}
+    if (not all(re.fullmatch(r"[A-Za-z0-9_.-]{8,128}", value) for value in clients.values())
+            or len(set(clients.values())) != 3):
+        raise ValueError("Separate configured GitHub Apps required")
+    slug = os.getenv("GASLUX_MINTED_APP_SLUG", "")
+    installation = os.getenv("GASLUX_MINTED_INSTALLATION_ID", "")
+    if (not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,99}", slug)
+            or not re.fullmatch(r"[1-9][0-9]{0,18}", installation)
+            or slug + "[bot]" in admission.BOTS):
+        raise ValueError("Invalid or publisher App identity")
+    app = readonly_gh_json("apps/" + slug)
+    if (app.get("slug") != slug or app.get("client_id") != clients[kind]
+            or type(app.get("id")) is not int or app["id"] <= 0
+            or app.get("permissions") != REVIEW_APP_PERMISSIONS):
+        raise ValueError("App registration or least-privilege permissions unverified")
+    repositories = readonly_gh_json("installation/repositories?per_page=100")
+    rows = repositories.get("repositories")
+    if (repositories.get("total_count") != 1 or not isinstance(rows, list)
+            or len(rows) != 1 or rows[0].get("full_name") != admission.REPO):
+        raise ValueError("App token is not scoped to the exact repository")
+    actor = readonly_gh_json("users/" + slug + "%5Bbot%5D")
+    if (actor.get("type") != "Bot" or actor.get("login") != slug + "[bot]"
+            or type(actor.get("id")) is not int or actor["id"] <= 0
+            or actor["id"] in admission.BOTS.values()):
+        raise ValueError("Independent App bot identity unverified")
+    return actor["id"]
+
+
 def credential_probe(kind):
     """During pause, check the actual independent token using GET only."""
     report = {"kind": kind, "read_only": True, "merge_authorized": False,
-              "credential_verified": False, "roles": []}
+              "credential_verified": False, "review_capability_verified": False,
+              "server_role_enforcement_verified": False, "roles": []}
     if (kind not in ("safety", "owner")
             or os.getenv("GITHUB_REPOSITORY") != admission.REPO
             or os.getenv("GITHUB_REF") != "refs/heads/main"
@@ -669,20 +714,11 @@ def credential_probe(kind):
             or reviewer in owners.values() or not os.getenv("GH_TOKEN")):
         return {**report, "status": "identity_or_credential_missing"}
     try:
-        actor = readonly_gh_json("user")
-        identity = actor.get("id")
-        if (type(identity) is not int or identity <= 0 or actor.get("type") != "User"
-                or identity in admission.BOTS.values()):
-            return {**report, "status": "unexpected_actor"}
+        identity = review_app_actor(kind)
         roles = sorted(role for role, value in owners.items() if value == identity)
         if ((kind == "safety" and identity != reviewer)
                 or (kind == "owner" and (identity == reviewer or not roles))):
             return {**report, "status": "identity_mismatch"}
-        repo = readonly_gh_json("repos/" + admission.REPO)
-        perms = repo.get("permissions", {})
-        if (repo.get("full_name") != admission.REPO or perms.get("push") is not True
-                or perms.get("admin") is not False or perms.get("maintain") is not False):
-            return {**report, "status": "repository_permission_unverified"}
         return {**report, "status": "identity_verified", "credential_verified": True,
                 "roles": roles if kind == "owner" else []}
     except (OSError, subprocess.SubprocessError, RuntimeError, ValueError, TypeError, KeyError, AttributeError):
@@ -1005,11 +1041,9 @@ def independent_safety_review():
         return {"status": "independent_identity_required"}
     if not os.getenv("GH_TOKEN"):
         return {"status": "independent_credential_required"}
-    # The token must authenticate as the configured independent service account.
-    # Never fall back to github.token or to the publisher credential.
-    actor = json.loads(subprocess.run(
-        ["gh", "api", "user"], check=True, timeout=30, capture_output=True).stdout)
-    if type(actor.get("id")) is not int or actor["id"] != reviewer:
+    # The trusted mint step and exact configured independent bot must agree.
+    # No PAT, github.token or publisher fallback.
+    if review_app_actor("safety") != reviewer:
         raise ValueError("Safety credential identity mismatch")
     for number, (role, scope, head) in sorted(discover().items()):
         if scope not in factory.SUPERVISED_SCOPES:
@@ -1066,9 +1100,7 @@ def independent_owner_review():
     safety, owners = configured_reviewers()
     if safety is None or not os.getenv("GH_TOKEN"):
         return {"status": "owner_identity_or_credential_required"}
-    actor = json.loads(subprocess.run(
-        ["gh", "api", "user"], check=True, timeout=30, capture_output=True).stdout)
-    owner = actor.get("id")
+    owner = review_app_actor("owner")
     if (type(owner) is not int or owner <= 0 or owner == safety
             or owner in admission.BOTS.values() or owner not in owners.values()):
         raise ValueError("Independent backend owner credential mismatch")
