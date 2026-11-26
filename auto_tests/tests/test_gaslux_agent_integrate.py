@@ -60,6 +60,9 @@ class IntegratorContractTests(unittest.TestCase):
         reviews = patch.object(integ, "independent_merge_reviews", return_value=True)
         self.review_gate = reviews.start()
         self.addCleanup(reviews.stop)
+        server = patch.object(integ, "server_role_protection", return_value=True)
+        self.server_gate = server.start()
+        self.addCleanup(server.stop)
 
     def api(self, method, path, body=None):
         self.calls.append((method, path, body))
@@ -385,6 +388,17 @@ class IntegratorContractTests(unittest.TestCase):
             reviews[1]["user"]["id"] = 102
             reviews[0]["commit_id"] = "f" * 40
             self.assertFalse(REAL_REVIEWS(checked))
+
+    def test_server_role_gate_blocks_before_ready_and_merge(self):
+        env = {"GITHUB_REPOSITORY": integ.REPO, "GITHUB_REF": "refs/heads/main",
+               "GITHUB_EVENT_NAME": "schedule", "GASLUX_WINDOWS_ACCEPTANCE": "success",
+               "GASLUX_AUTONOMY_PAUSED": "false"}
+        with patch.dict(os.environ, env), patch.object(integ, "api", side_effect=self.api):
+            self.server_gate.return_value = False
+            with self.assertRaises(RuntimeError):
+                integ.verify_before_ready(123, self.head)
+            self.assertEqual(integ.merge(123, self.head)["reason"], "server_role_review_protection_required")
+            self.assertFalse(any(m != "GET" for m, _, _ in self.calls))
 
     def test_windows_acceptance_uses_exact_head_and_prebuilt_tests(self):
         yaml = (
