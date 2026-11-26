@@ -116,7 +116,7 @@ def reconcile(*, execute=False):
     if execute and (os.getenv("GITHUB_REPOSITORY") != admission.REPO
                     or os.getenv("GITHUB_REF") != "refs/heads/main"
                     or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
-                    or os.getenv("GASLUX_AUTONOMY_PAUSED", "").lower().strip() == "true"):
+                    or os.getenv("GASLUX_AUTONOMY_PAUSED", "").lower().strip() != "false"):
         raise RuntimeError("Untrusted or paused duplicate reconciliation")
     picked = plan()
     if not picked:
@@ -151,6 +151,40 @@ def reconcile(*, execute=False):
             or admission.api("GET", "/git/ref/heads/dev")["object"]["sha"] != picked["base"]):
         raise RuntimeError("Concurrent metadata drift: reconcile closure manually; no ref deleted")
     return {"status": "duplicate_closed", **picked, "merge_authorized": False}
+
+
+def historical_dependency(prs, number, refs):
+    """Resolve an exact same-repository PR stack, without granting write authority."""
+    repo = admission.REPO
+    visited = set()
+    chain = []
+    current = number
+    while True:
+        if current in visited:
+            return {"dependency_state": "CYCLE", "dependency_chain": chain}
+        visited.add(current)
+        pr = prs[current]
+        head, base = pr["head"], pr["base"]
+        if ((head.get("repo") or {}).get("full_name") != repo
+                or (base.get("repo") or {}).get("full_name") != repo
+                or not admission.valid_sha(head.get("sha"))):
+            return {"dependency_state": "FOREIGN_OR_INVALID", "dependency_chain": chain}
+        target = base.get("ref")
+        if target in refs:
+            return {"dependency_state": "ROOTED", "dependency_chain": chain,
+                    "root_target": target, "root_sha": refs[target]}
+        parents = [(n, row) for n, row in prs.items()
+                   if (row["head"].get("repo") or {}).get("full_name") == repo
+                   and row["head"].get("ref") == target]
+        if len(parents) != 1:
+            return {"dependency_state": "AMBIGUOUS_PARENT" if parents else "ORPHAN_BRANCH",
+                    "dependency_chain": chain}
+        n, parent = parents[0]
+        if (not admission.valid_sha(base.get("sha"))
+                or base["sha"] != parent["head"].get("sha")):
+            return {"dependency_state": "PARENT_HEAD_DRIFT", "dependency_chain": chain}
+        chain.append({"pr": n, "head": parent["head"]["sha"], "branch": target})
+        current = n
 
 
 def historical_inventory(*, slot=None):
@@ -206,6 +240,12 @@ def historical_inventory(*, slot=None):
                 result["status"] = "UNIQUE_COMMITS_REQUIRE_RECONCILIATION"
             else:
                 result["status"] = "UNVERIFIED_RELATION"
+        dependency = historical_dependency(prs, n, refs)
+        result.update(dependency)
+        if (result["status"] == "UNSUPPORTED_OR_FOREIGN"
+                and dependency["dependency_state"] == "ROOTED"
+                and dependency["dependency_chain"]):
+            result["status"] = "STACKED_PR_REQUIRES_PARENT_RECONCILIATION"
         findings.append(result)
     if any(api("GET", f"/git/ref/heads/{name}")["object"]["sha"] != sha
            for name, sha in refs.items()):
@@ -279,7 +319,7 @@ def close_integrated_history(*, execute=False):
     if execute and (os.getenv("GITHUB_REPOSITORY") != admission.REPO
                     or os.getenv("GITHUB_REF") != "refs/heads/main"
                     or os.getenv("GITHUB_EVENT_NAME") not in ("schedule", "workflow_dispatch", "push")
-                    or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() == "true"):
+                    or os.getenv("GASLUX_AUTONOMY_PAUSED", "").strip().lower() != "false"):
         raise RuntimeError("Untrusted or paused historical reconciliation")
     report = historical_inventory()
     for row in report["findings"]:
