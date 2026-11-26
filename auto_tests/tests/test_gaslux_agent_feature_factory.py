@@ -334,6 +334,42 @@ class FeatureFactoryTests(unittest.TestCase):
                     with self.assertRaises((RuntimeError, ValueError)):
                         factory.open_role_drafts()
 
+    def test_role_dedup_preserves_claim_after_ready_transition(self):
+        row = self.role_pr("cachyos", author="gaslux-autonomous-publisher[bot]")
+        row["draft"] = False
+        with patch.object(factory.subprocess, "run", return_value=(
+            subprocess.CompletedProcess([], 0, json.dumps([row]), "")
+        )):
+            self.assertEqual(factory.open_role_drafts(), {"cachyos"})
+
+    def test_role_dedup_malformed_inventory_cannot_trigger_inference(self):
+        good = self.role_pr("zorin")
+        for rows in ([None], [{"state": "open"}], [{**good, "head": None}],
+                     [{**good, "base": None}], [{**good, "user": None}],
+                     [{**good, "user": {"type": "Bot"}}]):
+            with self.subTest(rows=rows), patch.object(
+                factory.subprocess, "run", return_value=subprocess.CompletedProcess(
+                    [], 0, json.dumps(rows), "")
+            ):
+                with self.assertRaises((RuntimeError, ValueError)):
+                    factory.open_role_drafts()
+        with patch.object(factory.subprocess, "run", return_value=(
+            subprocess.CompletedProcess([], 0, "not JSON", "")
+        )):
+            with self.assertRaises(ValueError):
+                factory.open_role_drafts()
+
+    def test_role_dedup_unrelated_branch_does_not_claim_role(self):
+        row = self.role_pr("mint")
+        row["head"]["ref"] = "bot/gaslux-feature-mint-not-a-valid-sha"
+        unrelated = self.role_pr("zorin")
+        unrelated["head"]["ref"] = "feature/something-else"
+        unrelated["user"] = {"type": "User", "login": "contributor"}
+        with patch.object(factory.subprocess, "run", return_value=(
+            subprocess.CompletedProcess([], 0, json.dumps([row, unrelated]), "")
+        )):
+            self.assertEqual(factory.open_role_drafts(), set())
+
     def test_live_plan_blocks_duplicate_roles_even_when_dev_moved(self):
         platforms = [
             "windows10-bios-mbr", "windows10-uefi-gpt",
