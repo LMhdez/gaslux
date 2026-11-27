@@ -149,7 +149,14 @@ class AuthorityV3Tests(unittest.TestCase):
             self.assertIn("permission-statuses: write",job)
             self.assertNotIn("permission-contents: write",job)
             self.assertNotIn("permission-pull-requests: write",job)
-        self.assertEqual(w.count("inputs.v3_action == 'none' &&"),5)
+        # Other paused credential audits may independently require no V3 action.
+        for name in ("v3_safety_approve","v3_owner_approve","v3_safety_revoke",
+                     "v3_owner_revoke","v3_terminal_audit"):
+            block=re.split(r"\n  [A-Za-z0-9_-]+:[ \t]*\n",
+                           w.split("  "+name+":\n",1)[1],maxsplit=1)[0]
+            self.assertEqual(block.count("inputs.v3_action == 'none' &&"),1,name)
+            self.assertIn("inputs.paused_v3_probe == true &&",block)
+            self.assertIn("GASLUX_AUTONOMY_PAUSED == 'true'",block)
 
     def test_workflow_job_uniqueness_and_dependencies(self):
         w=(Path(__file__).resolve().parents[2]/".github/workflows/gaslux-agent-integrator.yml").read_text()
