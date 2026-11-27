@@ -121,6 +121,17 @@ class IntegratorContractTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Untrusted"):
                     integ.api("GET", "/compare/" + self.dev + "...." + self.head)
 
+    def test_repository_root_is_read_only_and_exact(self):
+        with patch.dict(os.environ, {"GH_TOKEN": "test"}), \
+             patch.object(integ.urllib.request, "urlopen") as opener:
+            opener.return_value.__enter__.return_value.read.return_value = b"{}"
+            self.assertEqual(integ.api("GET", ""), {})
+            self.assertEqual(opener.call_args.args[0].full_url, integ.API)
+            for method, body in (("POST", {}), ("PATCH", {}), ("DELETE", None), ("GET", {})):
+                with self.assertRaisesRegex(ValueError, "Untrusted"):
+                    integ.api(method, "", body)
+            self.assertEqual(opener.call_count, 1)
+
     def test_exact_curated_mapping_allowed(self):
         self.assertTrue(integ.exact_insert(self.old, self.new, "mint"))
         self.assertFalse(integ.exact_insert(self.old, self.old, "mint"))
