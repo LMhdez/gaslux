@@ -23,21 +23,23 @@ class HostedClient:
         self.ledger=h.Ledger(token.read_text().strip(),self.pem)
     def read(self):
         start=time.monotonic()
-        tip,count,states,last=self.ledger.snapshot()
+        tip,count,states,last,active,consumed,incidents=self.ledger.snapshot_full()
         v.need(v.SHA.fullmatch(tip) and type(count) is int and 1<=count<=h.MAX_EVENTS
                and isinstance(last,str) and a.HEX64.fullmatch(last),"Invalid hosted ledger receipt")
         v.need(time.monotonic()-start<=MAX_ELAPSED,"Hosted ledger read expired")
-        return tip,states
+        return tip,states,active,consumed,incidents
     def current(self,e):
         a.evidence_shape(e)
-        _,states=self.read()
+        _,states,active,consumed,incidents=self.read()
+        if active is not None or incidents or e["head"] in consumed:
+            return False
         row=states.get(e["head"])
         if row is None: return False
         v.need(row["evidence"]==e,"Hosted evidence mismatch")
         a.verify(e,row["decision"],row["signature_b64"],self.pem)
         return row["decision"]=="approve"
     def poll(self):
-        _,states=self.read()
+        _,states,_,_,_=self.read()
         entries=sorted(states.values(),key=lambda row:(row["decision"]!="withdraw",row["evidence"]["pr"]))
         for row in entries:
             a.verify(row["evidence"],row["decision"],row["signature_b64"],self.pem)
