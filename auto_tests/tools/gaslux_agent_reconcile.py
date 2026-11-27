@@ -9,6 +9,7 @@ import os
 from pathlib import Path
 import sys
 import time
+from urllib.parse import quote
 
 # Trusted script directory only, including when invoked with python -I.
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -153,7 +154,59 @@ def reconcile(*, execute=False):
     return {"status": "duplicate_closed", **picked, "merge_authorized": False}
 
 
-def historical_dependency(prs, number, refs):
+def historical_merged_parent(branch, head, refs):
+    """Prove an exact closed parent was merged into a currently pinned root.
+
+    A positive result is a retarget/replay planning hint, never permission to
+    change a PR or transfer an approval. Squash merges need not contain head.
+    """
+    if (not isinstance(branch, str) or not 1 <= len(branch) <= 255
+            or not admission.valid_sha(head)):
+        return {"dependency_state": "INVALID_CLOSED_PARENT_QUERY"}
+    owner = admission.REPO.split("/", 1)[0]
+    query = quote(owner + ":" + branch, safe="")
+    rows = admission.complete_page(admission.api(
+        "GET", f"/pulls?state=closed&head={query}&per_page=100"))
+    matches = []
+    for row in rows:
+        h, b = row.get("head") or {}, row.get("base") or {}
+        if (h.get("ref") == branch and h.get("sha") == head
+                and (h.get("repo") or {}).get("full_name") == admission.REPO
+                and (b.get("repo") or {}).get("full_name") == admission.REPO):
+            matches.append(row)
+    if not matches:
+        return {"dependency_state": "ORPHAN_BRANCH"}
+    if len(matches) != 1:
+        return {"dependency_state": "AMBIGUOUS_CLOSED_PARENT"}
+    number = matches[0].get("number")
+    if type(number) is not int or not 1 <= number <= 1000000:
+        return {"dependency_state": "INVALID_CLOSED_PARENT"}
+    parent = admission.api("GET", f"/pulls/{number}")
+    h, b = parent.get("head") or {}, parent.get("base") or {}
+    target, merge = b.get("ref"), parent.get("merge_commit_sha")
+    if (parent.get("number") != number or parent.get("state") != "closed"
+            or h.get("ref") != branch or h.get("sha") != head
+            or (h.get("repo") or {}).get("full_name") != admission.REPO
+            or (b.get("repo") or {}).get("full_name") != admission.REPO):
+        return {"dependency_state": "CLOSED_PARENT_DRIFT"}
+    if parent.get("merged") is not True:
+        return {"dependency_state": "CLOSED_PARENT_NOT_MERGED", "closed_parent": number}
+    if target not in refs or not admission.valid_sha(merge):
+        return {"dependency_state": "CLOSED_PARENT_ROOT_UNVERIFIED", "closed_parent": number}
+    root = refs[target]
+    relation = admission.api("GET", f"/compare/{merge}...{root}")
+    if (relation.get("base_commit", {}).get("sha") != merge
+            or relation.get("merge_base_commit", {}).get("sha") != merge
+            or relation.get("status") not in ("ahead", "identical")
+            or type(relation.get("behind_by")) is not int
+            or relation["behind_by"] != 0):
+        return {"dependency_state": "CLOSED_PARENT_ROOT_UNVERIFIED", "closed_parent": number}
+    return {"dependency_state": "MERGED_PARENT_REPLAY_REQUIRED", "closed_parent": number,
+            "closed_parent_head": head, "parent_merge_commit": merge,
+            "root_target": target, "root_sha": root}
+
+
+def historical_dependency(prs, number, refs, *, closed_lookup=None):
     """Resolve an exact same-repository PR stack, without granting write authority."""
     repo = admission.REPO
     visited = set()
@@ -176,6 +229,8 @@ def historical_dependency(prs, number, refs):
         parents = [(n, row) for n, row in prs.items()
                    if (row["head"].get("repo") or {}).get("full_name") == repo
                    and row["head"].get("ref") == target]
+        if not parents and closed_lookup is not None:
+            return {**closed_lookup(target, base.get("sha"), refs), "dependency_chain": chain}
         if len(parents) != 1:
             return {"dependency_state": "AMBIGUOUS_PARENT" if parents else "ORPHAN_BRANCH",
                     "dependency_chain": chain}
@@ -213,6 +268,14 @@ def historical_inventory(*, slot=None):
     batches = max(1, (len(ordered) + batch_size - 1) // batch_size)
     index = (int(time.time()) // 900 if slot is None else slot) % batches
     findings = []
+    closed_cache = {}
+
+    def closed_lookup(branch, head, targets):
+        key = (branch, head)
+        if key not in closed_cache:
+            closed_cache[key] = historical_merged_parent(branch, head, targets)
+        return closed_cache[key]
+
     for n in ordered[index * batch_size:(index + 1) * batch_size]:
         pr = prs[n]
         head, base = pr["head"], pr["base"]
@@ -240,12 +303,15 @@ def historical_inventory(*, slot=None):
                 result["status"] = "UNIQUE_COMMITS_REQUIRE_RECONCILIATION"
             else:
                 result["status"] = "UNVERIFIED_RELATION"
-        dependency = historical_dependency(prs, n, refs)
+        dependency = historical_dependency(prs, n, refs, closed_lookup=closed_lookup)
         result.update(dependency)
         if (result["status"] == "UNSUPPORTED_OR_FOREIGN"
                 and dependency["dependency_state"] == "ROOTED"
                 and dependency["dependency_chain"]):
             result["status"] = "STACKED_PR_REQUIRES_PARENT_RECONCILIATION"
+        if (result["status"] == "UNSUPPORTED_OR_FOREIGN"
+                and dependency["dependency_state"] == "MERGED_PARENT_REPLAY_REQUIRED"):
+            result["status"] = "STACKED_PR_REPLAY_ON_ROOT_REQUIRED"
         findings.append(result)
     if any(api("GET", f"/git/ref/heads/{name}")["object"]["sha"] != sha
            for name, sha in refs.items()):
