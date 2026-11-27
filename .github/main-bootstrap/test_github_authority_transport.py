@@ -33,3 +33,29 @@ class TransportTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"policy changed"): g.validate_policy([],[])
     def test_redirect_denied(self):
         with self.assertRaisesRegex(ValueError,"redirect"): g.NoRedirect().redirect_request()
+
+    def test_exact_merged_chain_and_reject_wrong_tree(self):
+        service=object.__new__(g.GitHubAuthority)
+        service.credential=lambda:"test"
+        h,tree,branch,pid=g.v.ALLOW[436]
+        merged="d"*40
+        repo={"id":g.v.RID}
+        def fake(method,path,token):
+            if path.endswith("/git/ref/heads/main"):
+                return {"object":{"sha":merged,"type":"commit"}}
+            if "/pulls/" in path:
+                n=int(path.rsplit("/",1)[1])
+                hh,tt,bb,ii=g.v.ALLOW[n]
+                return {"number":n,"id":ii,"head":{"sha":hh,"ref":bb,"repo":repo},
+                        "base":{"ref":"main","repo":repo},"state":"closed" if n==436 else "open",
+                        "merged":n==436,"merge_commit_sha":merged if n==436 else None}
+            return {"sha":merged,"parents":[{"sha":g.v.BASE},{"sha":h}],"tree":{"sha":tree}}
+        with patch.object(g,"rest",side_effect=fake):
+            self.assertEqual(service._merged_chain(),[{"pr":436,"head":h,"tree":tree,
+                             "base":g.v.BASE,"merge":merged}])
+        def wrong(method,path,token):
+            row=fake(method,path,token)
+            if "/git/commits/" in path: row["tree"]["sha"]="e"*40
+            return row
+        with patch.object(g,"rest",side_effect=wrong):
+            with self.assertRaisesRegex(ValueError,"Wrong merged composition"): service._merged_chain()

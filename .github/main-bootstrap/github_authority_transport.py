@@ -211,6 +211,51 @@ class GitHubAuthority:
             v.verifier_policy()
             return v.snapshot(n,a.EVIDENCE_ENGINE)
 
+    def _merged_chain(self):
+        token=self.credential()
+        def get(path):
+            return rest("GET",REPO_ROUTE+path,token)
+        main=get("/git/ref/heads/main")["object"]
+        v.need(main["type"]=="commit" and v.SHA.fullmatch(main["sha"]),"Invalid main ref")
+        base=v.BASE
+        receipts=[]
+        open_seen=False
+        for n,(head,tree,branch,pid) in v.ALLOW.items():
+            pr=get("/pulls/"+str(n))
+            v.need(pr["number"]==n and pr["id"]==pid and pr["head"]["sha"]==head
+                   and pr["head"]["ref"]==branch and pr["head"]["repo"]["id"]==v.RID
+                   and pr["base"]["ref"]=="main" and pr["base"]["repo"]["id"]==v.RID,
+                   "Candidate identity/target drift")
+            if pr["state"]=="open" and pr["merged"] is False:
+                open_seen=True
+                continue
+            v.need(not open_seen and pr["state"]=="closed" and pr["merged"] is True
+                   and v.SHA.fullmatch(pr["merge_commit_sha"]),"Noncanonical closure or merge sequence")
+            commit=get("/git/commits/"+pr["merge_commit_sha"])
+            v.need(commit["sha"]==pr["merge_commit_sha"] and
+                   [x["sha"] for x in commit["parents"]]==[base,head]
+                   and commit["tree"]["sha"]==tree,"Wrong merged composition")
+            receipts.append({"pr":n,"head":head,"merge":commit["sha"],"tree":tree,"base":base})
+            base=commit["sha"]
+        v.need(main["sha"]==base and get("/git/ref/heads/main")["object"]==main,
+               "Live main ancestry drift")
+        return receipts
+
+    def merged_receipt(self,e):
+        a.evidence_shape(e)
+        first=self._merged_chain()
+        v.need(first==self._merged_chain(),"Merged chain drift")
+        found=[x for x in first if x["pr"]==e["pr"]]
+        if not found:
+            return None
+        receipt=found[0]
+        predecessors=[{k:x[k] for k in ("pr","head","merge","tree")}
+                      for x in first if x["pr"]<e["pr"]]
+        v.need(receipt["base"]==e["base"] and receipt["head"]==e["head"] and
+               receipt["tree"]==e["tree"] and predecessors==e["predecessors"],
+               "Merged receipt not bound to approved evidence")
+        return receipt
+
     def current_decision(self,e,nonce):
         return self.safety.current_decision(e,nonce)
 

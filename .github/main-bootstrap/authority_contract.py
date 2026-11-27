@@ -209,6 +209,13 @@ class Journal:
     def row(self,head):
         return self.db.execute("SELECT evidence,approved,withdrawn,phase,status_id,approval_id "
                                "FROM receipts_v2 WHERE head=?",(head,)).fetchone()
+    def heads(self):
+        return {row[0] for row in self.db.execute("SELECT head FROM receipts_v2")}
+    def unresolved_heads(self):
+        return {row[0] for row in self.db.execute(
+            "SELECT head FROM receipts_v2 WHERE phase NOT IN ('approved','consumed','withdrawn') "
+            "OR (withdrawn IS NOT NULL AND phase!='withdrawn') "
+            "OR (withdrawn IS NULL AND phase='withdrawn')")}
     def reserve_approval(self,e,d):
         with self.transaction():
             v.need(self.row(e["head"]) is None,"Replay, concurrent or terminal request")
@@ -358,7 +365,7 @@ def withdraw(transport,journal,e,d):
     if row[3] in ("approval_reserved","approval_posting"):
         reconcile_approval(transport,journal,e)
         row=journal.row(h)
-    if row[3] in ("approved","quarantined","aborted","approval_posting"):
+    if row[3] in ("approved","consumed","quarantined","aborted","approval_posting"):
         # Persist signed denial. Never retry an approval after this transition.
         phase="withdrawal_unsettled_reserved" if row[3]=="approval_posting" else "withdrawal_reserved"
         journal.change(h,(row[3],),phase,withdrawn=d)
@@ -395,50 +402,56 @@ def withdraw(transport,journal,e,d):
     send(transport,h,e,d,"failure",rows)
     return acknowledge_failure(transport,journal,e,journal.row(h))
 
-def process(transport,journal,e,decision,sig,pem):
-    """Unwired contract. No live GitHub transport or production signer here."""
+def process_locked(transport,journal,e,decision,sig,pem,lease):
+    """One operation under the caller's active shared writer lease."""
+    v.need(journal._lease==(lease,threading.get_ident()),"Active writer lease required")
     evidence_shape(e)
     v.need(decision in ("approve","withdraw"),"Unknown decision")
     d=verify(e,decision,sig,pem)
     h=e["head"]
-    with journal.exclusive():
-        if decision=="withdraw":
-            # Even if the writer identity check or history API fails, retain
-            # a verified denial. It must precede any request to GitHub.
-            journal.reserve_denial(e,d)
-            identity(transport)
-            return withdraw(transport,journal,e,d)
-        v.need(decision=="approve","Unknown decision")
-        row=journal.row(h)
-        if row is not None:
-            v.need(row[2] is None,"Terminal signed withdrawal")
-            v.need(row[0]==v.canonical(e) and row[1]==d,"Different approval evidence")
-            identity(transport)
-            if row[3] in ("approval_reserved","approval_posting"):
-                reconcile_approval(transport,journal,e)
-            raise ValueError("Replay or recovered approval; never republish")
+    if decision=="withdraw":
+        # Even if the writer identity check or history API fails, retain
+        # a verified denial. It must precede any request to GitHub.
+        journal.reserve_denial(e,d)
         identity(transport)
-        proof=approval_policy(transport)
-        v.need(eligible(transport,e),"Stale or draft approval")
-        rows=read_stable(transport,h)
-        v.need(not rows,"Prior status exists")
-        journal.reserve_approval(e,d)
-        v.need(identity(transport) and approval_policy(transport)==proof
-               and read_stable(transport,h)==rows and eligible(transport,e),
-               "Prepublication drift")
-        journal.change(h,("approval_reserved",),"approval_posting")
-        sid=send(transport,h,e,d,"success",rows)
-        if not eligible(transport,e):
-            journal.change(h,("approval_posting",),"quarantined",status_id=sid,approval_id=sid)
-            raise ValueError("Postpublication drift; signed withdrawal required")
-        journal.change(h,("approval_posting",),"approved",status_id=sid,approval_id=sid)
-        return {"pr":e["pr"],"head":h,"state":"success","status_id":sid,"merge_authorized":False}
+        return withdraw(transport,journal,e,d)
+    v.need(decision=="approve","Unknown decision")
+    row=journal.row(h)
+    if row is not None:
+        v.need(row[2] is None,"Terminal signed withdrawal")
+        v.need(row[0]==v.canonical(e) and row[1]==d,"Different approval evidence")
+        identity(transport)
+        if row[3] in ("approval_reserved","approval_posting"):
+            reconcile_approval(transport,journal,e)
+        raise ValueError("Replay or recovered approval; never republish")
+    v.need(not journal.unresolved_heads(),"Unresolved authority intents")
+    identity(transport)
+    proof=approval_policy(transport)
+    v.need(eligible(transport,e),"Stale or draft approval")
+    rows=read_stable(transport,h)
+    v.need(not rows,"Prior status exists")
+    journal.reserve_approval(e,d)
+    v.need(identity(transport) and approval_policy(transport)==proof
+           and read_stable(transport,h)==rows and eligible(transport,e),
+           "Prepublication drift")
+    journal.change(h,("approval_reserved",),"approval_posting")
+    sid=send(transport,h,e,d,"success",rows)
+    if not eligible(transport,e):
+        journal.change(h,("approval_posting",),"quarantined",status_id=sid,approval_id=sid)
+        raise ValueError("Postpublication drift; signed withdrawal required")
+    journal.change(h,("approval_posting",),"approved",status_id=sid,approval_id=sid)
+    return {"pr":e["pr"],"head":h,"state":"success","status_id":sid,"merge_authorized":False}
+
+def process(transport,journal,e,decision,sig,pem):
+    with journal.exclusive() as lease:
+        return process_locked(transport,journal,e,decision,sig,pem,lease)
 
 def integration_permitted_locked(transport,journal,e,lease):
     """Predicate only. Future real merge must keep this lease until readback."""
     v.need(journal._lease==(lease,threading.get_ident()),"Active writer lease required")
     row=journal.row(e["head"])
-    if row is None or row[2] is not None or row[3]!="approved" or row[0]!=v.canonical(e):
+    if (journal.unresolved_heads() or row is None or row[2] is not None
+            or row[3]!="approved" or row[0]!=v.canonical(e)):
         return False
     try:
         identity(transport)
