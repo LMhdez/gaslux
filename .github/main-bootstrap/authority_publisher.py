@@ -107,9 +107,17 @@ def cycle(transport,journal,entries,pem):
 def main():
     os.umask(0o077)
     v.need(sys.argv[1:]==["cycle"],"Use cycle; journal initialization is separate")
-    j=a.Journal(JOURNAL)
+    if g.SAFETY_BACKEND=="hosted":
+        from hosted_client import HostedClient
+        from github_witness import ScopedPublisherWitness
+        j=a.Journal(JOURNAL,witness=ScopedPublisherWitness())
+        reader=HostedClient()
+    else:
+        v.need(g.SAFETY_BACKEND=="ssh","Safety backend not provisioned")
+        j=a.Journal(JOURNAL)
+        reader=safety.SafetyClient()
     try:
-        entries,pem=safety.SafetyClient().poll()
+        entries,pem=reader.poll()
         t=g.GitHubAuthority()
         try:
             results=cycle(t,j,entries,pem)

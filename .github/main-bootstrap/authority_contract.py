@@ -310,6 +310,13 @@ def send(transport,head,e,d,state,rows):
     return result["id"]
 
 def current_approval(transport,e):
+    # Explicit backend type, not a caller-selected flag or fake nonce.
+    # Hosted client validates a fresh authenticated live ref and all signatures.
+    from hosted_client import HostedClient
+    client=getattr(transport,"hosted_safety",None)
+    if client is not None:
+        v.need(type(client) is HostedClient,"Untrusted hosted Safety client")
+        return client.current(e)
     nonce=secrets.token_hex(32)
     start=time.monotonic()
     response,pem=transport.current_decision(e,nonce)

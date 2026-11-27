@@ -26,6 +26,8 @@ APP_KEY_PUBLIC_SHA256=None
 ADMIN_POLICY_SHA256=None
 ADDITIVE_RULE_ID=None
 EXCLUSIVE_CUSTODY_REVIEW=None
+# Must be selected in a frozen, reviewed deployment; no environment override.
+SAFETY_BACKEND=None
 MAX=8000000
 REPO_ROUTE="/repos/"+v.REPO
 FLAGS={"GASLUX_AUTONOMY_PAUSED":"true","GASLUX_PRODUCTION_MERGE_ENABLED":"false",
@@ -145,6 +147,12 @@ class GitHubAuthority:
         self.key=ROOT/"publisher-app.pem"
         self.admin_path=ROOT/"admin-read-token"
         self.safety=safety.SafetyClient()
+        self.hosted_safety=None
+        if SAFETY_BACKEND=='hosted':
+            from hosted_client import HostedClient
+            self.hosted_safety=HostedClient()
+        else:
+            v.need(SAFETY_BACKEND=='ssh',"Safety backend not provisioned")
         self.token=None
         self.expiry=0
         # Deliberately lazy: journal ingestion must precede all GitHub calls.
