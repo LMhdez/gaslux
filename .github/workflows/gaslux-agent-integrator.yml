@@ -31,6 +31,7 @@ jobs:
       - env:
           GH_TOKEN: ${{ github.token }}
           PR: ${{ inputs.pr }}
+          VERIFIER_PIN: ${{ vars.GASLUX_MAIN_BOOTSTRAP_VERIFIER_SHA }}
           PAUSE: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           PROD_MERGE: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
           LEGACY: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}

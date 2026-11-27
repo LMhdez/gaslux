@@ -8,6 +8,7 @@ import re
 import subprocess
 import tempfile
 import urllib.request
+import urllib.parse
 
 REPO = "LMhdez/gaslux"
 RID = 1460159259
@@ -38,7 +39,7 @@ def canonical(x):
 def digest(x):
     return hashlib.sha256(canonical(x)).hexdigest()
 
-def api(path):
+def api(path, *, paged=False):
     need(path == "" or path.startswith("/"), "Bad API route")
     need("://" not in path and ".." not in path, "Bad API route")
     req = urllib.request.Request("https://api.github.com/repos/" + REPO + path, headers={
@@ -49,8 +50,12 @@ def api(path):
     with urllib.request.urlopen(req, timeout=25) as response:
         raw = response.read(8000001)
         need(len(raw) <= 8000000, "Oversize API response")
-        need(not re.search(r'rel="next"', response.headers.get("Link", "")), "Incomplete API page")
-        return json.loads(raw)
+        next_page = bool(re.search(r'rel="next"', response.headers.get("Link", "")))
+        row = json.loads(raw)
+        if paged:
+            return row, next_page
+        need(not next_page, "Incomplete API page")
+        return row
 
 def ref(branch):
     obj = api("/git/ref/heads/" + branch)["object"]
@@ -70,7 +75,8 @@ def boundary():
          and os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch"
          and os.environ.get("GITHUB_REF") == "refs/heads/" + REF, "Wrong execution boundary")
     verifier = ref(REF)
-    need(os.environ.get("GITHUB_SHA") == verifier, "Verifier ref drift")
+    need(os.environ.get("GITHUB_SHA") == verifier == os.environ.get("VERIFIER_PIN")
+         and SHA.fullmatch(verifier), "Verifier ref/pin drift")
     need(os.environ.get("PAUSE") == "true" and all(os.environ.get(k) == "false" for k in
          ("PROD_MERGE", "LEGACY", "V3", "V4")), "Pause flags not explicit")
     repo = api("")
@@ -101,6 +107,96 @@ def native_policy():
          "Strict native CI missing")
     return {"ruleset":RULE, "rules":rules, "bypass_inventory_verified": "bypass_actors" in m}
 
+def verifier_policy():
+    rows = api("/rulesets?includes_parents=true&per_page=100")
+    hits = [r for r in rows if r["name"] == "gaslux-main-verifier-immutable-v1"]
+    need(len(rows) < 100 and len(hits) == 1,"Missing immutable verifier rule")
+    m = api("/rulesets/" + str(hits[0]["id"]))
+    need(m["source"] == REPO and m["source_type"] == "Repository"
+         and m["target"] == "branch" and m["enforcement"] == "active"
+         and m["conditions"] == {"ref_name":{"include":["refs/heads/"+REF],"exclude":[]}}
+         and m.get("current_user_can_bypass") == "never","Verifier protection drift")
+    if "bypass_actors" in m:
+        need(m["bypass_actors"] == [], "Verifier bypass exists")
+    expected = {"update","deletion","non_fast_forward"}
+    need(len(m["rules"]) == 3 and {x["type"] for x in m["rules"]} == expected
+         and all(not x.get("parameters") for x in m["rules"]),"Verifier rule mismatch")
+    branch = urllib.parse.quote(REF,safe="")
+    effective = api("/rules/branches/"+branch+"?per_page=100")
+    own = [x for x in effective if x["ruleset_id"] == m["id"]]
+    need(len(effective) < 100 and len(own) == 3 and {x["type"] for x in own} == expected
+         and all(x["ruleset_source"] == REPO and x["ruleset_source_type"] == "Repository" for x in own),
+         "Immutable verifier rule not effective")
+    return {"ruleset":m["id"],"types":sorted(expected),
+            "bypass_inventory_verified":"bypass_actors" in m}
+
+def all_open_prs():
+    rows = []
+    ids = set()
+    for page in range(1,21):
+        items, more = api(f"/pulls?state=open&sort=created&direction=asc&per_page=100&page={page}",paged=True)
+        need(isinstance(items,list) and len(items) <= 100 and (not more or len(items) == 100),
+             "Incomplete PR page")
+        for p in items:
+            need(type(p["id"]) is int and p["id"] not in ids and p["state"] == "open",
+                 "PR inventory drift")
+            ids.add(p["id"])
+            rows.append(p)
+        if not more:
+            return rows
+    raise ValueError("PR inventory exceeds audit bound")
+
+def unique_candidate(rows, n, pid, head, branch):
+    # A commit status is SHA-scoped, not PR-scoped. Reject even a second
+    # PR from another repository sharing the SHA, irrespective of target.
+    matches = [p for p in rows if p["head"]["sha"] == head]
+    need(len(matches) == 1,"Ambiguous candidate SHA")
+    p = matches[0]
+    need(p["id"] == pid and p["number"] == n and p["state"] == "open"
+         and p["head"]["ref"] == branch and p["head"]["repo"]["id"] == RID
+         and p["base"]["ref"] == "main" and p["base"]["repo"]["id"] == RID,
+         "Candidate association or target drift")
+    return True
+
+class NoTokenRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        dest = urllib.parse.urlsplit(newurl)
+        need(dest.scheme == "https" and dest.username is None and dest.password is None
+             and dest.port in (None,443) and dest.hostname is not None
+             and (dest.hostname.endswith(".blob.core.windows.net")
+                  or dest.hostname.endswith(".actions.githubusercontent.com")
+                  or dest.hostname == "api.github.com"),
+             "Untrusted job log redirect")
+        # The signed download URL is sufficient; do not forward GH_TOKEN.
+        return urllib.request.Request(newurl,headers={"Accept":"application/octet-stream"})
+
+def checkout_evidence(raw, n, composition):
+    need(isinstance(raw,bytes) and len(raw) <= 8000000 and SHA.fullmatch(composition),"Invalid job log")
+    lines = [re.sub(r"^\d{4}-\d{2}-\d{2}T\S+Z\s+", "", line).strip()
+             for line in raw.decode("utf-8").splitlines()]
+    target = f"refs/remotes/pull/{n}/merge"
+    fetch = [i for i,x in enumerate(lines) if x.startswith("[command]/usr/bin/git ")
+             and ("+"+composition+":"+target) in x]
+    checkout = [i for i,x in enumerate(lines) if x == "[command]/usr/bin/git checkout --progress --force "+target]
+    logs = [i for i,x in enumerate(lines) if x == "[command]/usr/bin/git log -1 --format=%H"]
+    need(len(fetch)==len(checkout)==len(logs)==1 and fetch[0]<checkout[0]<logs[0]
+         and logs[0]+1 < len(lines) and lines[logs[0]+1] == composition,
+         "Actual checkout composition not proven")
+    need(any("Run actions/checkout@11d5960a326750d5838078e36cf38b85af677262" in x
+             for x in lines[:fetch[0]]),"Pinned checkout not observed")
+    return {"tested_composition":composition,"job_log_sha256":hashlib.sha256(raw).hexdigest()}
+
+def job_log(job_id):
+    need(type(job_id) is int and job_id > 0,"Invalid job id")
+    req = urllib.request.Request(f"https://api.github.com/repos/{REPO}/actions/jobs/{job_id}/logs",
+            headers={"Authorization":"Bearer "+os.environ["GH_TOKEN"],
+                     "Accept":"application/vnd.github+json","X-GitHub-Api-Version":"2022-11-28"})
+    opener = urllib.request.build_opener(NoTokenRedirect())
+    with opener.open(req,timeout=25) as response:
+        raw = response.read(8000001)
+        need(len(raw) <= 8000000,"Oversize job log")
+        return raw
+
 def earlier_merges(n):
     current = BASE
     receipts = []
@@ -119,7 +215,7 @@ def earlier_merges(n):
     need(ref("main") == current, "Live main not exact preceding approved composition")
     return current, receipts
 
-def exact_ci(n, p, base, head):
+def exact_ci(n, p, base, head, composition):
     data = api("/actions/workflows/" + str(WORKFLOW) +
                "/runs?event=pull_request&head_sha=" + head + "&per_page=100")
     need(data["total_count"] == len(data["workflow_runs"]) < 100, "Incomplete CI inventory")
@@ -142,12 +238,17 @@ def exact_ci(n, p, base, head):
     need(len(hits) == 1 and hits[0]["status"] == "completed" and hits[0]["conclusion"] == "success"
          and hits[0]["head_sha"] == head, "Exact contract job missing")
     j = hits[0]
-    check = api("/check-runs/" + str(j["id"]))
+    checks = api("/commits/" + head + "/check-runs?per_page=100")
+    need(checks["total_count"] == len(checks["check_runs"]) < 100,"Incomplete check runs")
+    matched = [x for x in checks["check_runs"] if x["id"] == j["id"]]
+    need(len(matched) == 1,"Exact check run missing")
+    check = matched[0]
     need(check["app"]["id"] == 15368 and check["head_sha"] == head
          and check["name"] == j["name"] and check["conclusion"] == "success"
          and check["check_suite"]["id"] == r["check_suite_id"], "Wrong check source")
+    observed = checkout_evidence(job_log(j["id"]),n,composition)
     return {"workflow":WORKFLOW,"run":r["id"],"attempt":r["run_attempt"],"job":j["id"],
-            "suite":r["check_suite_id"],"base":base,"head":head}
+            "suite":r["check_suite_id"],"base":base,"head":head,**observed}
 
 def snapshot(n, verifier):
     need(n in ALLOW, "Outside bounded bootstrap")
@@ -163,10 +264,8 @@ def snapshot(n, verifier):
     m = commit(p["merge_commit_sha"])
     need([x["sha"] for x in m["parents"]] == [base,head] and m["tree"]["sha"] == tree,
          "Exact composed tree not approved")
-    # Same candidate SHA on any other open PR is ambiguous.
-    rows = api("/pulls?state=open&head=LMhdez:" + branch.replace("/","%2F") + "&per_page=100")
-    need(len(rows) == 1 and rows[0]["id"] == pid, "Ambiguous candidate association")
-    ci = exact_ci(n,p,base,head)
+    unique_candidate(all_open_prs(),n,pid,head,branch)
+    ci = exact_ci(n,p,base,head,m["sha"])
     need(ref("main") == base and ref(branch) == head and ref(REF) == verifier,"Snapshot drift")
     return {"schema":"gaslux-main-bootstrap-v1","repository":REPO,"repository_id":RID,"target":"main",
             "pr":n,"pr_id":pid,"head":head,"base":base,"tree":tree,"composition":m["sha"],
@@ -222,11 +321,13 @@ def main():
     verifier = boundary()
     n = int(os.environ["PR"])
     policy = native_policy()
+    immutable = verifier_policy()
     first = snapshot(n,verifier)
     second = snapshot(n,verifier)
-    need(first == second and policy == native_policy() and boundary() == verifier,"Evidence or policy drift")
+    need(first == second and policy == native_policy() and immutable == verifier_policy()
+         and boundary() == verifier,"Evidence or policy drift")
     print(json.dumps({"evidence":first,"evidence_sha256":digest(first),"native":policy,
-        "independent_signer_provisioned":False,"infrastructure_app_provisioned":False,
+        "verifier_protection":immutable,"independent_signer_provisioned":False,"infrastructure_app_provisioned":False,
         "authorization_published":False,"merge_authorized":False},sort_keys=True))
 
 if __name__ == "__main__":
