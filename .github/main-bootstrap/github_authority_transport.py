@@ -147,7 +147,8 @@ class GitHubAuthority:
         self.safety=safety.SafetyClient()
         self.token=None
         self.expiry=0
-        self.identity_proof()
+        # Deliberately lazy: journal ingestion must precede all GitHub calls.
+        # Every status operation still passes identity_proof in process_locked.
 
     def mint(self):
         jwt=app_jwt(self.key)

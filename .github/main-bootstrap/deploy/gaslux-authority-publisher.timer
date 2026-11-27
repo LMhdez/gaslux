@@ -1,0 +1,11 @@
+[Unit]
+Description=Poll retained GASLUX Safety decisions
+
+[Timer]
+OnBootSec=30s
+OnUnitInactiveSec=60s
+AccuracySec=5s
+Unit=gaslux-authority-publisher.service
+
+[Install]
+WantedBy=timers.target

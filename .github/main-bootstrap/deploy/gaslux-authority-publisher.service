@@ -1,0 +1,26 @@
+[Unit]
+Description=GASLUX signed decision publication cycle
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+User=gaslux-publisher
+Group=gaslux-publisher
+WorkingDirectory=/opt/gaslux-authority
+ExecStart=/usr/bin/python3 -B /opt/gaslux-authority/authority_publisher.py cycle
+Environment=PATH=/usr/bin:/bin
+Environment=HOME=/nonexistent
+UMask=0077
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+CapabilityBoundingSet=
+ReadWritePaths=/var/lib/gaslux-authority-publisher
+TimeoutStartSec=900

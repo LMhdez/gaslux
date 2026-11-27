@@ -168,3 +168,20 @@ class PublisherTests(unittest.TestCase):
         self.cycle(one)
         self.assertEqual(self.cycle(self.entry(self.e1,"withdraw"))[0]["state"],"failure")
         self.assertEqual(self.j.row(self.e1["head"])[3],"withdrawn")
+
+    def test_github_outage_does_not_prevent_ingestion(self):
+        import github_authority_transport as g
+        from pathlib import Path
+        def unavailable(*args,**kwargs):
+            raise OSError("GitHub unavailable")
+        w1=self.entry(self.e1,"withdraw")
+        w2=self.entry(self.e2,"withdraw")
+        with patch.object(g,"deployment_ready"), patch.object(g,"rest",side_effect=unavailable), \
+             patch.object(g,"app_jwt",return_value="test-jwt"):
+            transport=g.GitHubAuthority()
+            with self.assertRaises(publisher.CycleBlocked):
+                publisher.cycle(transport,self.j,[w1,w2],self.t.pem)
+        self.assertIsNotNone(self.j.row(self.e1["head"])[2])
+        self.assertIsNotNone(self.j.row(self.e2["head"])[2])
+        self.assertFalse(a.integration_permitted(self.t,self.j,self.e1))
+        self.assertEqual([x["state"] for x in self.cycle(w1,w2)],["failure","failure"])

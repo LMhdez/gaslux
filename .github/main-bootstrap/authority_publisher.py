@@ -107,10 +107,10 @@ def cycle(transport,journal,entries,pem):
 def main():
     os.umask(0o077)
     v.need(sys.argv[1:]==["cycle"],"Use cycle; journal initialization is separate")
-    t=g.GitHubAuthority()
     j=a.Journal(JOURNAL)
     try:
         entries,pem=safety.SafetyClient().poll()
+        t=g.GitHubAuthority()
         try:
             results=cycle(t,j,entries,pem)
         except CycleBlocked as exc:
