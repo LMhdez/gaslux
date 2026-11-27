@@ -81,6 +81,8 @@ class GitWitness:
         self.branch=BRANCH[role]
         self.genesis=GENESIS[role]
         self.cache={}
+    def make_event(self,sequence,previous,digest):
+        return event(self.role,sequence,previous,digest)
     def token(self):
         # Fine-grained Contents write + Administration read, not admin-write,
         # scoped only to witness repository, role token separate from other roles.
@@ -129,7 +131,7 @@ class GitWitness:
         v.need(len(raw)<=4096 and blob["size"]==len(raw) and git_sha==f["sha"],
                "Witness blob mismatch")
         value=json.loads(raw)
-        v.need(value==event(self.role,value["sequence"],value["previous"],value["digest"])
+        v.need(value==self.make_event(value["sequence"],value["previous"],value["digest"])
                and raw==v.canonical(value),"Witness event mismatch")
         result=(row["parents"][0]["sha"],value)
         self.cache[sha]=result
@@ -166,7 +168,7 @@ class GitWitness:
         v.need(rows[-1]["digest"]==before,"External checkpoint mismatch")
         if before==after: return
         v.need(after not in {x["digest"] for x in rows},"Checkpoint rollback/reuse")
-        value=event(self.role,len(rows),before,after)
+        value=self.make_event(len(rows),before,after)
         blob=self.api("POST","/git/blobs",{"content":base64.b64encode(v.canonical(value)).decode("ascii"),
                                            "encoding":"base64"})
         v.need(v.SHA.fullmatch(blob["sha"]),"Invalid created witness blob")
@@ -185,3 +187,55 @@ class GitWitness:
                "url":result["object"]["url"]},"Witness update receipt mismatch")
         observed,history=self.snapshot()
         v.need(observed==new and history==rows+[value],"Witness advance unconfirmed")
+
+# Separate publisher checkpoint repository. The signer ledger is in a
+# distinct hosted Safety control repository.
+PUBLISHER_REPO=None
+PUBLISHER_ID=None
+PUBLISHER_RULE=None
+PUBLISHER_GENESIS=None
+
+class ScopedPublisherWitness(GitWitness):
+    def __init__(self):
+        import hosted_safety as hosted
+        hosted.pins()
+        v.need(isinstance(PUBLISHER_REPO,str) and
+               re.fullmatch(r"[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+",PUBLISHER_REPO)
+               and PUBLISHER_REPO.casefold() not in (v.REPO.casefold(),hosted.CONTROL_REPO.casefold())
+               and type(PUBLISHER_ID) is int and PUBLISHER_ID>0 and
+               PUBLISHER_ID not in (v.RID,hosted.CONTROL_ID)
+               and type(PUBLISHER_RULE) is int and PUBLISHER_RULE>0
+               and isinstance(PUBLISHER_GENESIS,str) and v.SHA.fullmatch(PUBLISHER_GENESIS),
+               "Scoped publisher witness pins absent or overlapping")
+        self.role="publisher"
+        self.repo="/repos/"+PUBLISHER_REPO
+        self.branch="ledger/publisher"
+        self.genesis=PUBLISHER_GENESIS
+        self.cache={}
+    def make_event(self,sequence,previous,digest):
+        v.need(type(sequence) is int and 0<=sequence<MAX_EVENTS
+               and isinstance(digest,str) and anchor.HEX.fullmatch(digest)
+               and ((sequence==0 and previous is None) or
+                    (sequence>0 and isinstance(previous,str) and anchor.HEX.fullmatch(previous))),
+               "Invalid scoped checkpoint")
+        return {"schema":SCHEMA,"production_repository_id":v.RID,
+                "witness_repository_id":PUBLISHER_ID,"role":"publisher",
+                "sequence":sequence,"previous":previous,"digest":digest}
+    def policy(self):
+        repo=self.api("GET","")
+        v.need(repo["id"]==PUBLISHER_ID and repo["full_name"]==PUBLISHER_REPO and
+               repo["private"] is True and repo["fork"] is False,"Wrong scoped witness repository")
+        rule=self.api("GET","/rulesets/"+str(PUBLISHER_RULE))
+        v.need(rule["id"]==PUBLISHER_RULE and rule["source"]==PUBLISHER_REPO and
+               rule["source_type"]=="Repository" and rule["target"]=="branch" and
+               rule["enforcement"]=="active" and rule.get("bypass_actors")==[] and
+               rule["conditions"]=={"ref_name":{"include":["refs/heads/ledger/publisher"],"exclude":[]}} and
+               len(rule["rules"])==2 and {x["type"] for x in rule["rules"]}==
+                   {"deletion","non_fast_forward"} and all(not x.get("parameters") for x in rule["rules"]),
+               "Scoped witness protection drift")
+        effective=self.api("GET","/rules/branches/ledger%2Fpublisher?per_page=100")
+        hits=[x for x in effective if x["ruleset_id"]==PUBLISHER_RULE]
+        v.need(type(effective) is list and len(effective)<100 and len(hits)==2 and
+               {x["type"] for x in hits}=={"deletion","non_fast_forward"} and
+               all(x["ruleset_source"]==PUBLISHER_REPO and x["ruleset_source_type"]=="Repository" for x in hits),
+               "Scoped witness protection not effective")

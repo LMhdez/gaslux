@@ -24,6 +24,7 @@ jobs:
           persist-credentials: false
       - name: Verify frozen boundary and evaluate exact approved composition
         env:
+          SAFETY_RELEASE_PIN: ${{ vars.GASLUX_HOSTED_SAFETY_RELEASE_SHA }}
           GH_TOKEN: ${{ secrets.GASLUX_SAFETY_PRODUCTION_READ_TOKEN }}
           SAFETY_LEDGER_TOKEN: ${{ secrets.GASLUX_SAFETY_LEDGER_TOKEN }}
           SAFETY_SIGNING_KEY: ${{ secrets.GASLUX_SAFETY_SIGNING_KEY }}

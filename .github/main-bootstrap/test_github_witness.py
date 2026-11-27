@@ -81,3 +81,18 @@ class WitnessTests(unittest.TestCase):
     def test_missing_deployment_pins_denied(self):
         with patch.object(g,"REPOSITORY",None):
             with self.assertRaisesRegex(ValueError,"not provisioned"): g.GitWitness("publisher")
+
+    def test_scoped_publisher_witness_rejects_control_repo_overlap(self):
+        import hosted_safety as hosted
+        import authority_contract as a
+        with patch.multiple(hosted,CONTROL_REPO="example/control",CONTROL_ID=123,
+                            LEDGER_RULE=77,LEDGER_GENESIS="a"*40), \
+             patch.object(a,"SIGNER_PEM_SHA256","c"*64), \
+             patch.multiple(g,PUBLISHER_REPO="example/control",PUBLISHER_ID=123,
+                            PUBLISHER_RULE=99,PUBLISHER_GENESIS="b"*40):
+            with self.assertRaisesRegex(ValueError,"overlapping"): g.ScopedPublisherWitness()
+            with patch.multiple(g,PUBLISHER_REPO="example/checkpoint",PUBLISHER_ID=456):
+                w=g.ScopedPublisherWitness()
+                self.assertEqual(w.role,"publisher")
+                self.assertEqual(w.repo,"/repos/example/checkpoint")
+                self.assertEqual(w.make_event(0,None,self.old)["witness_repository_id"],456)

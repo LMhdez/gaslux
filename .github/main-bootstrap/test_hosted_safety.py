@@ -49,7 +49,7 @@ class HostedTests(unittest.TestCase):
             h.replay(records,self.pem)
         records=self.records("approve")
         records[1][1]["signature_b64"]="A"*88
-        with self.assertRaises((ValueError,Exception)):
+        with self.assertRaises(ValueError):
             h.replay(records,self.pem)
     def test_current_and_retained_are_live_read_only(self):
         ledger=h.Ledger("test",self.pem)
