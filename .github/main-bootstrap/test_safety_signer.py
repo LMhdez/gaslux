@@ -10,6 +10,8 @@ from unittest.mock import patch
 import safety_signer as s
 import authority_contract as a
 import authority_anchor as anchor
+import safety_feed as feed
+import authority_publisher as publisher
 import test_authority_contract as fixtures
 
 class SignerTests(unittest.TestCase):
@@ -140,3 +142,30 @@ class SignerTests(unittest.TestCase):
             self.assertFalse(a.verify_current(self.e,"b"*64,second,self.pem))
             with self.assertRaisesRegex(ValueError,"binding mismatch"):
                 a.verify_current(self.e,"b"*64,first,self.pem)
+
+    def test_retained_feed_delivers_terminal_revocation(self):
+        self.policy("approve")
+        self.issue("approve")
+        self.policy("withdraw")
+        self.issue("withdraw")
+        nonce="9"*64
+        with patch.object(s,"private_dir"):
+            response=s.poll(self.root,{"nonce":nonce},witness=self.witness)
+        with patch.object(a,"SIGNER_PEM_SHA256",self.fp):
+            entries=feed.verify(nonce,response,self.pem)
+            self.assertEqual([r["decision"] for r in entries],["withdraw"])
+            self.assertEqual(publisher.cycle(self.fixture.f,self.fixture.j,entries,self.pem)[0]["state"],"failure")
+            self.assertEqual(publisher.cycle(self.fixture.f,self.fixture.j,entries,self.pem)[0]["state"],"failure")
+            self.assertEqual(self.fixture.f.writes,1)
+            with self.assertRaisesRegex(ValueError,"binding mismatch"):
+                feed.verify("8"*64,response,self.pem)
+    def test_feed_signature_tamper(self):
+        self.policy("approve")
+        self.issue("approve")
+        nonce="7"*64
+        with patch.object(s,"private_dir"):
+            response=s.poll(self.root,{"nonce":nonce},witness=self.witness)
+        response["payload"]["entries"]=[]
+        with patch.object(a,"SIGNER_PEM_SHA256",self.fp):
+            with self.assertRaisesRegex(ValueError,"signature invalid"):
+                feed.verify(nonce,response,self.pem)

@@ -17,6 +17,7 @@ import tempfile
 from pathlib import Path
 import authority_contract as a
 import authority_anchor as anchor
+import safety_feed as feed
 import main_bootstrap as v
 
 ROOT=Path("/var/lib/gaslux-safety-signing")
@@ -216,6 +217,35 @@ def query(root,request,*,witness=None):
         raise
     finally: db.close()
 
+def poll(root,request,*,witness=None):
+    private_dir(root)
+    v.need(type(request) is dict and set(request)=={"nonce"},"Invalid feed query")
+    nonce=request["nonce"]
+    key=private_read(root,"signer.pem",4096)
+    fp=hashlib.sha256(public_pem(key)).hexdigest()
+    db=open_db(root,fp)
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        witness=witness if witness is not None else anchor.WitnessClient("signer")
+        before=anchor.digest_state("signer",db)
+        witness.assert_state(before)
+        entries=[]
+        for head,raw,approval,withdrawal in db.execute(
+                "SELECT head,evidence,approve_sig,withdraw_sig FROM decisions ORDER BY head"):
+            e=strict_json(raw)
+            v.need(e["head"]==head,"Signer ledger association drift")
+            entries.append({"evidence":e,"decision":"withdraw" if withdrawal else "approve",
+                            "signature_b64":withdrawal or approval})
+        payload=feed.payload(nonce,entries)
+        sig=sign_bytes(key,v.canonical(payload))
+        witness.assert_state(before)
+        db.execute("COMMIT")
+        return {"payload":payload,"signature_b64":sig}
+    except BaseException:
+        if db.in_transaction: db.execute("ROLLBACK")
+        raise
+    finally: db.close()
+
 def main():
     os.umask(0o077)
     private_dir(ROOT)
@@ -228,10 +258,10 @@ def main():
         db.close()
         print(json.dumps({"public_key_sha256":fp,"public_key_pem":pem.decode("ascii"),"witness_genesis":genesis}))
         return
-    v.need(sys.argv[1:] in (["sign"],["query"]),"Use init-journal, sign or query")
+    v.need(sys.argv[1:] in (["sign"],["query"],["poll"]),"Use init-journal, sign, query or poll")
     raw=sys.stdin.buffer.read(MAX+1)
     v.need(0<len(raw)<=MAX,"Invalid request size")
-    handler=query if sys.argv[1]=="query" else issue
+    handler={"query":query,"sign":issue,"poll":poll}[sys.argv[1]]
     print(json.dumps(handler(ROOT,strict_json(raw)),sort_keys=True))
 
 if __name__=="__main__":

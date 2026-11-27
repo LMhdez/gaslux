@@ -1,0 +1,20 @@
+# Operational deployment preparation — production remains paused
+
+Code now includes a real REST transport, status-only App JWT mint and repository-scope validation, retained signed decision feed, and single-cycle publisher CLI. No production endpoint, credential or trust pin is provisioned. Existing production App 5952630, installation 186499041 and actor 361970320 are used; do not create a duplicate App. The earlier credential audit used a reduced read-only token, not the writer. A separately reviewed installation must establish exclusive writer custody: retire the audit environment copy of the App private key or rotate it with the replacement exclusively held by the publisher; verify the registration and all installations; no key in Git or chat.
+
+## Deployment boundaries
+- Safety: independently administered service account/host, fixed reviewed code, private Ed25519 key, authenticated evaluator input, signer DB, read-only repository access. Query/feed SSH key is restricted to a fixed command dispatcher; signing key never leaves host.
+- Witness: independently administered storage/host outside BOTH database rollback domains. Distinct role keys and forced commands; no client reset. Protect filesystem/SQLite sidecars/backups.
+- Publisher: persistent private directory /var/lib/gaslux-authority-publisher, single writer; exact App key, read-only administrative policy inventory credential, independently pinned Safety public PEM, witness/Safety host and role SSH keys. No candidate checkout or code execution. A root-controlled immutable code deployment is required; do not install a mutable branch as service.
+- Actual merge: still not implemented or authorized. Separate main-only identity and cross-service serialization with current signer decision required.
+
+## Forced command contract
+Signer query key accepts only SSH_ORIGINAL_COMMAND gaslux-safety-query-v1 (exec safety_signer.py query) or gaslux-safety-feed-v1 (exec safety_signer.py poll). Separate evaluator signing identity invokes sign, never shared with publisher. Witness role key accepts only gaslux-witness-v1, exec authority_anchor.py ROLE serve with ROLE fixed in server configuration. Use restrict/no-agent-forwarding/no-port-forwarding/no-pty and pinned host keys. No arbitrary command, no shell and no init access.
+
+## Policy and credential checks
+Before enabling any writer, independently review and freeze App public key digest, Safety PEM digest, exact additive rule ID, full ruleset/effective-main inventory digest, and exclusive custody review digest. Administrative read credential needs sufficient read access to full ruleset bypass inventory and Actions variables; it must not be a merge credential. The separate additive main rule requires context gaslux-main/infrastructure-v1 from App 5952630, strict checks, no bypass, exact main; native ruleset 28152434 stays intact. No rule changed by this code. Do not replace native review until separate authorization and live proof.
+
+The REST adapter never retries a status POST and returns false for outbound_settled. Lost success/failure response can be reconciled only when exact authenticated receipt is observable. Unknown remote completion, witness CAS/commit mismatch, or failed identity/policy query remain blocking. The publisher pulls the retained signed feed each cycle, handles denials before positive decisions, and never acknowledges a remote withdrawal until exact failure/readback. The source retains decisions indefinitely. A failed cycle must be retried by the service scheduler; no success replay. A fresh query is not a distributed merge lease. No activation or main merge performed.
+
+## Remaining installation prerequisites
+Supply independently administered Safety and witness endpoints, review custody and freeze exact release; establish persistent service state and authenticated evaluator. Existing code intentionally has null trust pins and cannot start against production. Operational negative/positive tests and real policy readback are mandatory before any change to native gates.
