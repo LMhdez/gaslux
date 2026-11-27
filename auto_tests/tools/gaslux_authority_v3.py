@@ -299,7 +299,10 @@ def write_production_status(kind,head,payload,observed):
          and payload.get("state") in ("success","failure")
          and (m:=MARKER.fullmatch(payload.get("description") or ""))
          and m[4]==payload["state"],"Invalid production status write")
-    role_context(kind)
+    if payload["state"]=="success":
+        staged_publication_context(kind,m[2])
+    else:
+        role_context(kind)
     need(history(head,CONTEXTS)==observed,"Decision changed before publication")
     r=a.api("POST","/statuses/"+head,payload)
     need(own(r,kind,CONTEXTS) and all(r.get(k)==v for k,v in payload.items()),"Unauthenticated receipt")

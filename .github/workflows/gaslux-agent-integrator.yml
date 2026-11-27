@@ -1030,11 +1030,11 @@ jobs:
     if: >-
       github.repository == 'LMhdez/gaslux' &&
       github.ref == 'refs/heads/main' &&
-      vars.GASLUX_INDEPENDENT_SAFETY_ENABLED == 'true' &&
       ((github.event_name == 'workflow_dispatch' &&
         inputs.v3_action == 'withdraw' &&
         (inputs.v3_role == 'both' || inputs.v3_role == 'safety')) ||
        (vars.GASLUX_V3_AUTHORITY_ENABLED == 'true' &&
+        vars.GASLUX_INDEPENDENT_SAFETY_ENABLED == 'true' &&
         (github.event_name == 'schedule' || github.event_name == 'push' ||
          (github.event_name == 'workflow_dispatch' && inputs.v3_action == 'reconcile'))))
     runs-on: ubuntu-24.04
@@ -1105,6 +1105,7 @@ jobs:
       vars.GASLUX_INDEPENDENT_OWNER_ENABLED == 'true' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.paused_v3_probe == true &&
+      inputs.v3_action == 'none' &&
       vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
       vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
     runs-on: ubuntu-24.04
@@ -1165,6 +1166,7 @@ jobs:
       vars.GASLUX_INDEPENDENT_SAFETY_ENABLED == 'true' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.paused_v3_probe == true &&
+      inputs.v3_action == 'none' &&
       vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
       vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
     runs-on: ubuntu-24.04
@@ -1225,6 +1227,7 @@ jobs:
       vars.GASLUX_INDEPENDENT_OWNER_ENABLED == 'true' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.paused_v3_probe == true &&
+      inputs.v3_action == 'none' &&
       vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
       vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
     runs-on: ubuntu-24.04
@@ -1284,6 +1287,7 @@ jobs:
       vars.GASLUX_APP_STATUS_GATES_ENABLED != 'true' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.paused_v3_probe == true &&
+      inputs.v3_action == 'none' &&
       vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
       vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
     runs-on: ubuntu-24.04
@@ -1313,14 +1317,17 @@ jobs:
         run: python3 -I auto_tests/tools/gaslux_authority_v3.py --pilot-audit
 
   v3_role_owner:
+    needs: v3_role_safety
     if: >-
+      always() && !cancelled() &&
       github.repository == 'LMhdez/gaslux' &&
       github.ref == 'refs/heads/main' &&
-      vars.GASLUX_INDEPENDENT_OWNER_ENABLED == 'true' &&
       ((github.event_name == 'workflow_dispatch' &&
         inputs.v3_action == 'withdraw' &&
         (inputs.v3_role == 'both' || inputs.v3_role == 'owner')) ||
        (vars.GASLUX_V3_AUTHORITY_ENABLED == 'true' &&
+        vars.GASLUX_INDEPENDENT_OWNER_ENABLED == 'true' &&
+        (needs.v3_role_safety.result == 'success' || needs.v3_role_safety.result == 'skipped') &&
         (github.event_name == 'schedule' || github.event_name == 'push' ||
          (github.event_name == 'workflow_dispatch' && inputs.v3_action == 'reconcile'))))
     runs-on: ubuntu-24.04
@@ -1391,6 +1398,7 @@ jobs:
       vars.GASLUX_INDEPENDENT_SAFETY_ENABLED == 'true' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.paused_v3_probe == true &&
+      inputs.v3_action == 'none' &&
       vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
       vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
     runs-on: ubuntu-24.04
@@ -1451,6 +1459,7 @@ jobs:
       vars.GASLUX_INDEPENDENT_OWNER_ENABLED == 'true' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.paused_v3_probe == true &&
+      inputs.v3_action == 'none' &&
       vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
       vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
     runs-on: ubuntu-24.04
@@ -1510,6 +1519,7 @@ jobs:
       vars.GASLUX_APP_STATUS_GATES_ENABLED != 'true' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.paused_v3_probe == true &&
+      inputs.v3_action == 'none' &&
       vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
       vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
     runs-on: ubuntu-24.04
@@ -1549,6 +1559,7 @@ jobs:
       vars.GASLUX_INDEPENDENT_SAFETY_ENABLED == 'true' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.paused_v3_probe == true &&
+      inputs.v3_action == 'none' &&
       vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
       vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
     runs-on: ubuntu-24.04
@@ -1609,6 +1620,7 @@ jobs:
       vars.GASLUX_INDEPENDENT_OWNER_ENABLED == 'true' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.paused_v3_probe == true &&
+      inputs.v3_action == 'none' &&
       vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
       vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
     runs-on: ubuntu-24.04
@@ -1669,6 +1681,7 @@ jobs:
       vars.GASLUX_INDEPENDENT_SAFETY_ENABLED == 'true' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.paused_v3_probe == true &&
+      inputs.v3_action == 'none' &&
       vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
       vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
     runs-on: ubuntu-24.04
@@ -1729,6 +1742,7 @@ jobs:
       vars.GASLUX_INDEPENDENT_OWNER_ENABLED == 'true' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.paused_v3_probe == true &&
+      inputs.v3_action == 'none' &&
       vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
       vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
     runs-on: ubuntu-24.04
@@ -1788,6 +1802,7 @@ jobs:
       vars.GASLUX_APP_STATUS_GATES_ENABLED != 'true' &&
       github.event_name == 'workflow_dispatch' &&
       inputs.paused_v3_probe == true &&
+      inputs.v3_action == 'none' &&
       vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
       vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
     runs-on: ubuntu-24.04

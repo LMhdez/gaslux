@@ -132,7 +132,20 @@ class AuthorityV3Tests(unittest.TestCase):
     def test_no_status_write_on_history_race(self):
         b=self.bound()
         p=V.transition(b,"success",[],V.CONTEXTS)
-        with patch.object(V,"role_context"),patch.object(V,"history",return_value=([self.row(b,"failure")],{})),patch.object(V.a,"api") as api:
+        with patch.object(V,"staged_publication_context"),patch.object(V,"history",return_value=([self.row(b,"failure")],{})),patch.object(V.a,"api") as api:
             with self.assertRaisesRegex(ValueError,"changed"):
                 V.write_production_status("safety","a"*40,p,([],{}))
             api.assert_not_called()
+
+    def test_workflow_serializes_and_separates_withdrawal_from_approval(self):
+        w=(Path(__file__).resolve().parents[2]/".github/workflows/gaslux-agent-integrator.yml").read_text()
+        safety=w.split("  v3_role_safety:",1)[1].split("  v3_role_owner:",1)[0]
+        owner=w.split("  v3_role_owner:",1)[1].split("  v3_safety_approve:",1)[0]
+        self.assertIn("needs: v3_role_safety",owner)
+        for job in (safety,owner):
+            self.assertIn("inputs.v3_action == 'withdraw'",job)
+            self.assertIn("refs/heads/main",job)
+            self.assertIn("permission-statuses: write",job)
+            self.assertNotIn("permission-contents: write",job)
+            self.assertNotIn("permission-pull-requests: write",job)
+        self.assertEqual(w.count("inputs.v3_action == 'none' &&"),5)
