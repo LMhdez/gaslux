@@ -5,6 +5,7 @@ single-writer service. This module cannot issue a production status by itself.
 """
 import base64
 import hashlib
+import fcntl
 import json
 import os
 import re
@@ -107,22 +108,39 @@ def read_stable(transport, head):
     return authentic_history(raw,b,head)
 
 class Journal:
-    """Single durable writer journal. Never place on ephemeral Actions storage.
+    """Persistent same-host single writer. Transport must never retry a POST.
 
-    Pending intents are committed before network writes. After an uncertain
-    outcome we intentionally deny all further commands for that HEAD. An
-    independently reviewed recovery path must reconcile the actual server
-    receipt; this revision does not pretend exactly-once delivery.
+    The filesystem lock spans the entire network transaction and is released
+    after process death. A committed posting intent survives process death.
+    Lack of a visible receipt is NOT proof an HTTP request cannot arrive.
     """
     def __init__(self,path):
-        self.db=sqlite3.connect(path,timeout=15,isolation_level=None)
+        self.path=Path(path).resolve()
+        v.need(str(path)!=":memory:","Persistent journal required")
+        self.db=sqlite3.connect(self.path,timeout=15,isolation_level=None)
         self.db.execute("PRAGMA journal_mode=WAL")
         self.db.execute("PRAGMA synchronous=FULL")
-        self.db.execute("""CREATE TABLE IF NOT EXISTS receipts (
+        self.db.execute("""CREATE TABLE IF NOT EXISTS receipts_v2 (
           head TEXT PRIMARY KEY, evidence BLOB NOT NULL, approved TEXT NOT NULL,
-          withdrawn TEXT, phase TEXT NOT NULL, status_id INTEGER)""")
+          withdrawn TEXT, phase TEXT NOT NULL, status_id INTEGER,
+          approval_id INTEGER)""")
+        # Old schema cannot prove the network phase. Do not silently migrate.
+        old=self.db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='receipts'").fetchone()
+        v.need(old is None or self.db.execute("SELECT COUNT(*) FROM receipts").fetchone()[0]==0,
+               "Old nonempty journal requires independent recovery")
     def close(self):
         self.db.close()
+    @contextmanager
+    def exclusive(self):
+        fd=os.open(str(self.path)+".writer.lock",os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)
+        try:
+            try:
+                fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
+            except BlockingIOError as exc:
+                raise ValueError("Writer already active") from exc
+            yield
+        finally:
+            os.close(fd)
     @contextmanager
     def transaction(self):
         self.db.execute("BEGIN IMMEDIATE")
@@ -134,71 +152,186 @@ class Journal:
         else:
             self.db.execute("COMMIT")
     def row(self,head):
-        row=self.db.execute("SELECT evidence,approved,withdrawn,phase,status_id FROM receipts WHERE head=?",
-                            (head,)).fetchone()
-        return row
+        return self.db.execute("SELECT evidence,approved,withdrawn,phase,status_id,approval_id "
+                               "FROM receipts_v2 WHERE head=?",(head,)).fetchone()
     def reserve_approval(self,e,d):
         with self.transaction():
             v.need(self.row(e["head"]) is None,"Replay, concurrent or terminal request")
-            self.db.execute("INSERT INTO receipts VALUES (?,?,?,NULL,'approval_pending',NULL)",
+            self.db.execute("INSERT INTO receipts_v2 VALUES (?,?,?,NULL,'approval_reserved',NULL,NULL)",
                             (e["head"],v.canonical(e),d))
-    def reserve_withdrawal(self,e,d,old_id):
-        with self.transaction():
-            row=self.row(e["head"])
-            v.need(row is not None and row[0]==v.canonical(e) and row[3]=="approved"
-                   and row[4]==old_id,"No matching active approval or pending intent")
-            self.db.execute("UPDATE receipts SET withdrawn=?,phase='withdrawal_pending' WHERE head=?",
-                            (d,e["head"]))
-    def complete(self,head,state,sid):
-        pending,done=("approval_pending","approved") if state=="success" else ("withdrawal_pending","withdrawn")
+    def change(self,head,old,new,*,status_id=None,approval_id=None,withdrawn=None):
         with self.transaction():
             row=self.row(head)
-            v.need(row is not None and row[3]==pending and type(sid) is int and sid>0,
-                   "Missing reserved intent")
-            self.db.execute("UPDATE receipts SET phase=?,status_id=? WHERE head=?",(done,sid,head))
+            v.need(row is not None and row[3] in old,"Unexpected journal phase")
+            self.db.execute("UPDATE receipts_v2 SET phase=?,status_id=?,approval_id=?,withdrawn=? WHERE head=?",
+                            (new,row[4] if status_id is None else status_id,
+                             row[5] if approval_id is None else approval_id,
+                             row[2] if withdrawn is None else withdrawn,head))
 
-def process(transport,journal,e,decision,sig,pem):
-    """Unwired adapter. Requires an independently attested policy and transport.
-    
-    Transport has to enforce exact complete effective policy/actor inventory,
-    exclusive credential, paused migration and immutable execution. No such
-    production transport is supplied here. Tests use fake transport only.
-    """
-    d=verify(e,decision,sig,pem)
-    head=e["head"]
-    state="success" if decision=="approve" else "failure"
-    # policy_proof is a trusted adapter boundary, NOT a boolean from the PR,
-    # dispatch or configuration. It must be implemented and independently reviewed.
-    proof=transport.policy_proof()
-    v.need(proof["repository_id"]==v.RID and proof["app"]==APP and proof["actor"]==ACTOR
-           and proof["installation"]==INSTALLATION and proof["native_review_retained"] is True
-           and proof["source_pinned_gate"] is True and proof["complete_actor_inventory"] is True
-           and proof["exclusive_writer"] is True and proof["paused"] is True,"Unproven production policy")
-    rows=read_stable(transport,head)
-    if state=="success":
-        v.need(e["draft"] is False and transport.snapshot(e["pr"])==e,"Stale or draft approval")
-        v.need(not rows,"Prior status exists")
-        journal.reserve_approval(e,d)
-    else:
-        # Withdrawal uses the ORIGINAL signed evidence; never require the
-        # candidate still be open or its base still be current.
-        row=journal.row(head)
-        v.need(row is not None and row[0]==v.canonical(e),"Unknown historical approval")
-        v.validate_transition(rows,e,row[1],d,state,ACTOR)
-        v.need(len(rows)==1 and rows[0]["id"]==row[4],"Historical receipt mismatch")
-        journal.reserve_withdrawal(e,d,row[4])
-    v.need(transport.policy_proof()==proof and read_stable(transport,head)==rows,
-           "Policy or history drift after reservation")
-    if state=="success":
-        v.need(transport.snapshot(e["pr"])==e,"Evidence drift before publication")
+def identity(transport):
+    p=transport.identity_proof()
+    v.need(p=={"repository_id":v.RID,"app":APP,"actor":ACTOR,
+              "installation":INSTALLATION,"exclusive_writer":True},
+           "Unproven writer identity")
+    return p
+
+def approval_policy(transport):
+    p=transport.policy_proof()
+    v.need(p=={"repository_id":v.RID,"app":APP,"actor":ACTOR,
+               "installation":INSTALLATION,"native_review_retained":True,
+               "source_pinned_gate":True,"complete_actor_inventory":True,
+               "exclusive_writer":True,"paused":True},"Unproven production policy")
+    return p
+
+def historical_rows(transport,e,row):
+    rows=read_stable(transport,e["head"])
+    successes=[x for x in rows if x["state"]=="success"]
+    failures=[x for x in rows if x["state"]=="failure"]
+    v.need(len(successes)<=1 and len(failures)<=1,"Unexpected duplicate receipt")
+    for x in successes:
+        v.need(x["description"]==v.status_marker(e,row[1],"success"),"Unknown approval receipt")
+        if row[5] is not None:
+            v.need(x["id"]==row[5],"Approval receipt ID drift")
+    for x in failures:
+        v.need(row[2] is not None and x["description"]==v.status_marker(e,row[2],"failure"),
+               "Unknown withdrawal receipt")
+    v.need(not failures or rows[0]["state"]=="failure","Success after withdrawal")
+    return rows,successes,failures
+
+def settled(transport,head,state):
+    # Requires independently validated transport-specific settlement proof,
+    # NOT a timeout, empty GET, process lock, or requester-provided flag.
+    # GitHub REST alone does not provide a documented request fence.
+    return transport.outbound_settled(head,state) is True
+
+def send(transport,head,e,d,state,rows):
     payload={"context":v.CONTEXT,"state":state,"description":v.status_marker(e,d,state)}
     result=transport.publish(head,payload)
-    v.need(type(result["id"]) is int and result["id"]>0
-           and all(result[k]==x for k,x in payload.items()),"Unconfirmed status write")
+    v.need(type(result["id"]) is int and result["id"]>0 and all(result[k]==x for k,x in payload.items()),
+           "Unconfirmed status write")
     actual=read_stable(transport,head)
     v.need(len(actual)==len(rows)+1 and actual[0]["id"]==result["id"]
            and all(actual[0][k]==x for k,x in payload.items()) and actual[1:]==rows,
            "Unconfirmed effective authorization")
-    journal.complete(head,state,result["id"])
-    return {"pr":e["pr"],"head":head,"state":state,"status_id":result["id"],
-            "merge_authorized":False}
+    return result["id"]
+
+def eligible(transport,e):
+    try:
+        return e["draft"] is False and transport.snapshot(e["pr"])==e and bool(approval_policy(transport))
+    except Exception:
+        return False
+
+def reconcile_approval(transport,journal,e):
+    h=e["head"]
+    row=journal.row(h)
+    rows,successes,failures=historical_rows(transport,e,row)
+    v.need(not failures,"Unexpected failure before withdrawal")
+    if row[3]=="approval_reserved":
+        v.need(not rows,"Receipt before outbound intent")
+        journal.change(h,("approval_reserved",),"aborted")
+        return
+    if row[3]=="approval_posting":
+        if successes:
+            # One exact visible receipt proves the single non-retried POST
+            # reached the server, but eligibility still needs live review.
+            sid=successes[0]["id"]
+            journal.change(h,("approval_posting",),"approved" if eligible(transport,e) else "quarantined",
+                           status_id=sid,approval_id=sid)
+        elif settled(transport,h,"success"):
+            journal.change(h,("approval_posting",),"aborted")
+        # Otherwise preserve unresolved posting; never retry success.
+
+def acknowledge_failure(transport,journal,e,row):
+    h=e["head"]
+    rows,successes,failures=historical_rows(transport,e,row)
+    v.need(len(failures)==1 and rows[0]["state"]=="failure","Effective failure not proven")
+    # If no success receipt was ever seen, the original success request
+    # must be proven unable to arrive before a withdrawal is acknowledged.
+    # A visible exact success is conclusive only with a no-retry transport.
+    if not successes and row[5] is None and row[3]=="withdrawal_unsettled":
+        v.need(settled(transport,h,"success"),"Possible delayed success; withdrawal not acknowledged")
+    v.need(identity(transport) and read_stable(transport,h)==rows,"Withdrawal readback drift")
+    journal.change(h,(row[3],),"withdrawn",status_id=failures[0]["id"],
+                   approval_id=successes[0]["id"] if successes else None)
+    return {"pr":e["pr"],"head":h,"state":"failure","status_id":failures[0]["id"],"merge_authorized":False}
+
+def withdraw(transport,journal,e,d):
+    h=e["head"]
+    row=journal.row(h)
+    v.need(row is not None and row[0]==v.canonical(e),"Unknown historical approval")
+    if row[3] in ("approval_reserved","approval_posting"):
+        reconcile_approval(transport,journal,e)
+        row=journal.row(h)
+    if row[3] in ("approved","quarantined","aborted","approval_posting"):
+        # Freeze the signed denial before sending anything. Even if the
+        # approval is in flight, send denial but do not acknowledge until
+        # success is fenced or observed before failure.
+        phase="withdrawal_unsettled" if row[3]=="approval_posting" else "withdrawal_reserved"
+        journal.change(h,(row[3],),phase,withdrawn=d)
+        row=journal.row(h)
+    v.need(row[2]==d and row[3] in ("withdrawal_reserved","withdrawal_posting",
+                                   "withdrawal_unsettled","withdrawn"),"Different withdrawal or phase")
+    rows,successes,failures=historical_rows(transport,e,row)
+    if failures:
+        return acknowledge_failure(transport,journal,e,row)
+    v.need(row[3]!="withdrawn","Missing terminal failure")
+    # No blind retry of an ambiguous failure POST. A real settlement
+    # mechanism must prove no delayed request remains.
+    if row[3]=="withdrawal_posting":
+        v.need(settled(transport,h,"failure"),"Withdrawal POST unresolved")
+    if row[3]=="withdrawal_unsettled":
+        # This phase may represent a pending failure POST as well.
+        # Require a fence before any POST from this state.
+        v.need(settled(transport,h,"failure"),"Withdrawal transport unresolved")
+    else:
+        journal.change(h,(row[3],),"withdrawal_posting")
+    v.need(identity(transport) and read_stable(transport,h)==rows,"Denial identity/history drift")
+    send(transport,h,e,d,"failure",rows)
+    return acknowledge_failure(transport,journal,e,journal.row(h))
+
+def process(transport,journal,e,decision,sig,pem):
+    """Unwired contract. No live GitHub transport or production signer here."""
+    d=verify(e,decision,sig,pem)
+    h=e["head"]
+    with journal.exclusive():
+        identity(transport)
+        if decision=="withdraw":
+            # Do not require positive policy or current candidate eligibility
+            # to withdraw an independently signed historical authorization.
+            return withdraw(transport,journal,e,d)
+        row=journal.row(h)
+        if row is not None:
+            v.need(row[0]==v.canonical(e) and row[1]==d,"Different approval evidence")
+            if row[3] in ("approval_reserved","approval_posting"):
+                reconcile_approval(transport,journal,e)
+            raise ValueError("Replay or recovered approval; never republish")
+        proof=approval_policy(transport)
+        v.need(eligible(transport,e),"Stale or draft approval")
+        rows=read_stable(transport,h)
+        v.need(not rows,"Prior status exists")
+        journal.reserve_approval(e,d)
+        v.need(identity(transport) and approval_policy(transport)==proof
+               and read_stable(transport,h)==rows and eligible(transport,e),
+               "Prepublication drift")
+        journal.change(h,("approval_reserved",),"approval_posting")
+        sid=send(transport,h,e,d,"success",rows)
+        if not eligible(transport,e):
+            journal.change(h,("approval_posting",),"quarantined",status_id=sid,approval_id=sid)
+            raise ValueError("Postpublication drift; signed withdrawal required")
+        journal.change(h,("approval_posting",),"approved",status_id=sid,approval_id=sid)
+        return {"pr":e["pr"],"head":h,"state":"success","status_id":sid,"merge_authorized":False}
+
+def integration_permitted(transport,journal,e):
+    """Must be called under the same exclusive writer lock as any future merge.
+    This staged contract NEVER grants production merge authority.
+    """
+    with journal.exclusive():
+        row=journal.row(e["head"])
+        if row is None or row[3]!="approved" or row[0]!=v.canonical(e):
+            return False
+        try:
+            identity(transport)
+            rows,successes,failures=historical_rows(transport,e,row)
+            return len(successes)==1 and not failures and eligible(transport,e)
+        except Exception:
+            return False

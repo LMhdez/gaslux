@@ -1,16 +1,12 @@
-name: GASLUX main authority credential audit
+name: GASLUX main authority offline contracts
 on:
   workflow_dispatch:
 permissions: {}
-concurrency:
-  group: gaslux-main-authority-credential-audit-v1
-  cancel-in-progress: false
 jobs:
-  credential_read_only:
-    if: github.repository == 'LMhdez/gaslux' && github.ref == 'refs/heads/infra/main-authority-credential-audit-v1' && github.event_name == 'workflow_dispatch' && vars.GASLUX_AUTONOMY_PAUSED == 'true' && vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' && vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false' && vars.GASLUX_V3_AUTHORITY_ENABLED == 'false' && vars.GASLUX_V4_MERGE_ENABLED == 'false'
-    environment: gaslux-main-infrastructure-auth
+  offline_contracts:
+    if: github.repository == 'LMhdez/gaslux' && github.ref == 'refs/heads/infra/main-authority-recovery-v1' && github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-24.04
-    timeout-minutes: 5
+    timeout-minutes: 4
     permissions:
       contents: read
     steps:
@@ -19,27 +15,3 @@ jobs:
           ref: ${{ github.sha }}
           persist-credentials: false
       - run: python3 -B -m unittest discover -s .github/main-bootstrap -p 'test_*.py' -v
-      - uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
-        id: identity
-        with:
-          client-id: ${{ vars.GASLUX_MAIN_INFRA_APP_CLIENT_ID }}
-          private-key: ${{ secrets.GASLUX_MAIN_INFRA_APP_PRIVATE_KEY }}
-          owner: LMhdez
-          repositories: gaslux
-          permission-contents: read
-          permission-pull-requests: read
-          permission-actions: read
-          permission-checks: read
-          permission-statuses: read
-      - env:
-          GH_TOKEN: ${{ steps.identity.outputs.token }}
-          MINTED_SLUG: ${{ steps.identity.outputs.app-slug }}
-          INSTALLATION_ID: ${{ steps.identity.outputs.installation-id }}
-          EXPECTED_ACTOR: ${{ vars.GASLUX_MAIN_INFRA_ACTOR_ID }}
-          VERIFIER_PIN: ${{ vars.GASLUX_MAIN_AUTHORITY_AUDIT_SHA }}
-          PAUSE: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
-          PROD_MERGE: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
-          LEGACY: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
-          V3: ${{ vars.GASLUX_V3_AUTHORITY_ENABLED }}
-          V4: ${{ vars.GASLUX_V4_MERGE_ENABLED }}
-        run: python3 -B .github/main-bootstrap/credential_audit.py

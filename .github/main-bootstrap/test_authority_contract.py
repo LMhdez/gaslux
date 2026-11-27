@@ -1,4 +1,7 @@
 import copy
+import base64
+import hashlib
+import subprocess
 import tempfile
 import unittest
 from pathlib import Path
@@ -11,6 +14,14 @@ class Fake:
         self.rows=[]
         self.writes=0
         self.uncertain=False
+        self.fenced={'success':False,'failure':True}
+        self.before_write=False
+        self.drift_after=False
+        self.readback_failure=False
+    def identity_proof(self):
+        return {'repository_id':a.v.RID,'app':a.APP,'actor':a.ACTOR,'installation':a.INSTALLATION,'exclusive_writer':True}
+    def outbound_settled(self,h,state):
+        return self.fenced[state]
     def policy_proof(self):
         return {"repository_id":a.v.RID,"app":a.APP,"actor":a.ACTOR,
                 "installation":a.INSTALLATION,"native_review_retained":True,
@@ -20,14 +31,20 @@ class Fake:
         return {"sha":h,"repository":{"id":a.v.RID},"total_count":int(bool(self.rows)),
                 "statuses":copy.deepcopy(self.rows[:1])}
     def history(self,h):
+        if self.readback_failure and self.writes:
+            raise OSError('readback unavailable')
         return copy.deepcopy(self.rows)
     def snapshot(self,n):
         return copy.deepcopy(self.e)
     def publish(self,h,p):
         self.writes+=1
+        if self.before_write:
+            raise OSError('request in flight')
         row={**p,"id":100+self.writes,"creator":{"id":a.ACTOR,"login":a.SLUG+"[bot]","type":"Bot"},
              "created_at":str(self.writes),"updated_at":str(self.writes)}
         self.rows.insert(0,row)
+        if self.drift_after:
+            self.e={**self.e,'base':'c'*40}
         if self.uncertain:
             raise OSError("lost response after server write")
         return copy.deepcopy(row)
@@ -80,20 +97,21 @@ class Tests(unittest.TestCase):
     def test_unknown_withdraw(self):
         with self.assertRaises(ValueError): self.call("withdraw")
         self.assertEqual(self.f.writes,0)
-    def test_uncertain_write_fails_closed(self):
+    def test_uncertain_write_recovery_and_withdrawal(self):
         self.f.uncertain=True
         with self.assertRaises(OSError): self.call("approve")
-        self.assertEqual(self.j.row(self.e["head"])[3],"approval_pending")
+        self.assertEqual(self.j.row(self.e["head"])[3],"approval_posting")
+        self.assertFalse(a.integration_permitted(self.f,self.j,self.e))
         self.f.uncertain=False
-        for d in ("approve","withdraw"):
-            with self.assertRaises(ValueError): self.call(d)
-        self.assertEqual(self.f.writes,1)
+        self.assertEqual(self.call("withdraw")["state"],"failure")
+        self.assertEqual(self.j.row(self.e["head"])[3],"withdrawn")
+        self.assertEqual(self.f.writes,2)
     def test_durable_reservation_excludes_second_writer(self):
         self.j.reserve_approval(self.e,"a"*64)
         other=a.Journal(self.path)
         try:
             with self.assertRaises(ValueError): other.reserve_approval(self.e,"a"*64)
-            self.assertEqual(other.row(self.e["head"])[3],"approval_pending")
+            self.assertEqual(other.row(self.e["head"])[3],"approval_reserved")
         finally: other.close()
     def test_wrong_issuer(self):
         self.call("approve")
@@ -111,3 +129,92 @@ class Tests(unittest.TestCase):
             "exclusive_writer":True,"paused":True}
         with self.assertRaisesRegex(ValueError,"Unproven"): self.call("approve")
         self.assertEqual(self.f.writes,0)
+
+    def test_crash_before_post(self):
+        d=a.v.digest(a.v.decision_payload(self.e,"approve"))
+        self.j.reserve_approval(self.e,d)
+        self.assertFalse(a.integration_permitted(self.f,self.j,self.e))
+        self.assertEqual(self.call("withdraw")["state"],"failure")
+        self.assertEqual([r["state"] for r in self.f.rows],["failure"])
+    def test_lost_failure_response(self):
+        self.call("approve")
+        self.f.uncertain=True
+        with self.assertRaises(OSError): self.call("withdraw")
+        self.assertFalse(a.integration_permitted(self.f,self.j,self.e))
+        self.f.uncertain=False
+        self.assertEqual(self.call("withdraw")["state"],"failure")
+        self.assertEqual(self.f.writes,2)
+    def test_readback_failure_then_restart(self):
+        self.f.readback_failure=True
+        with self.assertRaises(OSError): self.call("approve")
+        self.f.readback_failure=False
+        other=a.Journal(self.path)
+        try:
+            with patch.object(a,"verify",side_effect=lambda e,d,s,p:a.v.digest(a.v.decision_payload(e,d))):
+                self.assertEqual(a.process(self.f,other,self.e,"withdraw","",b"")["state"],"failure")
+        finally: other.close()
+    def test_crash_before_db_completion(self):
+        with patch.object(self.j,"change",wraps=self.j.change) as c:
+            original=self.j.change.__wrapped__ if hasattr(self.j.change,"__wrapped__") else c._mock_wraps
+            def fail(head,old,new,**kw):
+                if new=="approved": raise OSError("crash after readback")
+                return original(head,old,new,**kw)
+            c.side_effect=fail
+            with self.assertRaises(OSError): self.call("approve")
+        self.assertEqual(self.call("withdraw")["state"],"failure")
+    def test_policy_drift_does_not_prevent_denial(self):
+        self.call("approve")
+        self.f.policy_proof=lambda: {}
+        self.assertEqual(self.call("withdraw")["state"],"failure")
+    def test_postpublication_drift_quarantine(self):
+        self.f.drift_after=True
+        with self.assertRaisesRegex(ValueError,"Postpublication drift"): self.call("approve")
+        self.assertEqual(self.j.row(self.e["head"])[3],"quarantined")
+        self.assertFalse(a.integration_permitted(self.f,self.j,self.e))
+        self.assertEqual(self.call("withdraw")["state"],"failure")
+    def test_delayed_success_never_acknowledged_without_fence(self):
+        self.f.before_write=True
+        with self.assertRaises(OSError): self.call("approve")
+        self.f.before_write=False
+        with self.assertRaisesRegex(ValueError,"delayed success"): self.call("withdraw")
+        self.assertEqual(self.f.rows[0]["state"],"failure")
+        self.assertFalse(a.integration_permitted(self.f,self.j,self.e))
+        self.f.fenced["success"]=True
+        self.assertEqual(self.call("withdraw")["state"],"failure")
+        self.assertEqual(self.f.writes,2)
+    def test_late_success_detected(self):
+        self.f.before_write=True
+        with self.assertRaises(OSError): self.call("approve")
+        self.f.before_write=False
+        with self.assertRaises(ValueError): self.call("withdraw")
+        d=a.v.digest(a.v.decision_payload(self.e,"approve"))
+        self.f.publish(self.e["head"],{"context":a.v.CONTEXT,"state":"success",
+                                      "description":a.v.status_marker(self.e,d,"success")})
+        with self.assertRaisesRegex(ValueError,"Success after withdrawal"): self.call("withdraw")
+        self.assertFalse(a.integration_permitted(self.f,self.j,self.e))
+    def test_concurrent_revoke_approve_lock(self):
+        other=a.Journal(self.path)
+        try:
+            with self.j.exclusive():
+                with patch.object(a,"verify",return_value="a"*64):
+                    for d in ("approve","withdraw"):
+                        with self.assertRaisesRegex(ValueError,"Writer already active"):
+                            a.process(self.f,other,self.e,d,"",b"")
+        finally: other.close()
+    def test_real_ed25519(self):
+        root=Path(self.tmp.name)
+        key=root/"private"
+        subprocess.run(["openssl","genpkey","-algorithm","ED25519","-out",str(key)],check=True)
+        pem=subprocess.check_output(["openssl","pkey","-in",str(key),"-pubout"])
+        (root/"msg").write_bytes(a.v.canonical(a.v.decision_payload(self.e,"approve")))
+        sig=subprocess.check_output(["openssl","pkeyutl","-sign","-inkey",str(key),"-rawin","-in",str(root/"msg")])
+        b64=base64.b64encode(sig).decode()
+        with patch.object(a,"SIGNER_PEM_SHA256",hashlib.sha256(pem).hexdigest()):
+            self.assertEqual(a.verify(self.e,"approve",b64,pem),a.v.digest(a.v.decision_payload(self.e,"approve")))
+            for d,s,p in (("withdraw",b64,pem),("approve",base64.b64encode(b"0"*64).decode(),pem),
+                          ("approve",b64,pem+b" ")):
+                with self.assertRaises(ValueError): a.verify(self.e,d,s,p)
+        subprocess.run(["openssl","genpkey","-algorithm","X25519","-out",str(key)],check=True)
+        wrong=subprocess.check_output(["openssl","pkey","-in",str(key),"-pubout"])
+        with patch.object(a,"SIGNER_PEM_SHA256",hashlib.sha256(wrong).hexdigest()):
+            with self.assertRaisesRegex(ValueError,"Not an Ed25519"): a.verify(self.e,"approve",b64,wrong)
