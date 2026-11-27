@@ -1,0 +1,30 @@
+# TEMPLATE ONLY. Install in separately governed private control repo.
+# No pull_request triggers, no candidate checkout, no secret-bearing tests.
+name: GASLUX hosted Safety bootstrap
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '17,47 * * * *'
+permissions: {}
+concurrency:
+  group: gaslux-hosted-safety-bootstrap
+  cancel-in-progress: false
+jobs:
+  evaluate:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: gaslux-hosted-safety
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify frozen boundary and evaluate exact approved composition
+        env:
+          GH_TOKEN: ${{ secrets.GASLUX_SAFETY_PRODUCTION_READ_TOKEN }}
+          SAFETY_LEDGER_TOKEN: ${{ secrets.GASLUX_SAFETY_LEDGER_TOKEN }}
+          SAFETY_SIGNING_KEY: ${{ secrets.GASLUX_SAFETY_SIGNING_KEY }}
+        run: python3 -B .github/main-bootstrap/hosted_evaluator.py
