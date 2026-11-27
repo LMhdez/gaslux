@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Staged V3 exact decision protocol. Only inert fixture writes are enabled."""
+"""Staged V3 decisions, explicit withdrawal, and fail-closed preactivation writers."""
 from __future__ import annotations
 import argparse
 import hashlib
 import json
 import os
+import re
 import sys
 from pathlib import Path
 from urllib.parse import quote
@@ -45,7 +46,7 @@ def binding(kind, number, target, head, base, role, scope, evidence):
 
 def description(bound, state):
     need(state in ("success","failure"), "Invalid state")
-    return "GASLUX-V3:" + digest(bound) + ":" + state
+    return f"GASLUX-V3:{bound['pr']}:{bound['base']}:{digest(bound)}:{state}"
 
 
 def own(row, kind, contexts):
@@ -216,6 +217,214 @@ def pilot_audit():
     return {"schema":"gaslux-v3-inert-terminal-audit","head":lab.HEAD,"receipts":live,
             "both_roles_terminal":True,"merge_authorized":False}
 
+ 
+# New contexts are intentionally NOT required by today's dev ruleset.
+# Publication is staged only, behind explicit configuration. The production
+# merge adapter is not present and must not be enabled by this flag.
+MARKER = re.compile(r"GASLUX-V3:([1-9][0-9]{0,6}):([0-9a-f]{40}):([0-9a-f]{64}):(success|failure)")
+ADMIN = 156089838
+
+
+def role_context(kind):
+    need(kind in ROLES,"Unknown authority")
+    v1.context()
+    repo = a.api("GET","")
+    need(repo["id"] == a.REPOSITORY_ID and repo["full_name"] == a.REPO
+         and repo["fork"] is False and repo["default_branch"] == "main","Wrong repository")
+    need(os.getenv("GASLUX_AUTONOMY_PAUSED") in ("true","false"),"Explicit pause required")
+    need(v1.app_registration(kind)["app_id"] == APPS[kind],"Wrong authority credential")
+
+
+def staged_publication_context(kind, base):
+    role_context(kind)
+    need(os.getenv("GASLUX_V3_AUTHORITY_ENABLED") == "true"
+         and os.getenv("GASLUX_AUTONOMY_PAUSED") == "false"
+         and os.getenv("GASLUX_APP_STATUS_GATES_ENABLED") == "false"
+         and os.getenv("GASLUX_PRODUCTION_MERGE_ENABLED") == "false",
+         "Explicit separate preactivation stage required")
+    need(g.production_policy_observed(base)
+         and g.strict_ruleset_protected(base,require_app_statuses=True),
+         "Existing native and source-pinned rules must remain enforced")
+
+
+def authenticated_withdrawal_request(number,head,base):
+    # This is a denial-only administrative emergency path. It grants no role
+    # approval; each App signs its own failure with its existing isolated key.
+    need(os.getenv("GITHUB_EVENT_NAME") == "workflow_dispatch"
+         and os.getenv("GITHUB_ACTOR_ID") == str(ADMIN)
+         and os.getenv("GITHUB_TRIGGERING_ACTOR") == "LMhdez"
+         and os.getenv("GITHUB_RUN_ATTEMPT") == "1","Untrusted withdrawal requester")
+    event = json.loads(Path(os.environ["GITHUB_EVENT_PATH"]).read_text())
+    inputs = event.get("inputs") or {}
+    need((event.get("sender") or {}).get("id") == ADMIN
+         and (event.get("repository") or {}).get("id") == a.REPOSITORY_ID
+         and inputs.get("v3_action") == "withdraw"
+         and inputs.get("v3_pr") == str(number)
+         and inputs.get("v3_head") == head and inputs.get("v3_base") == base,
+         "Withdrawal inputs or requester changed")
+    return inputs.get("v3_role")
+
+
+def prior_marker(rows,kind,number,base):
+    # Preserve the *original* binding digest even when current evidence is
+    # no longer available. Never require stale CI/VM evidence to deny.
+    related = [r for r in rows if str(r.get("context","")).casefold()==CONTEXTS[kind].casefold()]
+    need(all(own(r,kind,CONTEXTS) for r in related),"Wrong issuer in authority history")
+    matches=[]
+    for r in related:
+        m=MARKER.fullmatch(r.get("description") or "")
+        need(m and int(m[1])==number and m[2]==base and m[4]==r.get("state"),
+             "Withdrawal tuple mismatch")
+        matches.append(m[3])
+    need(len(set(matches)) <= 1,"Conflicting historical bindings")
+    return matches[0] if matches else None
+
+
+def candidate_identity_for_withdrawal(number,head,base):
+    need(type(number) is int and 0 < number <= 1000000
+         and a.valid_sha(head) and a.valid_sha(base) and head != lab.HEAD,
+         "Invalid withdrawal tuple")
+    p=a.api("GET",f"/pulls/{number}")
+    need(p["number"]==number and a.publisher_ok(p.get("user") or {})
+         and p["base"]["repo"]["id"]==p["head"]["repo"]["id"]==a.REPOSITORY_ID,
+         "Withdrawal must target a known same-repo publisher PR")
+    return p
+
+
+def write_production_status(kind,head,payload,observed):
+    # Callers have verified the tuple, role and evidence. This helper has no
+    # generic API write route or ability to mutate reviews, refs or PRs.
+    need(a.valid_sha(head) and head!=lab.HEAD
+         and payload.get("context")==CONTEXTS[kind]
+         and payload.get("state") in ("success","failure")
+         and (m:=MARKER.fullmatch(payload.get("description") or ""))
+         and m[4]==payload["state"],"Invalid production status write")
+    role_context(kind)
+    need(history(head,CONTEXTS)==observed,"Decision changed before publication")
+    r=a.api("POST","/statuses/"+head,payload)
+    need(own(r,kind,CONTEXTS) and all(r.get(k)==v for k,v in payload.items()),"Unauthenticated receipt")
+    rows,live=history(head,CONTEXTS)
+    need(live.get(kind,{}).get("id")==r["id"]
+         and live[kind]["actor"]==ACTORS[kind] and live[kind]["state"]==payload["state"]
+         and live[kind]["description"]==payload["description"],"Status not effective")
+    if payload["state"]=="failure":
+        need(any(own(x,kind,CONTEXTS) and x["state"]=="failure" and x["id"]==r["id"] for x in rows),
+             "Withdrawal absent from history")
+    return {"kind":kind,"state":payload["state"],"head":head,"status_id":r["id"],
+            "merge_authorized":False}
+
+
+def withdraw(kind,number,head,base,*,explicit=False):
+    role_context(kind)
+    if explicit:
+        selected=authenticated_withdrawal_request(number,head,base)
+        need(selected in (kind,"both"),"Wrong withdrawal role")
+    p=candidate_identity_for_withdrawal(number,head,base)
+    observed=history(head,CONTEXTS)
+    previous=prior_marker(observed[0],kind,number,base)
+    if previous is None:
+        # A preemptive denial is terminal too, but only for the current exact
+        # publisher tuple and an authenticated explicit request. An automated
+        # scan must never poison an unrelated SHA without a prior decision.
+        need(explicit and p["state"]=="open" and p["base"]["ref"]=="dev"
+             and p["head"]["sha"]==head and p["base"]["sha"]==base
+             and a.api("GET","/git/ref/heads/dev")["object"]["sha"]==base,
+             "No prior authority or current exact candidate")
+        need(g.discover().get(number,(None,None,None))[2]==head,"Unknown candidate")
+        previous=digest({"schema":"gaslux-v3-preemptive-withdrawal","repository_id":a.REPOSITORY_ID,
+                         "pr":number,"base":base,"head":head,"authority":kind,
+                         "actor":ACTORS[kind],"target":"dev"})
+    payload={"context":CONTEXTS[kind],"state":"failure",
+             "description":f"GASLUX-V3:{number}:{base}:{previous}:failure"}
+    old=observed[1].get(kind)
+    if old and old["state"]=="failure" and old["description"]==payload["description"]:
+        return {"kind":kind,"state":"failure","head":head,"status_id":old["id"],
+                "merge_authorized":False,"already_withdrawn":True}
+    # Reconfirm identity and history; even a closed/retargeted PR can have
+    # its old authenticated authorization withdrawn. No review or ref write.
+    need(candidate_identity_for_withdrawal(number,head,base)["number"]==number,
+         "Withdrawal identity drift")
+    return write_production_status(kind,head,payload,observed)
+
+
+def publish_candidate(kind,number,role,scope,head,base):
+    staged_publication_context(kind,base)
+    first=snapshot(number,role,scope,head,base)
+    observed=history(head,CONTEXTS)
+    bound=first[kind]["binding"]
+    if first[kind]["state"]!="success":
+        return {"kind":kind,"state":"blocked","head":head,"merge_authorized":False}
+    payload=transition(bound,"success",observed[0],CONTEXTS)
+    need(snapshot(number,role,scope,head,base)==first,"Evidence changed before decision")
+    staged_publication_context(kind,base)
+    old=observed[1].get(kind)
+    if old and old["state"]=="success" and old["description"]==payload["description"]:
+        need(history(head,CONTEXTS)==observed,"Receipt drift")
+        return {"kind":kind,"state":"success","head":head,"status_id":old["id"],
+                "merge_authorized":False}
+    result=write_production_status(kind,head,payload,observed)
+    try:
+        stable=snapshot(number,role,scope,head,base)==first
+    except (OSError,RuntimeError,ValueError,TypeError,KeyError,AttributeError):
+        stable=False
+    if not stable:
+        withdraw(kind,number,head,base)
+        raise ValueError("Published decision drifted and was withdrawn")
+    return result
+
+
+def reconcile_role(kind):
+    """Revoke before granting anything; staged-only automatic publisher.
+
+    The inventory covers all open publisher PRs, including retargeted ones.
+    Historical changed/closed heads require explicit withdrawal; do not
+    present this sweep as atomic external review/comment revocation.
+    """
+    role_context(kind)
+    base=a.api("GET","/git/ref/heads/dev")["object"]["sha"]
+    need(a.valid_sha(base),"Invalid dev")
+    open_prs=a.complete_page(a.api("GET","/pulls?state=open&per_page=100"))
+    candidates=g.discover()
+    enabled=(os.getenv("GASLUX_V3_AUTHORITY_ENABLED")=="true"
+             and os.getenv("GASLUX_AUTONOMY_PAUSED")=="false"
+             and os.getenv("GASLUX_APP_STATUS_GATES_ENABLED")=="false"
+             and os.getenv("GASLUX_PRODUCTION_MERGE_ENABLED")=="false")
+    results=[]
+    for p in open_prs:
+        if not a.publisher_ok(p.get("user") or {}) or any(
+            (p.get(k,{}).get("repo") or {}).get("id")!=a.REPOSITORY_ID for k in ("head","base")):
+            continue
+        n,head=p["number"],p["head"]["sha"]
+        rows,live=history(head,CONTEXTS)
+        current=live.get(kind)
+        if current is None or current["state"]!="success":
+            continue
+        m=MARKER.fullmatch(current["description"] or "")
+        need(m and int(m[1])==n and current["actor"]==ACTORS[kind],"Ambiguous current authorization")
+        issued_base=m[2]
+        keep=False
+        item=candidates.get(n)
+        if enabled and item and item[2]==head and issued_base==base:
+            try:
+                staged_publication_context(kind,base)
+                new=snapshot(n,item[0],item[1],head,base)[kind]
+                keep=(new["state"]=="success" and
+                      transition(new["binding"],"success",rows,CONTEXTS)["description"]==current["description"])
+            except (OSError,RuntimeError,ValueError,TypeError,KeyError,AttributeError):
+                keep=False
+        if not keep:
+            results.append(withdraw(kind,n,head,issued_base))
+    if enabled:
+        staged_publication_context(kind,base)
+        for n,(role,scope,head) in sorted(candidates.items()):
+            rows,live=history(head,CONTEXTS)
+            if any(own(r,kind,CONTEXTS) and r["state"]=="failure" for r in rows):
+                continue
+            results.append(publish_candidate(kind,n,role,scope,head,base))
+    need(a.api("GET","/git/ref/heads/dev")["object"]["sha"]==base,"Dev advanced during reconciliation")
+    return {"schema":"gaslux-v3-role-reconciliation","kind":kind,"results":results,
+            "production_merge_authorized":False}
+
 
 if __name__=="__main__":
     p=argparse.ArgumentParser()
@@ -224,6 +433,11 @@ if __name__=="__main__":
     modes.add_argument("--pilot-approve",choices=ROLES)
     modes.add_argument("--pilot-revoke",choices=ROLES)
     modes.add_argument("--pilot-audit",action="store_true")
+    modes.add_argument("--reconcile-role",choices=ROLES)
+    modes.add_argument("--withdraw",choices=ROLES)
+    p.add_argument("--pr",type=int)
+    p.add_argument("--head")
+    p.add_argument("--base")
     args=p.parse_args()
     if args.shadow:
         out=shadow()
@@ -231,6 +445,10 @@ if __name__=="__main__":
         out=pilot_write(args.pilot_approve,"success")
     elif args.pilot_revoke:
         out=pilot_write(args.pilot_revoke,"failure")
+    elif args.reconcile_role:
+        out=reconcile_role(args.reconcile_role)
+    elif args.withdraw:
+        out=withdraw(args.withdraw,args.pr,args.head,args.base,explicit=True)
     else:
         out=pilot_audit()
     print(json.dumps(out,sort_keys=True))

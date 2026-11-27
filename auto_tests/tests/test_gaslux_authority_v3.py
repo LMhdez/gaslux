@@ -1,5 +1,8 @@
 import sys
 import unittest
+import json
+import os
+import tempfile
 from pathlib import Path
 from unittest.mock import patch
 sys.path.insert(0,str(Path(__file__).resolve().parents[1]/"tools"))
@@ -63,4 +66,73 @@ class AuthorityV3Tests(unittest.TestCase):
         with patch.object(V,"pilot_context",side_effect=ValueError("paused only")),patch.object(V.a,"api") as api:
             with self.assertRaises(ValueError):
                 V.pilot_write("safety","success")
+            api.assert_not_called()
+
+    def test_marker_bounded_and_recoverable(self):
+        b=self.bound(n=1000000)
+        desc=V.description(b,"success")
+        self.assertLessEqual(len(desc),140)
+        self.assertEqual(V.MARKER.fullmatch(desc).groups(),("1000000","b"*40,V.digest(b),"success"))
+    def test_prior_binding_retained_after_evidence_drift(self):
+        b=self.bound()
+        rows=[self.row(b,"success")]
+        self.assertEqual(V.prior_marker(rows,"safety",42,"b"*40),V.digest(b))
+        for n,base in ((43,"b"*40),(42,"c"*40)):
+            with self.assertRaises(ValueError):
+                V.prior_marker(rows,"safety",n,base)
+    def test_wrong_app_history_refused(self):
+        r=self.row(self.bound(),"success")
+        r["creator"]["id"]=V.ACTORS["owner"]
+        with self.assertRaisesRegex(ValueError,"issuer"):
+            V.prior_marker([r],"safety",42,"b"*40)
+    def test_explicit_withdrawal_request_authentication(self):
+        event={"sender":{"id":V.ADMIN},"repository":{"id":V.a.REPOSITORY_ID},
+               "inputs":{"v3_action":"withdraw","v3_pr":"42","v3_head":"a"*40,
+                         "v3_base":"b"*40,"v3_role":"both"}}
+        with tempfile.TemporaryDirectory() as tmp:
+            path=Path(tmp)/"event.json"
+            path.write_text(json.dumps(event))
+            env={"GITHUB_EVENT_NAME":"workflow_dispatch","GITHUB_ACTOR_ID":str(V.ADMIN),
+                 "GITHUB_TRIGGERING_ACTOR":"LMhdez","GITHUB_RUN_ATTEMPT":"1","GITHUB_EVENT_PATH":str(path)}
+            with patch.dict(os.environ,env,clear=True):
+                self.assertEqual(V.authenticated_withdrawal_request(42,"a"*40,"b"*40),"both")
+                with self.assertRaises(ValueError):
+                    V.authenticated_withdrawal_request(42,"c"*40,"b"*40)
+            for key,value in (("GITHUB_ACTOR_ID","123"),("GITHUB_RUN_ATTEMPT","2"),("GITHUB_EVENT_NAME","schedule")):
+                with patch.dict(os.environ,{**env,key:value},clear=True):
+                    with self.assertRaises(ValueError):
+                        V.authenticated_withdrawal_request(42,"a"*40,"b"*40)
+    def test_staged_publication_requires_pause_off_and_merge_off(self):
+        env={"GASLUX_V3_AUTHORITY_ENABLED":"true","GASLUX_AUTONOMY_PAUSED":"false",
+             "GASLUX_APP_STATUS_GATES_ENABLED":"false","GASLUX_PRODUCTION_MERGE_ENABLED":"false"}
+        with patch.object(V,"role_context"),patch.object(V.g,"production_policy_observed",return_value=True),patch.object(V.g,"strict_ruleset_protected",return_value=True):
+            with patch.dict(os.environ,env,clear=True):
+                V.staged_publication_context("safety","b"*40)
+            for key in env:
+                with patch.dict(os.environ,{**env,key:"false" if env[key]=="true" else "true"},clear=True):
+                    with self.assertRaises(ValueError):
+                        V.staged_publication_context("safety","b"*40)
+    def test_withdraw_old_binding_and_closed_pr(self):
+        b=self.bound()
+        obs=([self.row(b,"success")],{"safety":{"state":"success","description":V.description(b,"success")}})
+        with patch.object(V,"role_context"),patch.object(V,"authenticated_withdrawal_request",return_value="safety"),patch.object(V,"candidate_identity_for_withdrawal",return_value={"number":42,"state":"closed"}),patch.object(V,"history",return_value=obs),patch.object(V,"write_production_status",return_value={"state":"failure"}) as write:
+            result=V.withdraw("safety",42,"a"*40,"b"*40,explicit=True)
+            self.assertEqual(result["state"],"failure")
+            self.assertEqual(write.call_args.args[2]["description"],V.description(b,"failure"))
+    def test_no_prior_automatic_withdrawal_refused(self):
+        with patch.object(V,"role_context"),patch.object(V,"candidate_identity_for_withdrawal",return_value={"number":42}),patch.object(V,"history",return_value=([],{})),patch.object(V,"write_production_status") as write:
+            with self.assertRaises(ValueError):
+                V.withdraw("safety",42,"a"*40,"b"*40)
+            write.assert_not_called()
+    def test_explicit_wrong_role_refused(self):
+        with patch.object(V,"role_context"),patch.object(V,"authenticated_withdrawal_request",return_value="owner"),patch.object(V,"history") as history:
+            with self.assertRaises(ValueError):
+                V.withdraw("safety",42,"a"*40,"b"*40,explicit=True)
+            history.assert_not_called()
+    def test_no_status_write_on_history_race(self):
+        b=self.bound()
+        p=V.transition(b,"success",[],V.CONTEXTS)
+        with patch.object(V,"role_context"),patch.object(V,"history",return_value=([self.row(b,"failure")],{})),patch.object(V.a,"api") as api:
+            with self.assertRaisesRegex(ValueError,"changed"):
+                V.write_production_status("safety","a"*40,p,([],{}))
             api.assert_not_called()
