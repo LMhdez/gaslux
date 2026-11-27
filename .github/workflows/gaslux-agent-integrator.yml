@@ -1,40 +1,45 @@
-name: GASLUX main bootstrap evidence audit
+name: GASLUX main authority credential audit
 on:
   workflow_dispatch:
-    inputs:
-      pr:
-        description: Bounded bootstrap PR number
-        required: true
-        type: choice
-        options: ['436','437','438']
 permissions: {}
 concurrency:
-  group: gaslux-main-bootstrap-audit-v1
+  group: gaslux-main-authority-credential-audit-v1
   cancel-in-progress: false
 jobs:
-  evidence_only:
-    if: github.repository == 'LMhdez/gaslux' && github.ref == 'refs/heads/infra/main-bootstrap-verifier-v1' && github.event_name == 'workflow_dispatch'
+  credential_read_only:
+    if: github.repository == 'LMhdez/gaslux' && github.ref == 'refs/heads/infra/main-authority-credential-audit-v1' && github.event_name == 'workflow_dispatch' && vars.GASLUX_AUTONOMY_PAUSED == 'true' && vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' && vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false' && vars.GASLUX_V3_AUTHORITY_ENABLED == 'false' && vars.GASLUX_V4_MERGE_ENABLED == 'false'
+    environment: gaslux-main-infrastructure-auth
     runs-on: ubuntu-24.04
-    timeout-minutes: 6
+    timeout-minutes: 5
     permissions:
       contents: read
-      pull-requests: read
-      actions: read
-      checks: read
-      statuses: read
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
       - run: python3 -B -m unittest discover -s .github/main-bootstrap -p 'test_*.py' -v
+      - uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        id: identity
+        with:
+          client-id: ${{ vars.GASLUX_MAIN_INFRA_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_MAIN_INFRA_APP_PRIVATE_KEY }}
+          owner: LMhdez
+          repositories: gaslux
+          permission-contents: read
+          permission-pull-requests: read
+          permission-actions: read
+          permission-checks: read
+          permission-statuses: read
       - env:
-          GH_TOKEN: ${{ github.token }}
-          PR: ${{ inputs.pr }}
-          VERIFIER_PIN: ${{ vars.GASLUX_MAIN_BOOTSTRAP_VERIFIER_SHA }}
+          GH_TOKEN: ${{ steps.identity.outputs.token }}
+          MINTED_SLUG: ${{ steps.identity.outputs.app-slug }}
+          INSTALLATION_ID: ${{ steps.identity.outputs.installation-id }}
+          EXPECTED_ACTOR: ${{ vars.GASLUX_MAIN_INFRA_ACTOR_ID }}
+          VERIFIER_PIN: ${{ vars.GASLUX_MAIN_AUTHORITY_AUDIT_SHA }}
           PAUSE: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
           PROD_MERGE: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
           LEGACY: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
           V3: ${{ vars.GASLUX_V3_AUTHORITY_ENABLED }}
           V4: ${{ vars.GASLUX_V4_MERGE_ENABLED }}
-        run: python3 -I .github/main-bootstrap/main_bootstrap.py
+        run: python3 -B .github/main-bootstrap/credential_audit.py
