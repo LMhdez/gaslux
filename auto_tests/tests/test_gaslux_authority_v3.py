@@ -2,6 +2,7 @@ import sys
 import unittest
 import json
 import os
+import re
 import tempfile
 from pathlib import Path
 from unittest.mock import patch
@@ -149,3 +150,39 @@ class AuthorityV3Tests(unittest.TestCase):
             self.assertNotIn("permission-contents: write",job)
             self.assertNotIn("permission-pull-requests: write",job)
         self.assertEqual(w.count("inputs.v3_action == 'none' &&"),5)
+
+    def test_workflow_job_uniqueness_and_dependencies(self):
+        w=(Path(__file__).resolve().parents[2]/".github/workflows/gaslux-agent-integrator.yml").read_text()
+        self.assertEqual(w.count("\njobs:\n"),1)
+        body=w.split("\njobs:\n",1)[1]
+        # Workflow uses block-style plain job keys at exactly two spaces.
+        # Inspect every top-level entry, not a YAML loader that silently
+        # overwrites duplicated mapping keys.
+        matches=list(re.finditer(r"^  ([A-Za-z0-9_-]+):[ \t]*(?:#.*)?$",body,re.M))
+        names=[m.group(1) for m in matches]
+        self.assertTrue(names)
+        self.assertEqual(len(names),len(set(names)),"Duplicate job keys")
+        for line in body.splitlines():
+            if line.startswith("  ") and not line.startswith("   ") and line.strip() and not line.lstrip().startswith("#"):
+                self.assertRegex(line,r"^  [A-Za-z0-9_-]+:[ \t]*(?:#.*)?$")
+        jobs={m.group(1):body[m.end():matches[i+1].start() if i+1<len(matches) else len(body)]
+              for i,m in enumerate(matches)}
+        expected={
+            "v3_role_safety":None,
+            "v3_role_owner":"v3_role_safety",
+            "v3_safety_approve":"paused_status_pilot_audit",
+            "v3_owner_approve":"v3_safety_approve",
+            "v3_safety_revoke":"v3_owner_approve",
+            "v3_owner_revoke":"v3_safety_revoke",
+            "v3_terminal_audit":"v3_owner_revoke"}
+        self.assertEqual({n for n in names if n.startswith("v3_")},set(expected))
+        for job,dep in expected.items():
+            actual=re.findall(r"^    needs: (.+)$",jobs[job],re.M)
+            self.assertEqual(actual,[dep] if dep else [],job)
+            if dep:
+                self.assertIn(dep,jobs)
+        self.assertIn("--pilot-approve safety",jobs["v3_safety_approve"])
+        self.assertIn("--pilot-approve owner",jobs["v3_owner_approve"])
+        self.assertIn("--pilot-revoke safety",jobs["v3_safety_revoke"])
+        self.assertIn("--pilot-revoke owner",jobs["v3_owner_revoke"])
+        self.assertIn("--pilot-audit",jobs["v3_terminal_audit"])
