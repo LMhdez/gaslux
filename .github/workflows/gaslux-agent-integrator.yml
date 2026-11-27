@@ -28,6 +28,10 @@ on:
         description: 'Exact issued base for withdrawal'
         type: string
         default: ''
+      paused_v4_audit:
+        description: 'Read-only V4 dedicated production App credential audit, no merge'
+        type: boolean
+        default: false
       paused_v3_probe:
         description: 'Explicit inert V3 terminal revocation probe; no merge'
         type: boolean
@@ -54,6 +58,8 @@ on:
       - auto_tests/tests/test_gaslux_supervised_admission.py
       - auto_tests/tools/gaslux_lab_review_probe.py
       - auto_tests/tests/test_gaslux_lab_review_probe.py
+      - auto_tests/tools/gaslux_integrator_v4.py
+      - auto_tests/tests/test_gaslux_integrator_v4.py
       - auto_tests/tools/gaslux_authority_v3.py
       - auto_tests/tests/test_gaslux_authority_v3.py
       - auto_tests/tools/gaslux_app_status_gate.py
@@ -97,6 +103,8 @@ jobs:
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_app_status_gate.py -v
       - name: V3 authority adversarial contracts
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_authority_v3.py -v
+      - name: Dedicated V4 Integrator adversarial contracts
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_integrator_v4.py -v
       - name: Paused inert confinement probe contracts
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_publisher_confinement_probe.py -v
       - name: Probe effective dev protection with read-only workflow token
@@ -1691,3 +1699,61 @@ jobs:
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
         run: python3 -I auto_tests/tools/gaslux_lab_review_probe.py audit
 
+
+  paused_v4_credential_audit:
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.paused_v4_audit == true &&
+      inputs.v3_action == 'none' &&
+      inputs.paused_v3_probe == false &&
+      inputs.paused_confinement_probe == false &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'true' &&
+      vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
+      vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false' &&
+      vars.GASLUX_V3_AUTHORITY_ENABLED == 'false' &&
+      vars.GASLUX_V4_MERGE_ENABLED != 'true'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    environment: gaslux-production-integrator
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_integrator_v4.py -v
+      - uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        id: integrator_identity
+        with:
+          client-id: ${{ vars.GASLUX_INTEGRATOR_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_INTEGRATOR_APP_PRIVATE_KEY }}
+          owner: LMhdez
+          repositories: gaslux
+          permission-contents: read
+          permission-pull-requests: read
+          permission-actions: read
+          permission-checks: read
+          permission-statuses: read
+          permission-issues: read
+      - name: Verify exact App registration and repository confinement without write token
+        env:
+          GH_TOKEN: ${{ steps.integrator_identity.outputs.token }}
+          GASLUX_MINTED_APP_SLUG: ${{ steps.integrator_identity.outputs.app-slug }}
+          GASLUX_MINTED_INSTALLATION_ID: ${{ steps.integrator_identity.outputs.installation-id }}
+          GASLUX_INTEGRATOR_APP_ID: ${{ vars.GASLUX_INTEGRATOR_APP_ID }}
+          GASLUX_INTEGRATOR_APP_CLIENT_ID: ${{ vars.GASLUX_INTEGRATOR_APP_CLIENT_ID }}
+          GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          GASLUX_OWNER_APP_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          GASLUX_PUBLISH_APP_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
+          GASLUX_V4_AUDIT: ${{ inputs.paused_v4_audit }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_PRODUCTION_MERGE_ENABLED: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
+          GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_V3_AUTHORITY_ENABLED: ${{ vars.GASLUX_V3_AUTHORITY_ENABLED }}
+          GASLUX_V4_MERGE_ENABLED: ${{ vars.GASLUX_V4_MERGE_ENABLED }}
+        run: python3 -I auto_tests/tools/gaslux_integrator_v4.py --paused-audit
