@@ -176,7 +176,8 @@ class PublisherTests(unittest.TestCase):
             raise OSError("GitHub unavailable")
         w1=self.entry(self.e1,"withdraw")
         w2=self.entry(self.e2,"withdraw")
-        with patch.object(g,"deployment_ready"), patch.object(g,"rest",side_effect=unavailable), \
+        with patch.object(g,"deployment_ready"), patch.object(g,"SAFETY_BACKEND","ssh"), \
+             patch.object(g,"rest",side_effect=unavailable), \
              patch.object(g,"app_jwt",return_value="test-jwt"):
             transport=g.GitHubAuthority()
             with self.assertRaises(publisher.CycleBlocked):

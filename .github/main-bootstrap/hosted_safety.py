@@ -11,6 +11,7 @@ import json
 from pathlib import Path
 import re
 import time
+import secrets
 import authority_contract as a
 import authority_anchor as anchor
 import github_witness as gw
@@ -52,35 +53,100 @@ def event(seq,parent,previous,entry):
                 (seq>0 and isinstance(previous,str) and a.HEX64.fullmatch(previous)
                  and type(entry) is dict)),"Invalid hosted ledger event")
     if entry is not None:
-        v.need(set(entry)=={"evidence","decision","signature_b64"} and
-               entry["decision"] in ("approve","withdraw"),"Invalid hosted decision")
-        a.evidence_shape(entry["evidence"])
+        if "operation" in entry:
+            validate_operation(entry)
+        else:
+            v.need(set(entry)=={"evidence","decision","signature_b64"} and
+                   entry["decision"] in ("approve","withdraw"),"Invalid hosted decision")
+            a.evidence_shape(entry["evidence"])
     return {"schema":SCHEMA,"repository_id":v.RID,"control_repository_id":CONTROL_ID,
             "sequence":seq,"parent":parent,"previous":previous,"entry":entry}
 
-def replay(records,pem):
-    """Validate transitions, including permanent terminal withdrawal."""
+def validate_operation(row):
+    v.need(type(row) is dict and set(row)=={"operation","evidence","reservation","receipt"}
+           and row["operation"] in ("reserve_merge","merge_posting","merge_confirmed","merge_aborted")
+           and isinstance(row["reservation"],str) and a.HEX64.fullmatch(row["reservation"]),
+           "Invalid merge reservation event")
+    e=row["evidence"]
+    a.evidence_shape(e)
+    r=row["receipt"]
+    if row["operation"]=="merge_confirmed":
+        v.need(type(r) is dict and set(r)=={"pr","head","base","tree","merge"}
+               and r["pr"]==e["pr"] and r["head"]==e["head"] and r["base"]==e["base"]
+               and r["tree"]==e["tree"] and isinstance(r["merge"],str) and v.SHA.fullmatch(r["merge"]),
+               "Wrong merge receipt")
+    else:
+        v.need(r is None,"Unexpected merge receipt")
+
+def replay_full(records,pem):
+    """One signed append-only order for decisions and merge operations.
+
+    A withdrawal before posting cancels the reservation. After posting it
+    remains a terminal denial, but the ambiguous merge must be reconciled.
+    No claim that a GitHub request already in flight can be cancelled.
+    """
     states={}
     previous=None
+    active=None
+    used=set()
+    consumed=set()
+    incidents=[]
     for i,(parent,envelope) in enumerate(records):
         v.need(type(envelope) is dict and set(envelope)=={"payload","signature_b64"},"Invalid ledger envelope")
         p=envelope["payload"]
         v.need(p==event(i,parent,previous,p["entry"]),"Hosted ledger sequence mismatch")
         a.verify_bytes(v.canonical(p),envelope["signature_b64"],pem)
         row=p["entry"]
-        if row:
+        if row and "operation" in row:
+            e=row["evidence"]
+            op=row["operation"]
+            rid=row["reservation"]
+            prior=states.get(e["head"])
+            v.need(prior is not None and prior["evidence"]==e,"Reservation evidence mismatch")
+            if op=="reserve_merge":
+                v.need(active is None and not incidents and prior["decision"]=="approve"
+                       and e["head"] not in consumed and rid not in used,
+                       "Reservation unavailable")
+                used.add(rid)
+                active={"evidence":e,"reservation":rid,"phase":"reserved"}
+            else:
+                v.need(active is not None and active["evidence"]==e and active["reservation"]==rid,
+                       "Unknown merge reservation")
+                if op=="merge_posting":
+                    v.need(active["phase"]=="reserved" and prior["decision"]=="approve",
+                           "Merge not reserved or revoked")
+                    active["phase"]="posting"
+                elif op=="merge_aborted":
+                    v.need(active["phase"]=="reserved","Cannot abort ambiguous merge POST")
+                    active=None
+                else:
+                    v.need(active["phase"]=="posting","Merge not posted")
+                    if prior["decision"]=="withdraw":
+                        incidents.append({"head":e["head"],"reservation":rid,"receipt":row["receipt"]})
+                    consumed.add(e["head"])
+                    active=None
+        elif row:
             e,d,sig=row["evidence"],row["decision"],row["signature_b64"]
             a.verify(e,d,sig,pem)
-            h=e["head"]
-            prior=states.get(h)
+            head=e["head"]
+            prior=states.get(head)
             if d=="approve":
                 v.need(prior is None,"Duplicate or terminal approval")
+                v.need(active is None and not incidents,"Merge reservation unresolved")
             else:
                 v.need(prior is not None and prior["decision"]=="approve" and
                        prior["evidence"]==e,"Unknown or duplicate withdrawal")
-            states[h]=row
+                # A not-yet-posted reservation can be cancelled by any
+                # withdrawal. Posting remains unresolved until exact receipt.
+                if active is not None and active["phase"]=="reserved":
+                    active=None
+            states[head]=row
         previous=v.digest(p)
-    return states,previous
+    return states,previous,active,consumed,incidents
+
+def replay(records,pem):
+    states,last,_,_,_=replay_full(records,pem)
+    return states,last
 
 class Ledger:
     def __init__(self,token,pem):
@@ -131,7 +197,7 @@ class Ledger:
         result=(c["parents"][0]["sha"],envelope)
         self.cache[sha]=result
         return result
-    def snapshot(self):
+    def snapshot_full(self):
         self.policy()
         head=self.head()
         sha=head
@@ -146,10 +212,13 @@ class Ledger:
             sha=parent
         v.need(sha==LEDGER_GENESIS,"Missing pinned hosted genesis")
         records.reverse()
-        states,last=replay(records,self.pem)
+        states,last,active,consumed,incidents=replay_full(records,self.pem)
         self.policy()
         v.need(self.head()==head,"Hosted ledger changed during read")
-        return head,len(records),states,last
+        return head,len(records),states,last,active,consumed,incidents
+    def snapshot(self):
+        head,count,states,last,_,_,_=self.snapshot_full()
+        return head,count,states,last
     def current(self,e):
         a.evidence_shape(e)
         head,_,states,_=self.snapshot()
@@ -180,8 +249,21 @@ class HostedWriter(Ledger):
             v.need(decision=="approve","No historical approval")
         entry={"evidence":e,"decision":decision,
                "signature_b64":signer.sign_bytes(self.key,v.canonical(v.decision_payload(e,decision)))}
+        return self._append_event(head,seq,states,last,entry)
+    def _append_event(self,head,seq,states,last,entry):
         value=event(seq,head,last,entry)
         envelope={"payload":value,"signature_b64":signer.sign_bytes(self.key,v.canonical(value))}
+        # Validate prospective chain before any ref update. Existing signed
+        # history is loaded from the exact head captured by snapshot.
+        chain=[]
+        sha=head
+        for _ in range(MAX_EVENTS):
+            parent,old=self.read(sha)
+            chain.append((parent,old))
+            if sha==LEDGER_GENESIS: break
+            sha=parent
+        v.need(sha==LEDGER_GENESIS,"Missing pinned hosted genesis")
+        replay_full(list(reversed(chain))+[(head,envelope)],self.pem)
         raw=v.canonical(envelope)
         blob=self.api("POST","/git/blobs",{"encoding":"base64","content":base64.b64encode(raw).decode()})
         v.need(v.SHA.fullmatch(blob["sha"]),"Wrong created blob")
@@ -198,6 +280,35 @@ class HostedWriter(Ledger):
         v.need(receipt["ref"]=="refs/heads/"+BRANCH and receipt["object"]["sha"]==new
                and receipt["object"]["type"]=="commit","Ledger update receipt mismatch")
         tip,count,after,digest=self.snapshot()
+        expected=states if "operation" in entry else {**states,entry["evidence"]["head"]:entry}
         v.need(tip==new and count==seq+1 and digest==v.digest(value) and
-               after=={**states,e["head"]:entry},"Hosted ledger write unconfirmed")
+               after==expected,"Hosted ledger write unconfirmed")
         return tip,entry
+
+    def append_operation(self,e,operation,reservation,receipt=None):
+        """Trusted hosted controller only; no Pi endpoint or dispatch input.
+
+        Revalidate transition against the exact current signed tip BEFORE
+        publishing. CAS prevents a concurrent sibling withdrawal from being
+        overwritten. After a posting intent, never automatically retry PUT.
+        """
+        head,seq,states,last,active,consumed,incidents=self.snapshot_full()
+        entry={"operation":operation,"evidence":e,"reservation":reservation,"receipt":receipt}
+        validate_operation(entry)
+        prior=states.get(e["head"])
+        v.need(prior is not None and prior["evidence"]==e,"Reservation evidence mismatch")
+        if operation=="reserve_merge":
+            v.need(active is None and not incidents and prior["decision"]=="approve"
+                   and e["head"] not in consumed,"Reservation unavailable")
+            # Prevent token reuse even after aborted reservations by checking
+            # the signed history with the candidate event before ref update.
+        elif operation=="merge_posting":
+            v.need(active=={"evidence":e,"reservation":reservation,"phase":"reserved"}
+                   and prior["decision"]=="approve","Merge not reserved or revoked")
+        elif operation=="merge_aborted":
+            v.need(active=={"evidence":e,"reservation":reservation,"phase":"reserved"},
+                   "Cannot abort ambiguous merge POST")
+        else:
+            v.need(active=={"evidence":e,"reservation":reservation,"phase":"posting"},
+                   "Merge not posted")
+        return self._append_event(head,seq,states,last,entry)
