@@ -154,56 +154,89 @@ def reconcile(*, execute=False):
     return {"status": "duplicate_closed", **picked, "merge_authorized": False}
 
 
-def historical_merged_parent(branch, head, refs):
-    """Prove an exact closed parent was merged into a currently pinned root.
+def historical_ancestor(ancestor, descendant):
+    """Prove commit containment without trusting branch names or diff summaries."""
+    if not all(admission.valid_sha(s) for s in (ancestor, descendant)):
+        return False
+    relation = admission.api("GET", f"/compare/{ancestor}...{descendant}")
+    return (relation.get("base_commit", {}).get("sha") == ancestor
+            and relation.get("merge_base_commit", {}).get("sha") == ancestor
+            and relation.get("status") in ("ahead", "identical")
+            and type(relation.get("behind_by")) is int
+            and relation["behind_by"] == 0)
 
-    A positive result is a retarget/replay planning hint, never permission to
-    change a PR or transfer an approval. Squash merges need not contain head.
+
+def historical_merged_parent(branch, head, refs):
+    """Follow bounded, proven merged-parent chains to a pinned production root.
+
+    The first parent requires exact head identity. Each subsequent parent
+    must contain the previous merge commit in its own reviewed head history.
+    Squash/rebase at a later step is acceptable only with a fresh proof of
+    the resulting merge commit's ancestry. This is a replay hint, not authority.
     """
     if (not isinstance(branch, str) or not 1 <= len(branch) <= 255
             or not admission.valid_sha(head)):
         return {"dependency_state": "INVALID_CLOSED_PARENT_QUERY"}
     owner = admission.REPO.split("/", 1)[0]
-    query = quote(owner + ":" + branch, safe="")
-    rows = admission.complete_page(admission.api(
-        "GET", f"/pulls?state=closed&head={query}&per_page=100"))
-    matches = []
-    for row in rows:
-        h, b = row.get("head") or {}, row.get("base") or {}
-        if (h.get("ref") == branch and h.get("sha") == head
-                and (h.get("repo") or {}).get("full_name") == admission.REPO
-                and (b.get("repo") or {}).get("full_name") == admission.REPO):
-            matches.append(row)
-    if not matches:
-        return {"dependency_state": "ORPHAN_BRANCH"}
-    if len(matches) != 1:
-        return {"dependency_state": "AMBIGUOUS_CLOSED_PARENT"}
-    number = matches[0].get("number")
-    if type(number) is not int or not 1 <= number <= 1000000:
-        return {"dependency_state": "INVALID_CLOSED_PARENT"}
-    parent = admission.api("GET", f"/pulls/{number}")
-    h, b = parent.get("head") or {}, parent.get("base") or {}
-    target, merge = b.get("ref"), parent.get("merge_commit_sha")
-    if (parent.get("number") != number or parent.get("state") != "closed"
-            or h.get("ref") != branch or h.get("sha") != head
-            or (h.get("repo") or {}).get("full_name") != admission.REPO
-            or (b.get("repo") or {}).get("full_name") != admission.REPO):
-        return {"dependency_state": "CLOSED_PARENT_DRIFT"}
-    if parent.get("merged") is not True:
-        return {"dependency_state": "CLOSED_PARENT_NOT_MERGED", "closed_parent": number}
-    if target not in refs or not admission.valid_sha(merge):
-        return {"dependency_state": "CLOSED_PARENT_ROOT_UNVERIFIED", "closed_parent": number}
-    root = refs[target]
-    relation = admission.api("GET", f"/compare/{merge}...{root}")
-    if (relation.get("base_commit", {}).get("sha") != merge
-            or relation.get("merge_base_commit", {}).get("sha") != merge
-            or relation.get("status") not in ("ahead", "identical")
-            or type(relation.get("behind_by")) is not int
-            or relation["behind_by"] != 0):
-        return {"dependency_state": "CLOSED_PARENT_ROOT_UNVERIFIED", "closed_parent": number}
-    return {"dependency_state": "MERGED_PARENT_REPLAY_REQUIRED", "closed_parent": number,
-            "closed_parent_head": head, "parent_merge_commit": merge,
-            "root_target": target, "root_sha": root}
+    chain, visited = [], set()
+    first = True
+    required = head
+    for _ in range(8):
+        if branch in visited:
+            return {"dependency_state": "CLOSED_PARENT_CYCLE", "closed_chain": chain}
+        visited.add(branch)
+        query = quote(owner + ":" + branch, safe="")
+        rows = admission.complete_page(admission.api(
+            "GET", f"/pulls?state=closed&head={query}&per_page=100"))
+        matches = []
+        for row in rows:
+            h, b = row.get("head") or {}, row.get("base") or {}
+            if (h.get("ref") == branch and admission.valid_sha(h.get("sha"))
+                    and (h.get("repo") or {}).get("full_name") == admission.REPO
+                    and (b.get("repo") or {}).get("full_name") == admission.REPO):
+                matches.append(row)
+        if first:
+            matches = [row for row in matches if row["head"]["sha"] == required]
+        else:
+            if len(matches) > 8:
+                return {"dependency_state": "CLOSED_PARENT_LOOKUP_LIMIT", "closed_chain": chain}
+            matches = [row for row in matches
+                       if historical_ancestor(required, row["head"]["sha"])]
+        if not matches:
+            return {"dependency_state": "ORPHAN_BRANCH" if first else "CLOSED_PARENT_ROOT_UNVERIFIED",
+                    "closed_chain": chain}
+        if len(matches) != 1:
+            return {"dependency_state": "AMBIGUOUS_CLOSED_PARENT", "closed_chain": chain}
+        number, expected_head = matches[0].get("number"), matches[0]["head"]["sha"]
+        if type(number) is not int or not 1 <= number <= 1000000:
+            return {"dependency_state": "INVALID_CLOSED_PARENT", "closed_chain": chain}
+        parent = admission.api("GET", f"/pulls/{number}")
+        h, b = parent.get("head") or {}, parent.get("base") or {}
+        target, merge = b.get("ref"), parent.get("merge_commit_sha")
+        if (parent.get("number") != number or parent.get("state") != "closed"
+                or h.get("ref") != branch or h.get("sha") != expected_head
+                or (h.get("repo") or {}).get("full_name") != admission.REPO
+                or (b.get("repo") or {}).get("full_name") != admission.REPO):
+            return {"dependency_state": "CLOSED_PARENT_DRIFT", "closed_chain": chain}
+        if parent.get("merged") is not True:
+            return {"dependency_state": "CLOSED_PARENT_NOT_MERGED", "closed_parent": number,
+                    "closed_chain": chain}
+        if not admission.valid_sha(merge) or not isinstance(target, str) or not 1 <= len(target) <= 255:
+            return {"dependency_state": "CLOSED_PARENT_ROOT_UNVERIFIED", "closed_parent": number,
+                    "closed_chain": chain}
+        chain.append({"pr": number, "head": expected_head, "branch": branch,
+                      "merge": merge, "target": target})
+        if target in refs:
+            root = refs[target]
+            if not historical_ancestor(merge, root):
+                return {"dependency_state": "CLOSED_PARENT_ROOT_UNVERIFIED", "closed_parent": number,
+                        "closed_chain": chain}
+            return {"dependency_state": "MERGED_PARENT_REPLAY_REQUIRED",
+                    "closed_parent": chain[0]["pr"], "closed_parent_head": head,
+                    "parent_merge_commit": chain[0]["merge"], "closed_chain": chain,
+                    "root_target": target, "root_sha": root}
+        branch, required, first = target, merge, False
+    return {"dependency_state": "CLOSED_PARENT_DEPTH_LIMIT", "closed_chain": chain}
 
 
 def historical_dependency(prs, number, refs, *, closed_lookup=None):

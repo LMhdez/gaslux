@@ -344,6 +344,55 @@ class ReconcileTests(unittest.TestCase):
             self.assertEqual(result["dependency_state"], expected)
             self.assertFalse(rec.historical_close_candidate(result))
 
+    def test_nested_closed_parents_require_containment_at_every_hop(self):
+        repo = {"full_name": rec.admission.REPO}
+        intermediate = "d" * 40
+        outer_head = "e" * 40
+        final_merge = "f" * 40
+        inner = {"number": 10, "state": "closed", "merged": True,
+                 "head": {"ref": "feature/inner", "sha": OLD, "repo": repo},
+                 "base": {"ref": "feature/outer", "repo": repo},
+                 "merge_commit_sha": intermediate}
+        outer = {"number": 20, "state": "closed", "merged": True,
+                 "head": {"ref": "feature/outer", "sha": outer_head, "repo": repo},
+                 "base": {"ref": "dev", "repo": repo},
+                 "merge_commit_sha": final_merge}
+        for bad in (None, "unrelated", "root", "ambiguous", "drift", "closed", "cycle"):
+            def api(method, route):
+                self.assertEqual(method, "GET")
+                if route.startswith("/pulls?state=closed&head="):
+                    if "feature%2Finner" in route:
+                        return [inner]
+                    self.assertIn("feature%2Fouter", route)
+                    return [outer, outer] if bad == "ambiguous" else [outer]
+                if route == "/pulls/10":
+                    return inner
+                if route == "/pulls/20":
+                    if bad == "drift":
+                        return {**outer, "head": {**outer["head"], "sha": NEW}}
+                    if bad == "closed":
+                        return {**outer, "merged": False}
+                    if bad == "cycle":
+                        return {**outer, "base": {"ref": "feature/inner", "repo": repo}}
+                    return outer
+                if route in (f"/compare/{intermediate}...{outer_head}", f"/compare/{final_merge}...{BASE}"):
+                    first, second = route.rsplit("/", 1)[1].split("...")
+                    fail = (bad == "unrelated" and first == intermediate) or (bad == "root" and first == final_merge)
+                    return {"base_commit": {"sha": first}, "merge_base_commit": {"sha": first},
+                            "status": "diverged" if fail else "ahead", "behind_by": 1 if fail else 0}
+                self.fail(route)
+            with patch.object(rec.admission, "api", side_effect=api):
+                row = rec.historical_merged_parent("feature/inner", OLD, {"dev": BASE})
+            self.assertEqual(row["dependency_state"], {
+                None: "MERGED_PARENT_REPLAY_REQUIRED", "unrelated": "CLOSED_PARENT_ROOT_UNVERIFIED",
+                "root": "CLOSED_PARENT_ROOT_UNVERIFIED", "ambiguous": "AMBIGUOUS_CLOSED_PARENT",
+                "drift": "CLOSED_PARENT_DRIFT", "closed": "CLOSED_PARENT_NOT_MERGED",
+                "cycle": "CLOSED_PARENT_CYCLE"}[bad])
+            if bad is None:
+                self.assertEqual([x["pr"] for x in row["closed_chain"]], [10, 20])
+                self.assertEqual(row["root_sha"], BASE)
+            self.assertFalse(rec.historical_close_candidate(row))
+
     def test_closed_parent_inventory_never_authorizes_closure(self):
         repo = {"full_name": rec.admission.REPO}
         child = {"number": 11, "state": "open", "draft": True,
