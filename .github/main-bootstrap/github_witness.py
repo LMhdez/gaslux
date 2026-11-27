@@ -112,6 +112,10 @@ class GitWitness:
         v.need(row["ref"]=="refs/heads/"+self.branch and row["object"]["type"]=="commit"
                and v.SHA.fullmatch(row["object"]["sha"]),"Wrong witness ref")
         return row["object"]["sha"]
+    MAX_EVENT_BYTES=4096
+    def validate_event(self,value):
+        v.need(value==self.make_event(value['sequence'],value['previous'],value['digest']),
+               'Witness event mismatch')
     def read_commit(self,sha):
         if sha in self.cache: return self.cache[sha]
         row=self.api("GET","/git/commits/"+sha)
@@ -128,11 +132,11 @@ class GitWitness:
         v.need(blob["sha"]==f["sha"] and blob["encoding"]=="base64","Wrong witness blob")
         raw=base64.b64decode("".join(blob["content"].split()),validate=True)
         git_sha=hashlib.sha1(b"blob "+str(len(raw)).encode()+b"\x00"+raw).hexdigest()
-        v.need(len(raw)<=4096 and blob["size"]==len(raw) and git_sha==f["sha"],
+        v.need(len(raw)<=self.MAX_EVENT_BYTES and blob["size"]==len(raw) and git_sha==f["sha"],
                "Witness blob mismatch")
         value=json.loads(raw)
-        v.need(value==self.make_event(value["sequence"],value["previous"],value["digest"])
-               and raw==v.canonical(value),"Witness event mismatch")
+        self.validate_event(value)
+        v.need(raw==v.canonical(value),"Witness event mismatch")
         result=(row["parents"][0]["sha"],value)
         self.cache[sha]=result
         return result
@@ -169,6 +173,11 @@ class GitWitness:
         if before==after: return
         v.need(after not in {x["digest"] for x in rows},"Checkpoint rollback/reuse")
         value=self.make_event(len(rows),before,after)
+        self.append_event(head,rows,value)
+    def append_event(self,head,rows,value):
+        self.validate_event(value)
+        v.need(value['sequence']==len(rows) and value['previous']==rows[-1]['digest'],
+               'Witness append sequence drift')
         blob=self.api("POST","/git/blobs",{"content":base64.b64encode(v.canonical(value)).decode("ascii"),
                                            "encoding":"base64"})
         v.need(v.SHA.fullmatch(blob["sha"]),"Invalid created witness blob")
