@@ -12,6 +12,7 @@ import re
 import sqlite3
 import subprocess
 import tempfile
+import threading
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -115,6 +116,7 @@ class Journal:
     Lack of a visible receipt is NOT proof an HTTP request cannot arrive.
     """
     def __init__(self,path):
+        self._lease=None
         self.path=Path(path).resolve()
         v.need(str(path)!=":memory:","Persistent journal required")
         self.db=sqlite3.connect(self.path,timeout=15,isolation_level=None)
@@ -138,7 +140,13 @@ class Journal:
                 fcntl.flock(fd,fcntl.LOCK_EX|fcntl.LOCK_NB)
             except BlockingIOError as exc:
                 raise ValueError("Writer already active") from exc
-            yield
+            v.need(self._lease is None,"Journal lock already held")
+            lease=object()
+            self._lease=(lease,threading.get_ident())
+            try:
+                yield lease
+            finally:
+                self._lease=None
         finally:
             os.close(fd)
     @contextmanager
@@ -341,17 +349,20 @@ def process(transport,journal,e,decision,sig,pem):
         journal.change(h,("approval_posting",),"approved",status_id=sid,approval_id=sid)
         return {"pr":e["pr"],"head":h,"state":"success","status_id":sid,"merge_authorized":False}
 
+def integration_permitted_locked(transport,journal,e,lease):
+    """Predicate only. Future real merge must keep this lease until readback."""
+    v.need(journal._lease==(lease,threading.get_ident()),"Active writer lease required")
+    row=journal.row(e["head"])
+    if row is None or row[3]!="approved" or row[0]!=v.canonical(e):
+        return False
+    try:
+        identity(transport)
+        rows,successes,failures=historical_rows(transport,e,row)
+        return len(successes)==1 and not failures and eligible(transport,e)
+    except Exception:
+        return False
+
 def integration_permitted(transport,journal,e):
-    """Must be called under the same exclusive writer lock as any future merge.
-    This staged contract NEVER grants production merge authority.
-    """
-    with journal.exclusive():
-        row=journal.row(e["head"])
-        if row is None or row[3]!="approved" or row[0]!=v.canonical(e):
-            return False
-        try:
-            identity(transport)
-            rows,successes,failures=historical_rows(transport,e,row)
-            return len(successes)==1 and not failures and eligible(transport,e)
-        except Exception:
-            return False
+    """Diagnostic predicate; no production merge authority."""
+    with journal.exclusive() as lease:
+        return integration_permitted_locked(transport,journal,e,lease)

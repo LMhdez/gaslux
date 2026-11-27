@@ -244,3 +244,17 @@ class Tests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"POST unresolved"): self.call("withdraw")
         self.f.fenced["failure"]=True
         self.assertEqual(self.call("withdraw")["state"],"failure")
+
+    def test_lock_ownership_through_predicate(self):
+        self.call("approve")
+        other=a.Journal(self.path)
+        try:
+            with self.j.exclusive() as lease:
+                self.assertTrue(a.integration_permitted_locked(self.f,self.j,self.e,lease))
+                with self.assertRaises(ValueError):
+                    a.integration_permitted_locked(self.f,other,self.e,lease)
+                with self.assertRaises(ValueError):
+                    with other.exclusive(): pass
+            with self.assertRaisesRegex(ValueError,"Active writer lease"):
+                a.integration_permitted_locked(self.f,self.j,self.e,lease)
+        finally: other.close()
