@@ -67,7 +67,8 @@ def api(method: str, route: str, body: dict | None = None):
     safe_compare = re.fullmatch(
         r"/compare/[0-9a-f]{40}\.\.\.[0-9a-f]{40}", route
     ) is not None
-    if not route.startswith("/") or "://" in route or (".." in route and not safe_compare):
+    root_read = route == "" and method == "GET" and body is None
+    if not root_read and (not route.startswith("/") or "://" in route or (".." in route and not safe_compare)):
         raise ValueError("Untrusted GitHub API route")
     token = os.environ.get("GH_TOKEN")
     if not token:
