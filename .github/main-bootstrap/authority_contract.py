@@ -173,6 +173,8 @@ class Journal:
             raise
     def close(self):
         self.db.close()
+    def assert_current(self):
+        self.witness.assert_state(anchor.digest_state('publisher',self.db))
     @contextmanager
     def exclusive(self):
         fd=os.open(str(self.path)+".writer.lock",os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW,0o600)

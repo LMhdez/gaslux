@@ -125,6 +125,7 @@ def execute(writer,reader,merger,journal,e):
         # This fresh read is immediately before dispatch. Between this read
         # and PUT, only the exclusive hosted controller may append; no
         # competing writer or separately runnable signing workflow allowed.
+        journal.assert_current()
         reservation_state(writer,e,rid,"posting",posting)
         merged_sha=merger.dispatch_once(e)
         receipt=merger.receipt(e,reader)

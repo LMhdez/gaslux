@@ -41,3 +41,18 @@ class ControllerTests(unittest.TestCase):
         with patch.object(c,"fact_view",side_effect=OSError("unavailable")):
             self.assertEqual(len(c.refresh_revocations(w,self.fx.f,None)),1)
             w.append.assert_not_called()
+
+    def test_status_failure_does_not_starve_merge_readback(self):
+        from unittest.mock import Mock
+        w=Mock()
+        active={"evidence":self.e,"reservation":"f"*64,"phase":"posting"}
+        w.snapshot_full.return_value=("a"*40,1,{},"b"*64,active,set(),[])
+        failure=c.publisher.CycleBlocked([], [{"stage":"withdraw"}])
+        with patch.object(c.executor,"controller_boundary"),patch.object(c.executor,"boundary"), \
+             patch.object(c,"feed_cycle",side_effect=failure), \
+             patch.object(c,"refresh_revocations",return_value=[]), \
+             patch.object(c.executor,"recover",return_value={"state":"merged_recovered"}) as recover:
+            result=c.run(w,self.fx.f,Mock(),self.fx.j)
+            self.assertEqual(result["result"]["state"],"merged_recovered")
+            self.assertTrue(result["unresolved"])
+            recover.assert_called_once()

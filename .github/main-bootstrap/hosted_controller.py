@@ -90,18 +90,25 @@ def run(writer,reader,merger,journal):
     except publisher.CycleBlocked as exc:
         results.extend(exc.results)
         errors.extend(exc.errors)
-    if errors:
-        return {"state":"blocked","results":results,"unresolved":errors,"merge_authorized":False}
     _,_,states,_,active,_,incidents=writer.snapshot_full()
     if incidents:
-        return {"state":"incident","results":results,"merge_authorized":False}
+        return {"state":"incident","results":results,"unresolved":errors,"merge_authorized":False}
     if active is not None:
         if merger is None:
-            return {"state":"merge_unresolved","results":results,"merge_authorized":False}
+            return {"state":"merge_unresolved","results":results,"unresolved":errors,"merge_authorized":False}
+        # A failed status withdrawal must not starve read-only reconciliation
+        # of a possible already-dispatched merge. No new PUT in this branch.
         executor.boundary(writer)
-        with journal.exclusive():
-            recovered=executor.recover(writer,reader,merger)
-        return {"state":"reconciliation","result":recovered,"merge_authorized":False}
+        try:
+            with journal.exclusive():
+                recovered=executor.recover(writer,reader,merger)
+        except Exception as exc:
+            errors.append({"stage":"merge_recovery","error":type(exc).__name__})
+            return {"state":"merge_unresolved","unresolved":errors,"merge_authorized":False}
+        return {"state":"reconciliation","result":recovered,"unresolved":errors,
+                "merge_authorized":False}
+    if errors:
+        return {"state":"blocked","results":results,"unresolved":errors,"merge_authorized":False}
     # Reconcile prior published receipts before issuing a new decision.
     try: results.extend(feed_cycle(reader,journal,deny_only=False))
     except publisher.CycleBlocked as exc:
@@ -169,7 +176,8 @@ def main():
         try:
             result=run(writer,reader,merger,j)
             print(json.dumps(result,sort_keys=True))
-            if result["state"] in ("blocked","incident","merge_unresolved"):
+            if (result["state"] in ("blocked","incident","merge_unresolved") or result.get("unresolved")
+                    or (result.get("result") or {}).get("state") in ("incident","merge_unresolved")):
                 raise SystemExit(1)
         finally: j.close()
 
