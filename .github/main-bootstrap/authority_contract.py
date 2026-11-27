@@ -14,6 +14,9 @@ import stat
 import subprocess
 import tempfile
 import threading
+import secrets
+import time
+import authority_anchor as anchor
 from contextlib import contextmanager
 from pathlib import Path
 
@@ -61,8 +64,7 @@ def evidence_shape(e):
     v.need(e["base"]==(pred[-1]["merge"] if pred else v.BASE),"Wrong predecessor base")
     return v.digest(e)
 
-def verify(e, decision, sig_b64, pem):
-    evidence_shape(e)
+def verify_bytes(payload,sig_b64,pem):
     v.need(isinstance(SIGNER_PEM_SHA256,str) and HEX64.fullmatch(SIGNER_PEM_SHA256)
            and isinstance(pem,bytes) and len(pem)<=4096
            and hashlib.sha256(pem).hexdigest()==SIGNER_PEM_SHA256,
@@ -73,7 +75,6 @@ def verify(e, decision, sig_b64, pem):
     v.need(len(der)==44 and der.startswith(ED25519_DER_PREFIX),"Not an Ed25519 public key")
     sig=base64.b64decode(sig_b64,validate=True)
     v.need(len(sig)==64,"Invalid Ed25519 signature")
-    payload=v.canonical(v.decision_payload(e,decision))
     with tempfile.TemporaryDirectory() as d:
         paths=[Path(d)/x for x in ("pub","msg","sig")]
         for p,raw in zip(paths,(pem,payload,sig)):
@@ -83,6 +84,26 @@ def verify(e, decision, sig_b64, pem):
               timeout=10,capture_output=True)
         v.need(result.returncode==0,"Independent signature invalid")
     return hashlib.sha256(payload).hexdigest()
+
+def verify(e,decision,sig_b64,pem):
+    evidence_shape(e)
+    return verify_bytes(v.canonical(v.decision_payload(e,decision)),sig_b64,pem)
+
+def query_payload(e,nonce,state):
+    evidence_shape(e)
+    v.need(isinstance(nonce,str) and HEX64.fullmatch(nonce) and
+           state in ("approved","withdrawn","unknown","denied"),"Invalid query response")
+    return {"schema":"gaslux-independent-safety-current-v1","repository_id":v.RID,
+            "head":e["head"],"evidence_sha256":v.digest(e),"nonce":nonce,
+            "state":state,"decision_sha256":v.digest(v.decision_payload(e,"approve"))}
+
+def verify_current(e,nonce,response,pem):
+    v.need(type(response) is dict and set(response)=={"payload","signature_b64"},
+           "Invalid signer response")
+    payload=response["payload"]
+    v.need(payload==query_payload(e,nonce,payload["state"]),"Signer response binding mismatch")
+    verify_bytes(v.canonical(payload),response["signature_b64"],pem)
+    return payload["state"]=="approved"
 
 def authentic_history(raw, combined, head):
     v.need(type(raw) is list and len(raw)<100 and len({r["id"] for r in raw})==len(raw)
@@ -116,8 +137,9 @@ class Journal:
     after process death. A committed posting intent survives process death.
     Lack of a visible receipt is NOT proof an HTTP request cannot arrive.
     """
-    def __init__(self,path,*,initialize=False):
+    def __init__(self,path,*,initialize=False,witness=None):
         self._lease=None
+        self.witness=witness if witness is not None else anchor.WitnessClient('publisher')
         self.path=Path(path).absolute()
         v.need(str(path)!=":memory:" and self.path.resolve()==self.path,
                "Persistent non-symlink journal required")
@@ -145,6 +167,7 @@ class Journal:
             old=self.db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='receipts'").fetchone()
             v.need(old is None or self.db.execute("SELECT COUNT(*) FROM receipts").fetchone()[0]==0,
                    "Old nonempty journal requires independent recovery")
+            self.witness.assert_state(anchor.digest_state("publisher",self.db))
         except BaseException:
             self.db.close()
             raise
@@ -162,6 +185,7 @@ class Journal:
             lease=object()
             self._lease=(lease,threading.get_ident())
             try:
+                self.witness.assert_state(anchor.digest_state('publisher',self.db))
                 yield lease
             finally:
                 self._lease=None
@@ -171,12 +195,17 @@ class Journal:
     def transaction(self):
         self.db.execute("BEGIN IMMEDIATE")
         try:
+            before=anchor.digest_state("publisher",self.db)
+            self.witness.assert_state(before)
             yield
-        except BaseException:
-            self.db.execute("ROLLBACK")
-            raise
-        else:
+            after=anchor.digest_state("publisher",self.db)
+            # Witness first: crash between remote CAS and local commit
+            # deliberately blocks recovery rather than accepting old state.
+            self.witness.advance(before,after)
             self.db.execute("COMMIT")
+        except BaseException:
+            if self.db.in_transaction: self.db.execute("ROLLBACK")
+            raise
     def row(self,head):
         return self.db.execute("SELECT evidence,approved,withdrawn,phase,status_id,approval_id "
                                "FROM receipts_v2 WHERE head=?",(head,)).fetchone()
@@ -274,12 +303,11 @@ def send(transport,head,e,d,state,rows):
     return result["id"]
 
 def current_approval(transport,e):
-    # Contract only: live independently authenticated signer response bound
-    # to this exact evidence/decision, not a cached approval signature or
-    # requester flag. No actual signer query transport is wired here.
-    return transport.current_decision(e)=={
-        "state":"approved","evidence_sha256":v.digest(e),
-        "decision_sha256":v.digest(v.decision_payload(e,"approve"))}
+    nonce=secrets.token_hex(32)
+    start=time.monotonic()
+    response,pem=transport.current_decision(e,nonce)
+    v.need(time.monotonic()-start<=15,"Signer query expired")
+    return verify_current(e,nonce,response,pem)
 
 def eligible(transport,e):
     try:

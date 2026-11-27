@@ -7,6 +7,8 @@ import unittest
 from pathlib import Path
 from unittest.mock import patch
 import authority_contract as a
+import authority_anchor as anchor
+import safety_signer as signer
 
 class Fake:
     def __init__(self,e):
@@ -19,9 +21,9 @@ class Fake:
         self.drift_after=False
         self.readback_failure=False
         self.current_state="approved"
-    def current_decision(self,e):
-        return {"state":self.current_state,"evidence_sha256":a.v.digest(e),
-                "decision_sha256":a.v.digest(a.v.decision_payload(e,"approve"))}
+    def current_decision(self,e,nonce):
+        payload=a.query_payload(e,nonce,self.current_state)
+        return {"payload":payload,"signature_b64":signer.sign_bytes(self.key,a.v.canonical(payload))},self.pem
     def identity_proof(self):
         return {'repository_id':a.v.RID,'app':a.APP,'actor':a.ACTOR,'installation':a.INSTALLATION,'exclusive_writer':True}
     def outbound_settled(self,h,state):
@@ -58,7 +60,11 @@ class Tests(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.path=Path(self.tmp.name)/"journal.sqlite"
-        self.j=a.Journal(self.path,initialize=True)
+        genesis=a.v.digest({"schema":"gaslux-authority-checkpoint-v1","role":"publisher",
+                            "repository_id":a.v.RID,"pin":[],"rows":[]})
+        self.witness=anchor.WitnessStore(self.path.parent/"witness.sqlite","publisher",genesis=genesis)
+        self.addCleanup(self.witness.close)
+        self.j=a.Journal(self.path,initialize=True,witness=self.witness)
         self.addCleanup(self.j.close)
         h,t,b,pid=a.v.ALLOW[436]
         self.e={"schema":"gaslux-main-bootstrap-v1","repository":a.v.REPO,
@@ -69,6 +75,11 @@ class Tests(unittest.TestCase):
                       "base":a.v.BASE,"head":h,"tested_composition":"a"*40,
                       "job_log_sha256":"b"*64}}
         self.f=Fake(self.e)
+        self.f.key=subprocess.check_output(['openssl','genpkey','-algorithm','ED25519'])
+        self.f.pem=signer.public_pem(self.f.key)
+        pin=patch.object(a,'SIGNER_PEM_SHA256',hashlib.sha256(self.f.pem).hexdigest())
+        pin.start()
+        self.addCleanup(pin.stop)
     def call(self,decision,e=None):
         e=self.e if e is None else e
         with patch.object(a,"verify",side_effect=lambda e,d,s,p:a.v.digest(a.v.decision_payload(e,d))):
@@ -115,7 +126,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.f.writes,2)
     def test_durable_reservation_excludes_second_writer(self):
         self.j.reserve_approval(self.e,"a"*64)
-        other=a.Journal(self.path)
+        other=a.Journal(self.path,witness=self.witness)
         try:
             with self.assertRaises(ValueError): other.reserve_approval(self.e,"a"*64)
             self.assertEqual(other.row(self.e["head"])[3],"approval_reserved")
@@ -155,7 +166,7 @@ class Tests(unittest.TestCase):
         self.f.readback_failure=True
         with self.assertRaises(OSError): self.call("approve")
         self.f.readback_failure=False
-        other=a.Journal(self.path)
+        other=a.Journal(self.path,witness=self.witness)
         try:
             with patch.object(a,"verify",side_effect=lambda e,d,s,p:a.v.digest(a.v.decision_payload(e,d))):
                 self.assertEqual(a.process(self.f,other,self.e,"withdraw","",b"")["state"],"failure")
@@ -203,7 +214,7 @@ class Tests(unittest.TestCase):
         self.assertEqual(self.j.row(self.e["head"])[3],"withdrawn")
         self.assertFalse(a.integration_permitted(self.f,self.j,self.e))
     def test_concurrent_revoke_approve_lock(self):
-        other=a.Journal(self.path)
+        other=a.Journal(self.path,witness=self.witness)
         try:
             with self.j.exclusive():
                 with patch.object(a,"verify",return_value="a"*64):
@@ -254,7 +265,7 @@ class Tests(unittest.TestCase):
 
     def test_lock_ownership_through_predicate(self):
         self.call("approve")
-        other=a.Journal(self.path)
+        other=a.Journal(self.path,witness=self.witness)
         try:
             with self.j.exclusive() as lease:
                 self.assertTrue(a.integration_permitted_locked(self.f,self.j,self.e,lease))
@@ -271,7 +282,7 @@ class Tests(unittest.TestCase):
         with self.assertRaises(OSError): self.call("withdraw")
         self.assertEqual(self.j.row(self.e["head"])[3],"withdrawal_posting")
         self.f.uncertain=False
-        other=a.Journal(self.path)
+        other=a.Journal(self.path,witness=self.witness)
         try:
             with patch.object(a,"verify",side_effect=lambda e,d,s,p:a.v.digest(a.v.decision_payload(e,d))):
                 with self.assertRaisesRegex(ValueError,"Terminal"):
@@ -310,9 +321,9 @@ class Tests(unittest.TestCase):
         self.assertIsNone(self.j.row(self.e["head"])[2])
     def test_no_implicit_journal_recreation(self):
         missing=self.path.parent/"missing.sqlite"
-        with self.assertRaises(FileNotFoundError): a.Journal(missing)
+        with self.assertRaises(FileNotFoundError): a.Journal(missing,witness=self.witness)
         self.assertFalse(missing.exists())
-        with self.assertRaises(FileExistsError): a.Journal(self.path,initialize=True)
+        with self.assertRaises(FileExistsError): a.Journal(self.path,initialize=True,witness=self.witness)
         missing.touch(mode=0o600)
         with self.assertRaisesRegex(ValueError,"Missing or incompatible"): a.Journal(missing)
     def test_current_signer_revocation_blocks_stale_approval(self):
@@ -324,7 +335,7 @@ class Tests(unittest.TestCase):
         self.f.current_state="withdrawn"
         self.assertFalse(a.integration_permitted(self.f,self.j,self.e))
     def test_concurrent_delivery_respects_denial(self):
-        other=a.Journal(self.path)
+        other=a.Journal(self.path,witness=self.witness)
         try:
             with self.j.exclusive():
                 d=a.v.digest(a.v.decision_payload(self.e,"withdraw"))
@@ -335,3 +346,37 @@ class Tests(unittest.TestCase):
             with self.assertRaisesRegex(ValueError,"Terminal"): self.call("approve")
             self.assertEqual(self.call("withdraw")["state"],"failure")
         finally: other.close()
+
+    def test_publisher_rollback_detected(self):
+        backup=self.path.parent/"old.sqlite"
+        import sqlite3
+        dst=sqlite3.connect(backup)
+        self.j.db.backup(dst)
+        dst.close()
+        backup.chmod(0o600)
+        self.call("withdraw")
+        with self.assertRaisesRegex(ValueError,"checkpoint mismatch"):
+            a.Journal(backup,witness=self.witness)
+    def test_query_nonce_replay_rejected(self):
+        one="1"*64
+        response,pem=self.f.current_decision(self.e,one)
+        self.assertTrue(a.verify_current(self.e,one,response,pem))
+        with self.assertRaisesRegex(ValueError,"binding mismatch"):
+            a.verify_current(self.e,"2"*64,response,pem)
+        response["payload"]["state"]="withdrawn"
+        with self.assertRaisesRegex(ValueError,"signature invalid"):
+            a.verify_current(self.e,one,response,pem)
+    def test_witness_unavailable_blocks_before_write(self):
+        with patch.object(self.witness,"assert_state",side_effect=OSError("witness offline")):
+            with self.assertRaises(OSError): self.call("approve")
+        self.assertEqual(self.f.writes,0)
+    def test_witness_advanced_but_db_not_committed_blocks(self):
+        original=self.witness.advance
+        def lost(before,after):
+            original(before,after)
+            raise OSError("lost CAS response")
+        with patch.object(self.witness,"advance",side_effect=lost):
+            with self.assertRaises(OSError): self.call("withdraw")
+        self.assertEqual(self.f.writes,0)
+        with self.assertRaisesRegex(ValueError,"checkpoint mismatch"):
+            self.call("approve")

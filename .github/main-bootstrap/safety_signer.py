@@ -16,6 +16,7 @@ import sys
 import tempfile
 from pathlib import Path
 import authority_contract as a
+import authority_anchor as anchor
 import main_bootstrap as v
 
 ROOT=Path("/var/lib/gaslux-safety-signing")
@@ -129,7 +130,7 @@ def live_approval(root,e):
         if old is None: os.environ.pop("GH_TOKEN",None)
         else: os.environ["GH_TOKEN"]=old
 
-def issue(root,request,live=live_approval):
+def issue(root,request,live=live_approval,*,witness=None):
     private_dir(root)
     v.need(type(request) is dict and set(request)=={"evidence","decision"},"Invalid request")
     e=request["evidence"]
@@ -142,6 +143,9 @@ def issue(root,request,live=live_approval):
     db=open_db(root,fp)
     try:
         db.execute("BEGIN IMMEDIATE")
+        witness=witness if witness is not None else anchor.WitnessClient("signer")
+        before=anchor.digest_state("signer",db)
+        witness.assert_state(before)
         policy=policy_entry(root,e,decision)
         row=db.execute("SELECT evidence,approve_sig,withdraw_sig FROM decisions WHERE head=?",
                        (e["head"],)).fetchone()
@@ -161,11 +165,52 @@ def issue(root,request,live=live_approval):
                 db.execute("UPDATE decisions SET withdraw_sig=? WHERE head=?",(sig,e["head"]))
             else: v.need(row[2]==sig,"Withdrawal journal mismatch")
         v.need(policy_entry(root,e,decision)==policy,"Independent policy changed during decision")
+        witness.advance(before,anchor.digest_state("signer",db))
         db.execute("COMMIT")
         # No signature leaves the worker before durable commit.
         return {"schema":"gaslux-independent-safety-receipt-v1","decision":decision,
                 "evidence_sha256":v.digest(e),"decision_sha256":hashlib.sha256(payload).hexdigest(),
                 "policy_sha256":policy,"public_key_sha256":fp,"signature_b64":sig}
+    except BaseException:
+        if db.in_transaction: db.execute("ROLLBACK")
+        raise
+    finally: db.close()
+
+def query(root,request,*,witness=None):
+    private_dir(root)
+    v.need(type(request) is dict and set(request)=={"evidence","nonce"},"Invalid query")
+    e=request["evidence"]
+    nonce=request["nonce"]
+    a.evidence_shape(e)
+    v.need(isinstance(nonce,str) and a.HEX64.fullmatch(nonce),"Invalid nonce")
+    key=private_read(root,"signer.pem",4096)
+    fp=hashlib.sha256(public_pem(key)).hexdigest()
+    db=open_db(root,fp)
+    try:
+        db.execute("BEGIN IMMEDIATE")
+        witness=witness if witness is not None else anchor.WitnessClient("signer")
+        before=anchor.digest_state("signer",db)
+        witness.assert_state(before)
+        row=db.execute("SELECT evidence,approve_sig,withdraw_sig FROM decisions WHERE head=?",
+                       (e["head"],)).fetchone()
+        state="unknown"
+        if row is not None:
+            v.need(row[0]==v.canonical(e),"Different historical evidence")
+            if row[2] is not None:
+                state="withdrawn"
+            else:
+                try:
+                    policy_entry(root,e,"approve")
+                    state="approved"
+                except (ValueError,OSError,KeyError,TypeError):
+                    state="denied"
+        payload=a.query_payload(e,nonce,state)
+        sig=sign_bytes(key,v.canonical(payload))
+        witness.assert_state(before)
+        if state=="approved":
+            policy_entry(root,e,"approve")
+        db.execute("COMMIT")
+        return {"payload":payload,"signature_b64":sig}
     except BaseException:
         if db.in_transaction: db.execute("ROLLBACK")
         raise
@@ -179,13 +224,15 @@ def main():
         pem=public_pem(key)
         fp=hashlib.sha256(pem).hexdigest()
         db=open_db(ROOT,fp,init=True)
+        genesis=anchor.digest_state("signer",db)
         db.close()
-        print(json.dumps({"public_key_sha256":fp,"public_key_pem":pem.decode("ascii")}))
+        print(json.dumps({"public_key_sha256":fp,"public_key_pem":pem.decode("ascii"),"witness_genesis":genesis}))
         return
-    v.need(sys.argv[1:]==["sign"],"Use init-journal or sign")
+    v.need(sys.argv[1:] in (["sign"],["query"]),"Use init-journal, sign or query")
     raw=sys.stdin.buffer.read(MAX+1)
     v.need(0<len(raw)<=MAX,"Invalid request size")
-    print(json.dumps(issue(ROOT,strict_json(raw)),sort_keys=True))
+    handler=query if sys.argv[1]=="query" else issue
+    print(json.dumps(handler(ROOT,strict_json(raw)),sort_keys=True))
 
 if __name__=="__main__":
     main()
