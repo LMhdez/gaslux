@@ -10,6 +10,7 @@ import json
 import os
 import re
 import sqlite3
+import stat
 import subprocess
 import tempfile
 import threading
@@ -115,21 +116,38 @@ class Journal:
     after process death. A committed posting intent survives process death.
     Lack of a visible receipt is NOT proof an HTTP request cannot arrive.
     """
-    def __init__(self,path):
+    def __init__(self,path,*,initialize=False):
         self._lease=None
-        self.path=Path(path).resolve()
-        v.need(str(path)!=":memory:","Persistent journal required")
+        self.path=Path(path).absolute()
+        v.need(str(path)!=":memory:" and self.path.resolve()==self.path,
+               "Persistent non-symlink journal required")
+        if initialize:
+            # Explicit installation-only operation; never performed by a
+            # request handler or recovery. Refuse overwriting existing state.
+            fd=os.open(self.path,os.O_CREAT|os.O_EXCL|os.O_WRONLY|os.O_NOFOLLOW,0o600)
+            os.close(fd)
+        st=self.path.lstat()
+        v.need(stat.S_ISREG(st.st_mode) and st.st_uid==os.geteuid()
+               and st.st_mode&0o077==0 and st.st_nlink==1,"Unsafe journal file")
         self.db=sqlite3.connect(self.path,timeout=15,isolation_level=None)
-        self.db.execute("PRAGMA journal_mode=WAL")
-        self.db.execute("PRAGMA synchronous=FULL")
-        self.db.execute("""CREATE TABLE IF NOT EXISTS receipts_v2 (
-          head TEXT PRIMARY KEY, evidence BLOB NOT NULL, approved TEXT NOT NULL,
-          withdrawn TEXT, phase TEXT NOT NULL, status_id INTEGER,
-          approval_id INTEGER)""")
-        # Old schema cannot prove the network phase. Do not silently migrate.
-        old=self.db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='receipts'").fetchone()
-        v.need(old is None or self.db.execute("SELECT COUNT(*) FROM receipts").fetchone()[0]==0,
-               "Old nonempty journal requires independent recovery")
+        try:
+            self.db.execute("PRAGMA journal_mode=WAL")
+            self.db.execute("PRAGMA synchronous=FULL")
+            if initialize:
+                self.db.execute("""CREATE TABLE receipts_v2 (
+                  head TEXT PRIMARY KEY, evidence BLOB NOT NULL, approved TEXT NOT NULL,
+                  withdrawn TEXT, phase TEXT NOT NULL, status_id INTEGER,
+                  approval_id INTEGER)""")
+            cols=[x[1] for x in self.db.execute("PRAGMA table_info(receipts_v2)")]
+            v.need(cols==["head","evidence","approved","withdrawn","phase","status_id","approval_id"],
+                   "Missing or incompatible authority journal")
+            # Old schema cannot prove network phase. Never silently migrate.
+            old=self.db.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='receipts'").fetchone()
+            v.need(old is None or self.db.execute("SELECT COUNT(*) FROM receipts").fetchone()[0]==0,
+                   "Old nonempty journal requires independent recovery")
+        except BaseException:
+            self.db.close()
+            raise
     def close(self):
         self.db.close()
     @contextmanager
@@ -167,10 +185,32 @@ class Journal:
             v.need(self.row(e["head"]) is None,"Replay, concurrent or terminal request")
             self.db.execute("INSERT INTO receipts_v2 VALUES (?,?,?,NULL,'approval_reserved',NULL,NULL)",
                             (e["head"],v.canonical(e),d))
+    def reserve_denial(self,e,d):
+        """Persist authenticated terminal intent BEFORE any network operation.
+
+        For W-before-A, no success POST has been issued by this journal.
+        Derive A's exact payload digest without trusting/accepting A.
+        Unknown remote history still blocks acknowledgement, not this denial.
+        """
+        v.need(self._lease is not None and self._lease[1]==threading.get_ident(),
+               "Active writer lease required")
+        raw=v.canonical(e)
+        approve=v.digest(v.decision_payload(e,"approve"))
+        with self.transaction():
+            row=self.row(e["head"])
+            if row is None:
+                self.db.execute("INSERT INTO receipts_v2 VALUES (?,?,?,?,'withdrawal_reserved',NULL,NULL)",
+                                (e["head"],raw,approve,d))
+            else:
+                v.need(row[0]==raw and row[1]==approve and row[2] in (None,d),
+                       "Different historical evidence or denial")
+                self.db.execute("UPDATE receipts_v2 SET withdrawn=? WHERE head=?",
+                                (d,e["head"]))
     def change(self,head,old,new,*,status_id=None,approval_id=None,withdrawn=None):
         with self.transaction():
             row=self.row(head)
             v.need(row is not None and row[3] in old,"Unexpected journal phase")
+            v.need(withdrawn is None or row[2] in (None,withdrawn),"Terminal denial digest drift")
             self.db.execute("UPDATE receipts_v2 SET phase=?,status_id=?,approval_id=?,withdrawn=? WHERE head=?",
                             (new,row[4] if status_id is None else status_id,
                              row[5] if approval_id is None else approval_id,
@@ -233,9 +273,18 @@ def send(transport,head,e,d,state,rows):
            "Unconfirmed effective authorization")
     return result["id"]
 
+def current_approval(transport,e):
+    # Contract only: live independently authenticated signer response bound
+    # to this exact evidence/decision, not a cached approval signature or
+    # requester flag. No actual signer query transport is wired here.
+    return transport.current_decision(e)=={
+        "state":"approved","evidence_sha256":v.digest(e),
+        "decision_sha256":v.digest(v.decision_payload(e,"approve"))}
+
 def eligible(transport,e):
     try:
-        return e["draft"] is False and transport.snapshot(e["pr"])==e and bool(approval_policy(transport))
+        return (e["draft"] is False and transport.snapshot(e["pr"])==e
+                and bool(approval_policy(transport)) and current_approval(transport,e))
     except Exception:
         return False
 
@@ -276,7 +325,8 @@ def acknowledge_failure(transport,journal,e,row):
 def withdraw(transport,journal,e,d):
     h=e["head"]
     row=journal.row(h)
-    v.need(row is not None and row[0]==v.canonical(e),"Unknown historical approval")
+    v.need(row is not None and row[0]==v.canonical(e) and row[2]==d,
+           "Missing authenticated denial intent")
     if row[3] in ("approval_reserved","approval_posting"):
         reconcile_approval(transport,journal,e)
         row=journal.row(h)
@@ -319,20 +369,27 @@ def withdraw(transport,journal,e,d):
 
 def process(transport,journal,e,decision,sig,pem):
     """Unwired contract. No live GitHub transport or production signer here."""
+    evidence_shape(e)
+    v.need(decision in ("approve","withdraw"),"Unknown decision")
     d=verify(e,decision,sig,pem)
     h=e["head"]
     with journal.exclusive():
-        identity(transport)
         if decision=="withdraw":
-            # Do not require positive policy or current candidate eligibility
-            # to withdraw an independently signed historical authorization.
+            # Even if the writer identity check or history API fails, retain
+            # a verified denial. It must precede any request to GitHub.
+            journal.reserve_denial(e,d)
+            identity(transport)
             return withdraw(transport,journal,e,d)
+        v.need(decision=="approve","Unknown decision")
         row=journal.row(h)
         if row is not None:
+            v.need(row[2] is None,"Terminal signed withdrawal")
             v.need(row[0]==v.canonical(e) and row[1]==d,"Different approval evidence")
+            identity(transport)
             if row[3] in ("approval_reserved","approval_posting"):
                 reconcile_approval(transport,journal,e)
             raise ValueError("Replay or recovered approval; never republish")
+        identity(transport)
         proof=approval_policy(transport)
         v.need(eligible(transport,e),"Stale or draft approval")
         rows=read_stable(transport,h)
@@ -353,7 +410,7 @@ def integration_permitted_locked(transport,journal,e,lease):
     """Predicate only. Future real merge must keep this lease until readback."""
     v.need(journal._lease==(lease,threading.get_ident()),"Active writer lease required")
     row=journal.row(e["head"])
-    if row is None or row[3]!="approved" or row[0]!=v.canonical(e):
+    if row is None or row[2] is not None or row[3]!="approved" or row[0]!=v.canonical(e):
         return False
     try:
         identity(transport)

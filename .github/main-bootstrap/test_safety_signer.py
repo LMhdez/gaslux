@@ -84,3 +84,16 @@ class SignerTests(unittest.TestCase):
         subprocess.run(["openssl","genpkey","-algorithm","ED25519","-out",str(key)],check=True)
         key.chmod(0o600)
         with self.assertRaisesRegex(ValueError,"key or journal drift"): self.issue("approve")
+
+    def test_real_signed_withdrawal_delivered_before_old_approval(self):
+        self.policy("approve")
+        approval=self.issue("approve")
+        self.policy("withdraw")
+        denial=self.issue("withdraw")
+        f=self.fixture.f
+        j=self.fixture.j
+        with patch.object(a,"SIGNER_PEM_SHA256",self.fp):
+            self.assertEqual(a.process(f,j,self.e,"withdraw",denial["signature_b64"],self.pem)["state"],"failure")
+            with self.assertRaisesRegex(ValueError,"Terminal"):
+                a.process(f,j,self.e,"approve",approval["signature_b64"],self.pem)
+        self.assertEqual([r["state"] for r in f.rows],["failure"])

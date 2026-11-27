@@ -18,6 +18,10 @@ class Fake:
         self.before_write=False
         self.drift_after=False
         self.readback_failure=False
+        self.current_state="approved"
+    def current_decision(self,e):
+        return {"state":self.current_state,"evidence_sha256":a.v.digest(e),
+                "decision_sha256":a.v.digest(a.v.decision_payload(e,"approve"))}
     def identity_proof(self):
         return {'repository_id':a.v.RID,'app':a.APP,'actor':a.ACTOR,'installation':a.INSTALLATION,'exclusive_writer':True}
     def outbound_settled(self,h,state):
@@ -54,7 +58,7 @@ class Tests(unittest.TestCase):
         self.tmp=tempfile.TemporaryDirectory()
         self.addCleanup(self.tmp.cleanup)
         self.path=Path(self.tmp.name)/"journal.sqlite"
-        self.j=a.Journal(self.path)
+        self.j=a.Journal(self.path,initialize=True)
         self.addCleanup(self.j.close)
         h,t,b,pid=a.v.ALLOW[436]
         self.e={"schema":"gaslux-main-bootstrap-v1","repository":a.v.REPO,
@@ -94,9 +98,12 @@ class Tests(unittest.TestCase):
         self.call("approve")
         with self.assertRaises(ValueError): self.call("approve")
         self.assertEqual(self.f.writes,1)
-    def test_unknown_withdraw(self):
-        with self.assertRaises(ValueError): self.call("withdraw")
-        self.assertEqual(self.f.writes,0)
+    def test_withdraw_before_approval_is_terminal(self):
+        self.assertEqual(self.call("withdraw")["state"],"failure")
+        self.assertEqual(self.j.row(self.e["head"])[3],"withdrawn")
+        with self.assertRaisesRegex(ValueError,"Terminal signed withdrawal"): self.call("approve")
+        self.assertEqual([x["state"] for x in self.f.rows],["failure"])
+        self.assertFalse(a.integration_permitted(self.f,self.j,self.e))
     def test_uncertain_write_recovery_and_withdrawal(self):
         self.f.uncertain=True
         with self.assertRaises(OSError): self.call("approve")
@@ -257,4 +264,74 @@ class Tests(unittest.TestCase):
                     with other.exclusive(): pass
             with self.assertRaisesRegex(ValueError,"Active writer lease"):
                 a.integration_permitted_locked(self.f,self.j,self.e,lease)
+        finally: other.close()
+
+    def test_w_before_a_lost_response_restart(self):
+        self.f.uncertain=True
+        with self.assertRaises(OSError): self.call("withdraw")
+        self.assertEqual(self.j.row(self.e["head"])[3],"withdrawal_posting")
+        self.f.uncertain=False
+        other=a.Journal(self.path)
+        try:
+            with patch.object(a,"verify",side_effect=lambda e,d,s,p:a.v.digest(a.v.decision_payload(e,d))):
+                with self.assertRaisesRegex(ValueError,"Terminal"):
+                    a.process(self.f,other,self.e,"approve","",b"")
+                self.assertEqual(a.process(self.f,other,self.e,"withdraw","",b"")["state"],"failure")
+        finally: other.close()
+        self.assertEqual(self.f.writes,1)
+    def test_denial_persisted_before_identity_failure(self):
+        original=self.f.identity_proof
+        self.f.identity_proof=lambda: {}
+        with self.assertRaisesRegex(ValueError,"Unproven writer"): self.call("withdraw")
+        self.assertIsNotNone(self.j.row(self.e["head"])[2])
+        self.f.identity_proof=original
+        with self.assertRaisesRegex(ValueError,"Terminal"): self.call("approve")
+        self.assertEqual(self.f.writes,0)
+        self.assertEqual(self.call("withdraw")["state"],"failure")
+    def test_denial_survives_history_unavailable_for_existing_success(self):
+        self.call("approve")
+        self.f.readback_failure=True
+        with self.assertRaises(OSError): self.call("withdraw")
+        self.assertIsNotNone(self.j.row(self.e["head"])[2])
+        self.f.readback_failure=False
+        self.assertFalse(a.integration_permitted(self.f,self.j,self.e))
+        with self.assertRaisesRegex(ValueError,"Terminal"): self.call("approve")
+        self.assertEqual(self.call("withdraw")["state"],"failure")
+    def test_invalid_withdraw_signature_creates_no_tombstone(self):
+        with patch.object(a,"verify",side_effect=ValueError("bad signature")):
+            with self.assertRaisesRegex(ValueError,"bad signature"):
+                a.process(self.f,self.j,self.e,"withdraw","",b"")
+        self.assertIsNone(self.j.row(self.e["head"]))
+        self.assertEqual(self.f.writes,0)
+    def test_withdraw_wrong_evidence_rejected(self):
+        self.call("approve")
+        with self.assertRaisesRegex(ValueError,"Different historical"):
+            self.call("withdraw",{**self.e,"draft":True})
+        self.assertIsNone(self.j.row(self.e["head"])[2])
+    def test_no_implicit_journal_recreation(self):
+        missing=self.path.parent/"missing.sqlite"
+        with self.assertRaises(FileNotFoundError): a.Journal(missing)
+        self.assertFalse(missing.exists())
+        with self.assertRaises(FileExistsError): a.Journal(self.path,initialize=True)
+        missing.touch(mode=0o600)
+        with self.assertRaisesRegex(ValueError,"Missing or incompatible"): a.Journal(missing)
+    def test_current_signer_revocation_blocks_stale_approval(self):
+        self.f.current_state="withdrawn"
+        with self.assertRaisesRegex(ValueError,"Stale"): self.call("approve")
+        self.assertEqual(self.f.writes,0)
+    def test_current_signer_revocation_blocks_integration(self):
+        self.call("approve")
+        self.f.current_state="withdrawn"
+        self.assertFalse(a.integration_permitted(self.f,self.j,self.e))
+    def test_concurrent_delivery_respects_denial(self):
+        other=a.Journal(self.path)
+        try:
+            with self.j.exclusive():
+                d=a.v.digest(a.v.decision_payload(self.e,"withdraw"))
+                self.j.reserve_denial(self.e,d)
+                with patch.object(a,"verify",return_value=a.v.digest(a.v.decision_payload(self.e,"approve"))):
+                    with self.assertRaisesRegex(ValueError,"Writer already active"):
+                        a.process(self.f,other,self.e,"approve","",b"")
+            with self.assertRaisesRegex(ValueError,"Terminal"): self.call("approve")
+            self.assertEqual(self.call("withdraw")["state"],"failure")
         finally: other.close()
