@@ -182,7 +182,7 @@ class Tests(unittest.TestCase):
         self.f.fenced["success"]=True
         self.assertEqual(self.call("withdraw")["state"],"failure")
         self.assertEqual(self.f.writes,2)
-    def test_late_success_detected(self):
+    def test_late_success_repaired_before_acknowledgment(self):
         self.f.before_write=True
         with self.assertRaises(OSError): self.call("approve")
         self.f.before_write=False
@@ -190,7 +190,10 @@ class Tests(unittest.TestCase):
         d=a.v.digest(a.v.decision_payload(self.e,"approve"))
         self.f.publish(self.e["head"],{"context":a.v.CONTEXT,"state":"success",
                                       "description":a.v.status_marker(self.e,d,"success")})
-        with self.assertRaisesRegex(ValueError,"Success after withdrawal"): self.call("withdraw")
+        self.assertFalse(a.integration_permitted(self.f,self.j,self.e))
+        self.assertEqual(self.call("withdraw")["state"],"failure")
+        self.assertEqual([x["state"] for x in self.f.rows],["failure","success","failure"])
+        self.assertEqual(self.j.row(self.e["head"])[3],"withdrawn")
         self.assertFalse(a.integration_permitted(self.f,self.j,self.e))
     def test_concurrent_revoke_approve_lock(self):
         other=a.Journal(self.path)
@@ -218,3 +221,26 @@ class Tests(unittest.TestCase):
         wrong=subprocess.check_output(["openssl","pkey","-in",str(key),"-pubout"])
         with patch.object(a,"SIGNER_PEM_SHA256",hashlib.sha256(wrong).hexdigest()):
             with self.assertRaisesRegex(ValueError,"Not an Ed25519"): a.verify(self.e,"approve",b64,wrong)
+
+    def test_lost_repair_response(self):
+        self.f.before_write=True
+        with self.assertRaises(OSError): self.call("approve")
+        self.f.before_write=False
+        with self.assertRaises(ValueError): self.call("withdraw")
+        d=a.v.digest(a.v.decision_payload(self.e,"approve"))
+        self.f.publish(self.e["head"],{"context":a.v.CONTEXT,"state":"success",
+                                      "description":a.v.status_marker(self.e,d,"success")})
+        self.f.uncertain=True
+        with self.assertRaises(OSError): self.call("withdraw")
+        self.f.uncertain=False
+        self.assertEqual(self.call("withdraw")["state"],"failure")
+        self.assertEqual([x["state"] for x in self.f.rows],["failure","success","failure"])
+    def test_no_blind_failure_retry(self):
+        self.call("approve")
+        self.f.before_write=True
+        self.f.fenced["failure"]=False
+        with self.assertRaises(OSError): self.call("withdraw")
+        self.f.before_write=False
+        with self.assertRaisesRegex(ValueError,"POST unresolved"): self.call("withdraw")
+        self.f.fenced["failure"]=True
+        self.assertEqual(self.call("withdraw")["state"],"failure")

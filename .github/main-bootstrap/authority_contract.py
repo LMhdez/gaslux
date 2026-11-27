@@ -187,7 +187,7 @@ def historical_rows(transport,e,row):
     rows=read_stable(transport,e["head"])
     successes=[x for x in rows if x["state"]=="success"]
     failures=[x for x in rows if x["state"]=="failure"]
-    v.need(len(successes)<=1 and len(failures)<=1,"Unexpected duplicate receipt")
+    v.need(len(successes)<=1 and len(failures)<=2,"Unexpected duplicate receipt")
     for x in successes:
         v.need(x["description"]==v.status_marker(e,row[1],"success"),"Unknown approval receipt")
         if row[5] is not None:
@@ -195,7 +195,17 @@ def historical_rows(transport,e,row):
     for x in failures:
         v.need(row[2] is not None and x["description"]==v.status_marker(e,row[2],"failure"),
                "Unknown withdrawal receipt")
-    v.need(not failures or rows[0]["state"]=="failure","Success after withdrawal")
+    sequence=tuple(x["state"] for x in rows)
+    v.need(sequence in ((),("success",),("failure",),("failure","success"),
+                        ("success","failure"),("failure","success","failure")),
+           "Unexpected receipt sequence")
+    if sequence in (("success","failure"),("failure","success","failure")):
+        v.need(row[3] in ("withdrawal_unsettled_posting","withdrawal_repair_reserved",
+                           "withdrawal_repair_posting","withdrawn"),
+               "Unexpected success after withdrawal")
+    if row[3]=="withdrawn":
+        v.need(rows and rows[0]["state"]=="failure" and rows[0]["id"]==row[4],
+               "Terminal receipt drift")
     return rows,successes,failures
 
 def settled(transport,head,state):
@@ -244,11 +254,11 @@ def reconcile_approval(transport,journal,e):
 def acknowledge_failure(transport,journal,e,row):
     h=e["head"]
     rows,successes,failures=historical_rows(transport,e,row)
-    v.need(len(failures)==1 and rows[0]["state"]=="failure","Effective failure not proven")
+    v.need(failures and rows[0]["state"]=="failure","Effective failure not proven")
     # If no success receipt was ever seen, the original success request
     # must be proven unable to arrive before a withdrawal is acknowledged.
     # A visible exact success is conclusive only with a no-retry transport.
-    if not successes and row[5] is None and row[3]=="withdrawal_unsettled":
+    if not successes and row[5] is None and row[3]=="withdrawal_unsettled_posting":
         v.need(settled(transport,h,"success"),"Possible delayed success; withdrawal not acknowledged")
     v.need(identity(transport) and read_stable(transport,h)==rows,"Withdrawal readback drift")
     journal.change(h,(row[3],),"withdrawn",status_id=failures[0]["id"],
@@ -263,28 +273,38 @@ def withdraw(transport,journal,e,d):
         reconcile_approval(transport,journal,e)
         row=journal.row(h)
     if row[3] in ("approved","quarantined","aborted","approval_posting"):
-        # Freeze the signed denial before sending anything. Even if the
-        # approval is in flight, send denial but do not acknowledge until
-        # success is fenced or observed before failure.
-        phase="withdrawal_unsettled" if row[3]=="approval_posting" else "withdrawal_reserved"
+        # Persist signed denial. Never retry an approval after this transition.
+        phase="withdrawal_unsettled_reserved" if row[3]=="approval_posting" else "withdrawal_reserved"
         journal.change(h,(row[3],),phase,withdrawn=d)
         row=journal.row(h)
     v.need(row[2]==d and row[3] in ("withdrawal_reserved","withdrawal_posting",
-                                   "withdrawal_unsettled","withdrawn"),"Different withdrawal or phase")
+             "withdrawal_unsettled_reserved","withdrawal_unsettled_posting",
+             "withdrawal_repair_reserved","withdrawal_repair_posting","withdrawn"),
+             "Different withdrawal or phase")
     rows,successes,failures=historical_rows(transport,e,row)
-    if failures:
+    if failures and rows[0]["state"]=="failure":
         return acknowledge_failure(transport,journal,e,row)
     v.need(row[3]!="withdrawn","Missing terminal failure")
-    # No blind retry of an ambiguous failure POST. A real settlement
-    # mechanism must prove no delayed request remains.
-    if row[3]=="withdrawal_posting":
-        v.need(settled(transport,h,"failure"),"Withdrawal POST unresolved")
-    if row[3]=="withdrawal_unsettled":
-        # This phase may represent a pending failure POST as well.
-        # Require a fence before any POST from this state.
-        v.need(settled(transport,h,"failure"),"Withdrawal transport unresolved")
+    if failures:
+        # An exact late success after the initial unacknowledged failure.
+        # The single success and first failure are now visible; repair with
+        # a second denial, never a success. Receipt order is authenticated.
+        v.need(len(failures)==len(successes)==1 and row[3] in
+               ("withdrawal_unsettled_posting","withdrawal_repair_reserved","withdrawal_repair_posting"),
+               "Unproven late receipt sequence")
+        if row[3]=="withdrawal_unsettled_posting":
+            journal.change(h,(row[3],),"withdrawal_repair_reserved",approval_id=successes[0]["id"])
+            row=journal.row(h)
+    pending={
+        "withdrawal_reserved":"withdrawal_posting",
+        "withdrawal_unsettled_reserved":"withdrawal_unsettled_posting",
+        "withdrawal_repair_reserved":"withdrawal_repair_posting",
+    }
+    if row[3] in pending:
+        journal.change(h,(row[3],),pending[row[3]])
     else:
-        journal.change(h,(row[3],),"withdrawal_posting")
+        # Do not retry ambiguous failure requests without an actual fence.
+        v.need(settled(transport,h,"failure"),"Withdrawal POST unresolved")
     v.need(identity(transport) and read_stable(transport,h)==rows,"Denial identity/history drift")
     send(transport,h,e,d,"failure",rows)
     return acknowledge_failure(transport,journal,e,journal.row(h))
