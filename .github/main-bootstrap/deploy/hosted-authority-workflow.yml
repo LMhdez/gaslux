@@ -1,0 +1,36 @@
+# TEMPLATE ONLY: install as the sole authority workflow in frozen private
+# control repo default branch; do not install the earlier evaluator template.
+name: GASLUX hosted authority controller
+on:
+  schedule:
+    - cron: '17,47 * * * *'
+  workflow_dispatch:
+permissions: {}
+concurrency:
+  group: gaslux-hosted-authority-controller
+  cancel-in-progress: false
+jobs:
+  controller:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    environment: gaslux-hosted-authority
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Read protected decisions and reconcile bounded authority
+        env:
+          SAFETY_RELEASE_PIN: ${{ vars.GASLUX_HOSTED_SAFETY_RELEASE_SHA }}
+          GH_TOKEN: ${{ secrets.GASLUX_SAFETY_PRODUCTION_READ_TOKEN }}
+          SAFETY_LEDGER_TOKEN: ${{ secrets.GASLUX_SAFETY_LEDGER_TOKEN }}
+          SAFETY_SIGNING_KEY: ${{ secrets.GASLUX_SAFETY_SIGNING_KEY }}
+          GASLUX_STATUS_APP_KEY: ${{ secrets.GASLUX_STATUS_APP_KEY }}
+          GASLUX_POLICY_READ_TOKEN: ${{ secrets.GASLUX_POLICY_READ_TOKEN }}
+          GASLUX_SAFETY_CONTROL_READ_TOKEN: ${{ secrets.GASLUX_SAFETY_CONTROL_READ_TOKEN }}
+          GASLUX_PUBLISHER_LEDGER_TOKEN: ${{ secrets.GASLUX_PUBLISHER_LEDGER_TOKEN }}
+          GASLUX_MAIN_MERGE_APP_KEY: ${{ secrets.GASLUX_MAIN_MERGE_APP_KEY }}
+        run: python3 -B .github/main-bootstrap/hosted_controller.py

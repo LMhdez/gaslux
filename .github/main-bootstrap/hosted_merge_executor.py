@@ -15,17 +15,22 @@ import github_authority_transport as g
 import main_bootstrap as v
 
 CONTROLLER_REVIEW=None
+HOSTED_CONTROLLER_ENABLED=False
 BOOTSTRAP_MERGE_ENABLED=False
 CONTROLLER_WORKFLOW=None
 
-def boundary(writer):
-    v.need(BOOTSTRAP_MERGE_ENABLED is True and isinstance(CONTROLLER_REVIEW,str)
+def controller_boundary(writer):
+    v.need(HOSTED_CONTROLLER_ENABLED is True and isinstance(CONTROLLER_REVIEW,str)
            and a.HEX64.fullmatch(CONTROLLER_REVIEW)
            and isinstance(CONTROLLER_WORKFLOW,str) and
            os.environ.get("GITHUB_WORKFLOW_REF")==CONTROLLER_WORKFLOW,
            "Protected merge controller not activated")
     evaluator.boundary()
     evaluator.verify_release(writer)
+
+def boundary(writer):
+    controller_boundary(writer)
+    v.need(BOOTSTRAP_MERGE_ENABLED is True,"Bootstrap merge not activated")
     gm.pins()
 
 def reservation_state(writer,e,rid,phase,expected_tip=None):

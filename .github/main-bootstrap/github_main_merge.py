@@ -135,7 +135,8 @@ class MainMerge:
         return receipt
     def dispatch_once(self,e):
         a.evidence_shape(e)
-        result=put_once(e["pr"],e["head"],self.credential())
+        v.need(self.token is not None and time.monotonic()<self.expiry,"Merge token expired before dispatch")
+        result=put_once(e["pr"],e["head"],self.token)
         v.need(result["merged"] is True and v.SHA.fullmatch(result["sha"]),
                "Merge not confirmed; do not retry")
         return result["sha"]

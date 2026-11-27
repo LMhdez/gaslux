@@ -42,7 +42,7 @@ def reconcile_existing(transport,journal,e,digest):
            "Consumed receipt missing or approval no longer eligible")
     return {"pr":e["pr"],"state":"already_approved"}
 
-def cycle(transport,journal,entries,pem):
+def cycle(transport,journal,entries,pem,*,deny_only=False):
     results=[]
     errors=[]
     verified=[]
@@ -81,6 +81,8 @@ def cycle(transport,journal,entries,pem):
             errors.append({"stage":"feed","error":"MissingRetainedDecision"})
         if errors:
             raise CycleBlocked(results,errors)
+        if deny_only:
+            return results
         # Reconcile every existing positive intent before any new success.
         # Never repeat a success POST, even after a lost response.
         pending=[]
