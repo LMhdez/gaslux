@@ -6,6 +6,10 @@ on:
     - cron: '10,25,40,55 * * * *' # staggered 15-minute refresh, plus success-triggered executions
   workflow_dispatch:
     inputs:
+      paused_v3_probe:
+        description: 'Explicit inert V3 terminal revocation probe; no merge'
+        type: boolean
+        default: false
       paused_confinement_probe:
         description: 'Explicit inert Publisher creation / Integrator ref-update denial probe; no merge'
         type: boolean
@@ -28,6 +32,8 @@ on:
       - auto_tests/tests/test_gaslux_supervised_admission.py
       - auto_tests/tools/gaslux_lab_review_probe.py
       - auto_tests/tests/test_gaslux_lab_review_probe.py
+      - auto_tests/tools/gaslux_authority_v3.py
+      - auto_tests/tests/test_gaslux_authority_v3.py
       - auto_tests/tools/gaslux_app_status_gate.py
       - auto_tests/tests/test_gaslux_app_status_gate.py
       - auto_tests/tools/gaslux_publisher_confinement_probe.py
@@ -67,6 +73,8 @@ jobs:
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_lab_review_probe.py -v
       - name: App status migration adversarial cases
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_app_status_gate.py -v
+      - name: V3 authority adversarial contracts
+        run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_authority_v3.py -v
       - name: Paused inert confinement probe contracts
         run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_publisher_confinement_probe.py -v
       - name: Probe effective dev protection with read-only workflow token
@@ -695,6 +703,8 @@ jobs:
           mkdir -p evidence
           python3 -I auto_tests/tools/gaslux_app_status_gate.py > evidence/app-status-plan.json
           cat evidence/app-status-plan.json
+          python3 -I auto_tests/tools/gaslux_authority_v3.py --shadow > evidence/authority-v3-shadow.json
+          cat evidence/authority-v3-shadow.json
       - name: Read-only production activation policy audit
         if: always() && !cancelled()
         env:
@@ -993,6 +1003,284 @@ jobs:
           GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
           GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
         run: python3 -I auto_tests/tools/gaslux_app_status_gate.py --pilot-audit
+
+  v3_safety_approve:
+    needs: paused_status_pilot_audit
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'true' &&
+      vars.GASLUX_STATUS_PILOT_ENABLED == 'true' &&
+      vars.GASLUX_APP_STATUS_GATES_ENABLED != 'true' &&
+      vars.GASLUX_INDEPENDENT_SAFETY_ENABLED == 'true' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.paused_v3_probe == true &&
+      vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
+      vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment: gaslux-independent-safety
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_authority_v3.py -v
+      - name: Mint status-capable independent safety App token
+        id: review_identity
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        with:
+          client-id: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_SAFETY_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: read
+          permission-pull-requests: read
+          permission-actions: read
+          permission-checks: read
+          permission-issues: read
+          permission-statuses: write
+      - name: V3 inert decision (no merge)
+        env:
+          GASLUX_V3_PILOT: ${{ inputs.paused_v3_probe }}
+          GASLUX_PRODUCTION_MERGE_ENABLED: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
+          GH_TOKEN: ${{ steps.review_identity.outputs.token }}
+          GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
+          GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
+          GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          GASLUX_OWNER_APP_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          GASLUX_PUBLISH_APP_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_STATUS_PILOT_ENABLED: ${{ vars.GASLUX_STATUS_PILOT_ENABLED }}
+          GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+          GASLUX_VM_OBSERVER_ID: ${{ vars.GASLUX_VM_OBSERVER_ID }}
+          GASLUX_VM_ACCEPTANCE_WORKFLOW_ID: ${{ vars.GASLUX_VM_ACCEPTANCE_WORKFLOW_ID }}
+        run: python3 -I auto_tests/tools/gaslux_authority_v3.py --pilot-approve safety
+
+  v3_owner_approve:
+    needs: v3_safety_approve
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'true' &&
+      vars.GASLUX_STATUS_PILOT_ENABLED == 'true' &&
+      vars.GASLUX_APP_STATUS_GATES_ENABLED != 'true' &&
+      vars.GASLUX_INDEPENDENT_OWNER_ENABLED == 'true' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.paused_v3_probe == true &&
+      vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
+      vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment: gaslux-independent-owner
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_authority_v3.py -v
+      - name: Mint status-capable independent owner App token
+        id: review_identity
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        with:
+          client-id: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_OWNER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: read
+          permission-pull-requests: read
+          permission-actions: read
+          permission-checks: read
+          permission-issues: read
+          permission-statuses: write
+      - name: V3 inert decision (no merge)
+        env:
+          GASLUX_V3_PILOT: ${{ inputs.paused_v3_probe }}
+          GASLUX_PRODUCTION_MERGE_ENABLED: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
+          GH_TOKEN: ${{ steps.review_identity.outputs.token }}
+          GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
+          GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
+          GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          GASLUX_OWNER_APP_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          GASLUX_PUBLISH_APP_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_STATUS_PILOT_ENABLED: ${{ vars.GASLUX_STATUS_PILOT_ENABLED }}
+          GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+          GASLUX_VM_OBSERVER_ID: ${{ vars.GASLUX_VM_OBSERVER_ID }}
+          GASLUX_VM_ACCEPTANCE_WORKFLOW_ID: ${{ vars.GASLUX_VM_ACCEPTANCE_WORKFLOW_ID }}
+        run: python3 -I auto_tests/tools/gaslux_authority_v3.py --pilot-approve owner
+
+  v3_safety_revoke:
+    needs: v3_owner_approve
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'true' &&
+      vars.GASLUX_STATUS_PILOT_ENABLED == 'true' &&
+      vars.GASLUX_APP_STATUS_GATES_ENABLED != 'true' &&
+      vars.GASLUX_INDEPENDENT_SAFETY_ENABLED == 'true' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.paused_v3_probe == true &&
+      vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
+      vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment: gaslux-independent-safety
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_authority_v3.py -v
+      - name: Mint status-capable independent safety App token
+        id: review_identity
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        with:
+          client-id: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_SAFETY_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: read
+          permission-pull-requests: read
+          permission-actions: read
+          permission-checks: read
+          permission-issues: read
+          permission-statuses: write
+      - name: V3 inert decision (no merge)
+        env:
+          GASLUX_V3_PILOT: ${{ inputs.paused_v3_probe }}
+          GASLUX_PRODUCTION_MERGE_ENABLED: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
+          GH_TOKEN: ${{ steps.review_identity.outputs.token }}
+          GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
+          GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
+          GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          GASLUX_OWNER_APP_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          GASLUX_PUBLISH_APP_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_STATUS_PILOT_ENABLED: ${{ vars.GASLUX_STATUS_PILOT_ENABLED }}
+          GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+          GASLUX_VM_OBSERVER_ID: ${{ vars.GASLUX_VM_OBSERVER_ID }}
+          GASLUX_VM_ACCEPTANCE_WORKFLOW_ID: ${{ vars.GASLUX_VM_ACCEPTANCE_WORKFLOW_ID }}
+        run: python3 -I auto_tests/tools/gaslux_authority_v3.py --pilot-revoke safety
+
+  v3_owner_revoke:
+    needs: v3_safety_revoke
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'true' &&
+      vars.GASLUX_STATUS_PILOT_ENABLED == 'true' &&
+      vars.GASLUX_APP_STATUS_GATES_ENABLED != 'true' &&
+      vars.GASLUX_INDEPENDENT_OWNER_ENABLED == 'true' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.paused_v3_probe == true &&
+      vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
+      vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 8
+    environment: gaslux-independent-owner
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - run: python3 -B -m unittest discover -s auto_tests/tests -p test_gaslux_authority_v3.py -v
+      - name: Mint status-capable independent owner App token
+        id: review_identity
+        uses: actions/create-github-app-token@f418cff399f7aef4c2f0ad47e25ca7a6abbdd6fc
+        with:
+          client-id: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.GASLUX_OWNER_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: gaslux
+          permission-contents: read
+          permission-pull-requests: read
+          permission-actions: read
+          permission-checks: read
+          permission-issues: read
+          permission-statuses: write
+      - name: V3 inert decision (no merge)
+        env:
+          GASLUX_V3_PILOT: ${{ inputs.paused_v3_probe }}
+          GASLUX_PRODUCTION_MERGE_ENABLED: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
+          GH_TOKEN: ${{ steps.review_identity.outputs.token }}
+          GASLUX_MINTED_APP_SLUG: ${{ steps.review_identity.outputs.app-slug }}
+          GASLUX_MINTED_INSTALLATION_ID: ${{ steps.review_identity.outputs.installation-id }}
+          GASLUX_SAFETY_APP_CLIENT_ID: ${{ vars.GASLUX_SAFETY_APP_CLIENT_ID }}
+          GASLUX_OWNER_APP_CLIENT_ID: ${{ vars.GASLUX_OWNER_APP_CLIENT_ID }}
+          GASLUX_PUBLISH_APP_CLIENT_ID: ${{ vars.GASLUX_PUBLISH_APP_CLIENT_ID }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_STATUS_PILOT_ENABLED: ${{ vars.GASLUX_STATUS_PILOT_ENABLED }}
+          GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+          GASLUX_VM_OBSERVER_ID: ${{ vars.GASLUX_VM_OBSERVER_ID }}
+          GASLUX_VM_ACCEPTANCE_WORKFLOW_ID: ${{ vars.GASLUX_VM_ACCEPTANCE_WORKFLOW_ID }}
+        run: python3 -I auto_tests/tools/gaslux_authority_v3.py --pilot-revoke owner
+
+  v3_terminal_audit:
+    needs: v3_owner_revoke
+    if: >-
+      github.repository == 'LMhdez/gaslux' &&
+      github.ref == 'refs/heads/main' &&
+      vars.GASLUX_AUTONOMY_PAUSED == 'true' &&
+      vars.GASLUX_STATUS_PILOT_ENABLED == 'true' &&
+      vars.GASLUX_APP_STATUS_GATES_ENABLED != 'true' &&
+      github.event_name == 'workflow_dispatch' &&
+      inputs.paused_v3_probe == true &&
+      vars.GASLUX_PRODUCTION_MERGE_ENABLED == 'false' &&
+      vars.GASLUX_APP_STATUS_GATES_ENABLED == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 4
+    permissions:
+      contents: read
+      pull-requests: read
+      statuses: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - name: Verify both exact inert status receipts
+        env:
+          GASLUX_V3_PILOT: ${{ inputs.paused_v3_probe }}
+          GASLUX_PRODUCTION_MERGE_ENABLED: ${{ vars.GASLUX_PRODUCTION_MERGE_ENABLED }}
+          GH_TOKEN: ${{ github.token }}
+          GASLUX_AUTONOMY_PAUSED: ${{ vars.GASLUX_AUTONOMY_PAUSED }}
+          GASLUX_STATUS_PILOT_ENABLED: ${{ vars.GASLUX_STATUS_PILOT_ENABLED }}
+          GASLUX_APP_STATUS_GATES_ENABLED: ${{ vars.GASLUX_APP_STATUS_GATES_ENABLED }}
+          GASLUX_SAFETY_APP_ID: ${{ vars.GASLUX_SAFETY_APP_ID }}
+          GASLUX_OWNER_APP_ID: ${{ vars.GASLUX_OWNER_APP_ID }}
+          GASLUX_SAFETY_REVIEWER_ID: ${{ vars.GASLUX_SAFETY_REVIEWER_ID }}
+          GASLUX_BACKEND_OWNER_IDS: ${{ vars.GASLUX_BACKEND_OWNER_IDS }}
+          GASLUX_SUPERVISED_OWNER_IDS: ${{ vars.GASLUX_SUPERVISED_OWNER_IDS }}
+        run: python3 -I auto_tests/tools/gaslux_authority_v3.py --pilot-audit
 
   paused_publisher_confinement:
     if: >-

@@ -1,0 +1,7 @@
+# V3 staged migration
+
+Dependency #436 exact HEAD bdd4f6b5876fa1a38f15be2bae4e301a8dea0cbb. Architecture conditional Safety approval #436 comment 7214155593. Lab V3 ruleset 28221944, negative run 45968609026 and positive run 45968866032. No production rules or flags changed.
+
+Read-only shadow uses independent exact own-role review evidence and mandatory VM evidence for product scopes. Digest binds repository, target, PR, head, base, distro, scope, identity and evidence. No new semantic authorization for dynamic or multifile scopes. Terminal history refuses replay, wrong issuer, incomplete history and later success after failure. Explicit paused V3 dispatch uses actual distinct role credentials on frozen inert #431 only: both successes, both failures, terminal audit. Same workflow concurrency group; no review changes or merge. One-shot, do not repeat after revocation. No production context writes. No assertion that server enforces history or parses descriptions.
+
+Pending: production authoritative evaluators and publishers (shadow is transitional, not independent new semantic authority), authenticated explicit production withdrawal, full historical SHA association, dedicated confined merge credential and verified policy replacement, bootstrap of main, live confinement, functional VM evidence and positive/negative integration. Exclusive App custody and trusted workflow serialization are prerequisites, not atomic server CAS. Do not remove native protection or activate production on this PR.
