@@ -308,6 +308,177 @@ class ReconcileTests(unittest.TestCase):
         self.assertFalse(row["close_authorized"])
         self.assertFalse(rec.historical_close_candidate(row))
 
+    def test_closed_parent_exact_merge_ancestry_is_only_a_replay_hint(self):
+        repo = {"full_name": rec.admission.REPO}
+        branch = "feature/parent"
+        merge = "d" * 40
+        parent = {"number": 10, "state": "closed", "merged": True,
+                  "head": {"ref": branch, "sha": OLD, "repo": repo},
+                  "base": {"ref": "dev", "repo": repo},
+                  "merge_commit_sha": merge}
+        for scenario in ("valid", "not_merged", "drift", "unrelated", "ambiguous", "absent"):
+            def api(method, route):
+                self.assertEqual(method, "GET")
+                if route.startswith("/pulls?state=closed&head="):
+                    self.assertIn("feature%2Fparent", route)
+                    return [] if scenario == "absent" else [parent, parent] if scenario == "ambiguous" else [parent]
+                if route == "/pulls/10":
+                    if scenario == "not_merged":
+                        return {**parent, "merged": False}
+                    if scenario == "drift":
+                        return {**parent, "head": {**parent["head"], "sha": NEW}}
+                    return parent
+                if route == f"/compare/{merge}...{BASE}":
+                    return {"base_commit": {"sha": merge}, "status": "ahead",
+                            "behind_by": 1 if scenario == "unrelated" else 0,
+                            "merge_base_commit": {"sha": merge}}
+                self.fail(route)
+            with patch.object(rec.admission, "api", side_effect=api):
+                result = rec.historical_merged_parent(branch, OLD, {"dev": BASE})
+            expected = {"valid": "MERGED_PARENT_REPLAY_REQUIRED",
+                        "not_merged": "CLOSED_PARENT_NOT_MERGED",
+                        "drift": "CLOSED_PARENT_DRIFT",
+                        "unrelated": "CLOSED_PARENT_ROOT_UNVERIFIED",
+                        "ambiguous": "AMBIGUOUS_CLOSED_PARENT",
+                        "absent": "ORPHAN_BRANCH"}[scenario]
+            self.assertEqual(result["dependency_state"], expected)
+            self.assertFalse(rec.historical_close_candidate(result))
+
+    def test_nested_closed_parents_require_containment_at_every_hop(self):
+        repo = {"full_name": rec.admission.REPO}
+        intermediate = "d" * 40
+        outer_head = "e" * 40
+        final_merge = "f" * 40
+        inner = {"number": 10, "state": "closed", "merged": True,
+                 "head": {"ref": "feature/inner", "sha": OLD, "repo": repo},
+                 "base": {"ref": "feature/outer", "repo": repo},
+                 "merge_commit_sha": intermediate}
+        outer = {"number": 20, "state": "closed", "merged": True,
+                 "head": {"ref": "feature/outer", "sha": outer_head, "repo": repo},
+                 "base": {"ref": "dev", "repo": repo},
+                 "merge_commit_sha": final_merge}
+        for bad in (None, "unrelated", "root", "ambiguous", "drift", "closed", "cycle"):
+            def api(method, route):
+                self.assertEqual(method, "GET")
+                if route.startswith("/pulls?state=closed&head="):
+                    if "feature%2Finner" in route:
+                        return [inner]
+                    self.assertIn("feature%2Fouter", route)
+                    return [outer, outer] if bad == "ambiguous" else [outer]
+                if route == "/pulls/10":
+                    return inner
+                if route == "/pulls/20":
+                    if bad == "drift":
+                        return {**outer, "head": {**outer["head"], "sha": NEW}}
+                    if bad == "closed":
+                        return {**outer, "merged": False}
+                    if bad == "cycle":
+                        return {**outer, "base": {"ref": "feature/inner", "repo": repo}}
+                    return outer
+                if route in (f"/compare/{intermediate}...{outer_head}", f"/compare/{final_merge}...{BASE}"):
+                    first, second = route.rsplit("/", 1)[1].split("...")
+                    fail = (bad == "unrelated" and first == intermediate) or (bad == "root" and first == final_merge)
+                    return {"base_commit": {"sha": first}, "merge_base_commit": {"sha": first},
+                            "status": "diverged" if fail else "ahead", "behind_by": 1 if fail else 0}
+                self.fail(route)
+            with patch.object(rec.admission, "api", side_effect=api):
+                row = rec.historical_merged_parent("feature/inner", OLD, {"dev": BASE})
+            self.assertEqual(row["dependency_state"], {
+                None: "MERGED_PARENT_REPLAY_REQUIRED", "unrelated": "CLOSED_PARENT_ROOT_UNVERIFIED",
+                "root": "CLOSED_PARENT_ROOT_UNVERIFIED", "ambiguous": "AMBIGUOUS_CLOSED_PARENT",
+                "drift": "CLOSED_PARENT_DRIFT", "closed": "CLOSED_PARENT_NOT_MERGED",
+                "cycle": "CLOSED_PARENT_CYCLE"}[bad])
+            if bad is None:
+                self.assertEqual([x["pr"] for x in row["closed_chain"]], [10, 20])
+                self.assertEqual(row["root_sha"], BASE)
+            self.assertFalse(rec.historical_close_candidate(row))
+
+    def test_closed_parent_inventory_never_authorizes_closure(self):
+        repo = {"full_name": rec.admission.REPO}
+        child = {"number": 11, "state": "open", "draft": True,
+                 "head": {"ref": "feature/child", "sha": NEW, "repo": repo},
+                 "base": {"ref": "feature/parent", "sha": OLD, "repo": repo}}
+        def api(method, route):
+            self.assertEqual(method, "GET")
+            if route.startswith("/git/ref/heads/"):
+                return {"object": {"sha": BASE}}
+            if route.startswith("/pulls?state=open"):
+                return [child]
+            self.fail(route)
+        hint = {"dependency_state": "MERGED_PARENT_REPLAY_REQUIRED",
+                "root_target": "dev", "root_sha": BASE, "closed_parent": 10}
+        with patch.object(rec.admission, "api", side_effect=api), patch.object(
+                rec, "historical_merged_parent", return_value=hint) as lookup:
+            report = rec.historical_inventory(slot=0)
+        lookup.assert_called_once_with("feature/parent", OLD, {"main": BASE, "dev": BASE})
+        row = report["findings"][0]
+        self.assertEqual(row["status"], "STACKED_PR_REPLAY_ON_ROOT_REQUIRED")
+        self.assertFalse(row["close_authorized"])
+        self.assertFalse(rec.historical_close_candidate(row))
+
+    def test_replay_range_pins_trees_and_never_grants_authority(self):
+        repo = {"full_name": rec.admission.REPO}
+        ancestor, t1, t2, t3 = "d"*40, "e"*40, "f"*40, "1"*40
+        row = {"pr": 500, "head": NEW, "base": BASE, "target": "dev",
+               "root_target": "dev", "root_sha": BASE, "unique_head_commits": 2,
+               "status": "UNIQUE_COMMITS_REQUIRE_RECONCILIATION"}
+        for scenario in ("valid", "foreign", "head_drift", "target_drift",
+                         "bad_count", "bad_tree", "empty", "bad_relation",
+                         "stacked", "stacked_open_parent", "stacked_diverged"):
+            with self.subTest(scenario=scenario):
+                stack = scenario.startswith("stacked")
+                r = dict(row)
+                if stack:
+                    r.update(status="STACKED_PR_REPLAY_ON_ROOT_REQUIRED",
+                             dependency_state="MERGED_PARENT_REPLAY_REQUIRED",
+                             target="feature/parent", closed_parent_head=OLD,
+                             closed_chain=[{"head": OLD, "branch": "feature/parent"}],
+                             dependency_chain=[{"pr": 2}] if scenario == "stacked_open_parent" else [])
+                expected = OLD if stack else BASE
+                start = OLD if stack and scenario != "stacked_diverged" else ancestor
+                pr = {"number": 500, "state": "open", "head": {"sha": NEW, "repo": repo},
+                      "base": {"sha": expected, "ref": r["target"], "repo": repo}}
+                calls = []
+                def api(method, route):
+                    self.assertEqual(method, "GET")
+                    calls.append(route)
+                    if route == "/pulls/500":
+                        if scenario == "foreign":
+                            return {**pr, "head": {"sha": NEW, "repo": {"full_name": "other/repo"}}}
+                        if scenario == "head_drift" and calls.count(route) > 1:
+                            return {**pr, "head": {"sha": OLD, "repo": repo}}
+                        return pr
+                    if route == f"/compare/{expected}...{NEW}":
+                        return {"base_commit": {"sha": expected},
+                                "merge_base_commit": {"sha": start},
+                                "status": "ahead" if start == expected else "diverged",
+                                "ahead_by": True if scenario == "bad_count" else 2,
+                                "behind_by": 0 if start == expected or scenario == "bad_relation" else 1}
+                    if route.startswith("/git/commits/"):
+                        sha = route.rsplit("/", 1)[1]
+                        tree = {start: t1, NEW: t1 if scenario == "empty" else t2, BASE: t3}[sha]
+                        return {"sha": OLD if scenario == "bad_tree" else sha, "tree": {"sha": tree}}
+                    if route == "/git/ref/heads/dev":
+                        return {"object": {"sha": OLD if scenario == "target_drift" else BASE}}
+                    self.fail(route)
+                with patch.object(rec.admission, "api", side_effect=api) as mock_api:
+                    result = rec.historical_replay_hint(r)
+                if scenario == "stacked_open_parent":
+                    self.assertIsNone(result)
+                    mock_api.assert_not_called()
+                    continue
+                self.assertFalse(result["merge_authorized"])
+                self.assertFalse(result["close_authorized"])
+                if scenario in ("valid", "stacked"):
+                    self.assertEqual(result["status"], "ISOLATED_REPLAY_REQUIRED")
+                    self.assertEqual(result["source_base"], start)
+                    self.assertEqual(result["source_head_tree"], t2)
+                    self.assertEqual(result["target_tree"], t3)
+                    self.assertTrue(result["fresh_ci_and_safety_required"])
+                else:
+                    self.assertEqual(result["status"], "EMPTY_SOURCE_DIFF_REQUIRES_REVIEW"
+                                     if scenario == "empty" else "REPLAY_RANGE_UNVERIFIED")
+
     def test_missing_or_invalid_pause_flag_denies_all_metadata_writes(self):
         for value in (None, "", "unknown", "0"):
             env = dict(ENV)
