@@ -1,0 +1,2 @@
+GASLUX isolated reviewer capability probe v1.
+No installer, production, deployment or merge authority.
