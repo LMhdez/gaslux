@@ -416,6 +416,69 @@ class ReconcileTests(unittest.TestCase):
         self.assertFalse(row["close_authorized"])
         self.assertFalse(rec.historical_close_candidate(row))
 
+    def test_replay_range_pins_trees_and_never_grants_authority(self):
+        repo = {"full_name": rec.admission.REPO}
+        ancestor, t1, t2, t3 = "d"*40, "e"*40, "f"*40, "1"*40
+        row = {"pr": 500, "head": NEW, "base": BASE, "target": "dev",
+               "root_target": "dev", "root_sha": BASE, "unique_head_commits": 2,
+               "status": "UNIQUE_COMMITS_REQUIRE_RECONCILIATION"}
+        for scenario in ("valid", "foreign", "head_drift", "target_drift",
+                         "bad_count", "bad_tree", "empty", "bad_relation",
+                         "stacked", "stacked_open_parent", "stacked_diverged"):
+            with self.subTest(scenario=scenario):
+                stack = scenario.startswith("stacked")
+                r = dict(row)
+                if stack:
+                    r.update(status="STACKED_PR_REPLAY_ON_ROOT_REQUIRED",
+                             dependency_state="MERGED_PARENT_REPLAY_REQUIRED",
+                             target="feature/parent", closed_parent_head=OLD,
+                             closed_chain=[{"head": OLD, "branch": "feature/parent"}],
+                             dependency_chain=[{"pr": 2}] if scenario == "stacked_open_parent" else [])
+                expected = OLD if stack else BASE
+                start = OLD if stack and scenario != "stacked_diverged" else ancestor
+                pr = {"number": 500, "state": "open", "head": {"sha": NEW, "repo": repo},
+                      "base": {"sha": expected, "ref": r["target"], "repo": repo}}
+                calls = []
+                def api(method, route):
+                    self.assertEqual(method, "GET")
+                    calls.append(route)
+                    if route == "/pulls/500":
+                        if scenario == "foreign":
+                            return {**pr, "head": {"sha": NEW, "repo": {"full_name": "other/repo"}}}
+                        if scenario == "head_drift" and calls.count(route) > 1:
+                            return {**pr, "head": {"sha": OLD, "repo": repo}}
+                        return pr
+                    if route == f"/compare/{expected}...{NEW}":
+                        return {"base_commit": {"sha": expected},
+                                "merge_base_commit": {"sha": start},
+                                "status": "ahead" if start == expected else "diverged",
+                                "ahead_by": True if scenario == "bad_count" else 2,
+                                "behind_by": 0 if start == expected or scenario == "bad_relation" else 1}
+                    if route.startswith("/git/commits/"):
+                        sha = route.rsplit("/", 1)[1]
+                        tree = {start: t1, NEW: t1 if scenario == "empty" else t2, BASE: t3}[sha]
+                        return {"sha": OLD if scenario == "bad_tree" else sha, "tree": {"sha": tree}}
+                    if route == "/git/ref/heads/dev":
+                        return {"object": {"sha": OLD if scenario == "target_drift" else BASE}}
+                    self.fail(route)
+                with patch.object(rec.admission, "api", side_effect=api) as mock_api:
+                    result = rec.historical_replay_hint(r)
+                if scenario == "stacked_open_parent":
+                    self.assertIsNone(result)
+                    mock_api.assert_not_called()
+                    continue
+                self.assertFalse(result["merge_authorized"])
+                self.assertFalse(result["close_authorized"])
+                if scenario in ("valid", "stacked"):
+                    self.assertEqual(result["status"], "ISOLATED_REPLAY_REQUIRED")
+                    self.assertEqual(result["source_base"], start)
+                    self.assertEqual(result["source_head_tree"], t2)
+                    self.assertEqual(result["target_tree"], t3)
+                    self.assertTrue(result["fresh_ci_and_safety_required"])
+                else:
+                    self.assertEqual(result["status"], "EMPTY_SOURCE_DIFF_REQUIRES_REVIEW"
+                                     if scenario == "empty" else "REPLAY_RANGE_UNVERIFIED")
+
     def test_missing_or_invalid_pause_flag_denies_all_metadata_writes(self):
         for value in (None, "", "unknown", "0"):
             env = dict(ENV)

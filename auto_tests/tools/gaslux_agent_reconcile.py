@@ -275,7 +275,94 @@ def historical_dependency(prs, number, refs, *, closed_lookup=None):
         current = n
 
 
-def historical_inventory(*, slot=None):
+def historical_replay_hint(row):
+    """Pin the source diff range and destination for isolated replay, never execute it.
+
+    A closed stack may be replayed only after its immediate predecessor and
+    all closed ancestors are proven integrated. Open predecessors must be
+    resolved first. The resulting range is evidence, not a merge permission.
+    """
+    direct = row.get("status") == "UNIQUE_COMMITS_REQUIRE_RECONCILIATION"
+    stacked = (row.get("status") == "STACKED_PR_REPLAY_ON_ROOT_REQUIRED"
+               and row.get("dependency_state") == "MERGED_PARENT_REPLAY_REQUIRED"
+               and row.get("dependency_chain") == [])
+    if not (direct or stacked):
+        return None
+    denied = {"status": "REPLAY_RANGE_UNVERIFIED", "merge_authorized": False,
+              "close_authorized": False}
+    n, head = row.get("pr"), row.get("head")
+    target = row.get("root_target")
+    root = row.get("root_sha")
+    if (type(n) is not int or not 1 <= n <= 1000000
+            or target not in ("main", "dev")
+            or not all(admission.valid_sha(s) for s in (head, root))):
+        return denied
+    if direct:
+        expected_base = root
+        if row.get("target") != target or row.get("base") != root:
+            return denied
+    else:
+        chain = row.get("closed_chain")
+        if not isinstance(chain, list) or not chain or not isinstance(chain[0], dict):
+            return denied
+        parent = chain[0]
+        expected_base = parent.get("head")
+        if (parent.get("branch") != row.get("target")
+                or expected_base != row.get("closed_parent_head")
+                or not admission.valid_sha(expected_base)):
+            return denied
+    api = admission.api
+    pr = api("GET", f"/pulls/{n}")
+    h, b = pr.get("head") or {}, pr.get("base") or {}
+    if (pr.get("number") != n or pr.get("state") != "open"
+            or h.get("sha") != head or b.get("ref") != row.get("target")
+            or b.get("sha") != expected_base
+            or any((x.get("repo") or {}).get("full_name") != admission.REPO
+                   for x in (h, b))):
+        return denied
+    relation = api("GET", f"/compare/{expected_base}...{head}")
+    start = (relation.get("merge_base_commit") or {}).get("sha")
+    ahead, behind = relation.get("ahead_by"), relation.get("behind_by")
+    if ((relation.get("base_commit") or {}).get("sha") != expected_base
+            or not admission.valid_sha(start)
+            or relation.get("status") not in ("ahead", "diverged")
+            or type(ahead) is not int or ahead <= 0
+            or type(behind) is not int or behind < 0
+            or (relation["status"] == "ahead" and (start != expected_base or behind != 0))
+            or (relation["status"] == "diverged" and (start == expected_base or behind == 0))
+            or (direct and (type(row.get("unique_head_commits")) is not int
+                            or row["unique_head_commits"] != ahead))
+            or (stacked and (start != expected_base or behind != 0))):
+        return denied
+    # Bind actual immutable Git tree objects, rather than a potentially
+    # truncated GitHub file/commit listing or an untrusted PR description.
+    trees = {}
+    for sha in dict.fromkeys((start, head, root)):
+        commit = api("GET", f"/git/commits/{sha}")
+        tree = (commit.get("tree") or {}).get("sha")
+        if commit.get("sha") != sha or not admission.valid_sha(tree):
+            return denied
+        trees[sha] = tree
+    if trees[start] == trees[head]:
+        return {**denied, "status": "EMPTY_SOURCE_DIFF_REQUIRES_REVIEW"}
+    # A second exact observation detects drift during evidence collection.
+    observed = api("GET", f"/pulls/{n}")
+    oh, ob = observed.get("head") or {}, observed.get("base") or {}
+    if (observed.get("number") != n or observed.get("state") != "open"
+            or oh.get("sha") != head or ob.get("sha") != expected_base
+            or ob.get("ref") != row.get("target")
+            or any((x.get("repo") or {}).get("full_name") != admission.REPO
+                   for x in (oh, ob))
+            or api("GET", f"/git/ref/heads/{target}")["object"]["sha"] != root):
+        return denied
+    return {**denied, "status": "ISOLATED_REPLAY_REQUIRED", "pr": n,
+            "source_base": start, "source_head": head, "source_base_tree": trees[start],
+            "source_head_tree": trees[head], "target": target, "target_head": root,
+            "target_tree": trees[root], "unique_source_commits": ahead,
+            "fresh_ci_and_safety_required": True}
+
+
+def historical_inventory(*, slot=None, include_replay=False):
     """Inspect a rotating bounded batch of historical PRs, never mutate."""
     api = admission.api
     refs = {name: api("GET", f"/git/ref/heads/{name}")["object"]["sha"]
@@ -345,6 +432,10 @@ def historical_inventory(*, slot=None):
         if (result["status"] == "UNSUPPORTED_OR_FOREIGN"
                 and dependency["dependency_state"] == "MERGED_PARENT_REPLAY_REQUIRED"):
             result["status"] = "STACKED_PR_REPLAY_ON_ROOT_REQUIRED"
+        if include_replay:
+            hint = historical_replay_hint(result)
+            if hint is not None:
+                result["replay"] = hint
         findings.append(result)
     if any(api("GET", f"/git/ref/heads/{name}")["object"]["sha"] != sha
            for name, sha in refs.items()):
@@ -456,7 +547,7 @@ def main():
     modes.add_argument("--close-integrated-history", action="store_true")
     args = cli.parse_args()
     report = (close_integrated_history(execute=True) if args.close_integrated_history else
-              historical_inventory() if args.historical_inventory else reconcile(execute=args.execute))
+              historical_inventory(include_replay=True) if args.historical_inventory else reconcile(execute=args.execute))
     print(json.dumps(report, sort_keys=True))
 
 
